@@ -1,0 +1,18 @@
+{
+	"extends": "./tsconfig.base.json",
+	"compilerOptions": {
+		"lib": [
+			"es2024",
+			"dom",
+			"dom.iterable"
+		],
+		"types": []
+	},
+	"files": [],
+	"include": [
+		"public/app/**/*.js"
+	],
+	"exclude": [
+		"public/app/logic/**"
+	]
+}
