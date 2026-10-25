@@ -1,0 +1,523 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { InvalidCommandError } from '../../public/app/logic/errors.js';
+import { DEFAULT_PLAYBACK_RULES } from '../../public/app/logic/playback-rules.js';
+import { PlaylistPlayer } from '../../public/app/logic/playlist-player.js';
+import { FakeAudioEngine } from '../helpers/fake-audio-engine.js';
+import { FakeClock } from '../helpers/fake-clock.js';
+
+/** @typedef {import('../../public/app/logic/playlist-player.js').PlaylistEvent} PlaylistEvent */
+/** @typedef {import('../../public/app/logic/playback-rules.js').PlaybackRules} PlaybackRules */
+
+/**
+ * @param {number} count
+ * @returns {import('../../public/app/logic/ports.js').PlaylistJson}
+ */
+function playlistOf(count) {
+	return {
+		id: 'Combat',
+		title: 'Combat',
+		tracks: Array.from({ length: count }, (_, i) => ({ id: `Combat/${i}.mp3`, title: `Track ${i}`, format: 'mp3', size: 1000, url: `/t${i}` })),
+	};
+}
+
+/**
+ * @param {object} [options]
+ * @param {number} [options.tracks]
+ * @param {Partial<PlaybackRules>} [options.rules]
+ * @param {(track: import('../../public/app/logic/ports.js').AudioFileJson) => boolean} [options.isPlayable]
+ */
+function setup({ tracks = 3, rules = {}, isPlayable } = {}) {
+	const clock = new FakeClock();
+	const engine = new FakeAudioEngine(clock, { defaultScript: { duration: 10, loadDelay: 0.1 } });
+	/** @type {PlaylistEvent[]} */
+	const events = [];
+	const player = new PlaylistPlayer({
+		playlist: playlistOf(tracks),
+		engine,
+		clock,
+		emit: (event) => events.push(event),
+		rules: { ...DEFAULT_PLAYBACK_RULES, ...rules },
+		isPlayable,
+	});
+	/** @param {number} seconds */
+	const advance = (seconds) => clock.advance(seconds * 1000);
+	/** @param {PlaylistEvent['type']} type */
+	const eventsOf = (type) => events.filter((event) => event.type === type);
+	const states = () => eventsOf('playlist.stateChanged').map((event) => (event.type === 'playlist.stateChanged' ? `${event.state}:${event.trackIndex}` : ''));
+	const current = () => {
+		const live = engine.liveVoicesOn('music');
+		assert.ok(live.length <= 1, `expected at most one live voice, got ${live.length}`);
+		return live[0];
+	};
+	return { clock, engine, events, player, advance, eventsOf, states, current };
+}
+
+describe('PlaylistPlayer', () => {
+	describe('playing', () => {
+		it('calls play() synchronously, so it happens inside the user gesture', () => {
+			const { player, engine } = setup();
+			player.play();
+			assert.equal(engine.voices.length, 1);
+			assert.equal(engine.voices[0].url, '/t0');
+			assert.equal(engine.voices[0].bus, 'music');
+			assert.equal(engine.voices[0].playCalls, 1);
+		});
+
+		it('goes from loading to playing once the track has loaded', () => {
+			const { player, advance, states } = setup();
+			player.play();
+			assert.equal(player.state, 'loading');
+			advance(0.1);
+			assert.equal(player.state, 'playing');
+			assert.deepEqual(states(), ['loading:0', 'playing:0']);
+		});
+
+		it('describes the state with serializable events', () => {
+			const { player, advance, eventsOf } = setup();
+			player.play();
+			advance(0.1);
+			const [loading, playing] = eventsOf('playlist.stateChanged');
+			assert.deepEqual(loading, {
+				type: 'playlist.stateChanged',
+				playlistId: 'Combat',
+				state: 'loading',
+				trackIndex: 0,
+				track: playlistOf(3).tracks[0],
+				duration: null,
+			});
+			assert.equal(playing.type === 'playlist.stateChanged' && playing.duration, 10);
+			assert.deepEqual(JSON.parse(JSON.stringify(loading)), loading);
+		});
+
+		it('ignores play while already active', () => {
+			const { player, engine, advance } = setup();
+			player.play();
+			advance(0.1);
+			player.play();
+			assert.equal(engine.voices.length, 1);
+		});
+
+		it('advances to the next track when one ends, and wraps around', () => {
+			const { player, advance, states, engine } = setup({ tracks: 2 });
+			player.play();
+			advance(0.1 + 10 + 0.1 + 10 + 0.1);
+			assert.deepEqual(states(), ['loading:0', 'playing:0', 'loading:1', 'playing:1', 'loading:0', 'playing:0']);
+			assert.equal(engine.liveVoicesOn('music').length, 1);
+		});
+
+		it('stops after the last track when not looping', () => {
+			const { player, advance, engine } = setup({ tracks: 2, rules: { loop: false } });
+			player.play();
+			advance(30);
+			assert.equal(player.state, 'idle');
+			assert.equal(engine.liveVoices.length, 0);
+		});
+
+		it('does nothing for an empty playlist', () => {
+			const { player, engine, events } = setup({ tracks: 0 });
+			player.play();
+			assert.equal(player.state, 'idle');
+			assert.equal(engine.voices.length, 0);
+			assert.deepEqual(events, []);
+		});
+	});
+
+	describe('stopping', () => {
+		it('stops the voice and goes idle', () => {
+			const { player, advance, engine, clock, states } = setup();
+			player.play();
+			advance(1);
+			player.stop();
+			assert.equal(player.state, 'idle');
+			assert.equal(engine.liveVoices.length, 0);
+			assert.equal(clock.pendingTimerCount, 0);
+			assert.deepEqual(states().at(-1), 'idle:null');
+		});
+
+		it('ignores stop while idle', () => {
+			const { player, events } = setup();
+			player.stop();
+			assert.deepEqual(events, []);
+		});
+	});
+
+	describe('changing tracks', () => {
+		it('replaces the current voice on next', () => {
+			const { player, advance, engine, current } = setup();
+			player.play();
+			advance(1);
+			player.next();
+			assert.equal(engine.voices[0].stopped, true);
+			assert.equal(current().url, '/t1');
+			assert.equal(player.state, 'loading');
+		});
+
+		it('starts the new track playing when next is pressed while paused', () => {
+			const { player, advance, current } = setup();
+			player.play();
+			advance(1);
+			player.pause();
+			player.next();
+			advance(0.1);
+			assert.equal(player.state, 'playing');
+			assert.equal(current().playing, true);
+		});
+
+		it('stops when next runs past the last track without looping', () => {
+			const { player, advance } = setup({ tracks: 2, rules: { loop: false } });
+			player.jumpTo(1);
+			advance(1);
+			player.next();
+			assert.equal(player.state, 'idle');
+		});
+
+		it('goes to the previous track within the first 3 seconds', () => {
+			const { player, advance, current } = setup();
+			player.jumpTo(2);
+			advance(0.1 + 2);
+			player.previous();
+			assert.equal(current().url, '/t1');
+		});
+
+		it('restarts the current track after 3 seconds', () => {
+			const { player, advance, current, engine } = setup();
+			player.jumpTo(2);
+			advance(0.1 + 5);
+			player.previous();
+			assert.equal(engine.voices.length, 1);
+			assert.equal(current().position, 0);
+		});
+
+		it('restarts and resumes when previous is pressed while paused after 3 seconds', () => {
+			const { player, advance, current } = setup();
+			player.play();
+			advance(5);
+			player.pause();
+			player.previous();
+			assert.equal(player.state, 'playing');
+			assert.equal(current().position, 0);
+			assert.equal(current().playing, true);
+		});
+
+		it('wraps from the first track to the last on previous', () => {
+			const { player, current } = setup();
+			player.play();
+			player.previous();
+			assert.equal(current().url, '/t2');
+		});
+
+		it('jumps to any track, starting the playlist when idle', () => {
+			const { player, current, advance } = setup();
+			player.jumpTo(1);
+			assert.equal(current().url, '/t1');
+			advance(1);
+			player.jumpTo(2);
+			assert.equal(current().url, '/t2');
+		});
+
+		it('rejects track indexes that do not exist', () => {
+			const { player } = setup();
+			for (const index of [-1, 3, 1.5, Number.NaN]) {
+				assert.throws(() => player.jumpTo(index), InvalidCommandError);
+			}
+		});
+	});
+
+	describe('pause, resume and seek', () => {
+		it('freezes the position while paused', () => {
+			const { player, advance, current } = setup();
+			player.play();
+			advance(0.1 + 2);
+			player.pause();
+			advance(5);
+			assert.equal(player.state, 'paused');
+			assert.equal(current().position, 2);
+			player.resume();
+			advance(1);
+			assert.equal(player.state, 'playing');
+			assert.equal(current().position, 3);
+		});
+
+		it('stays paused when the track loads during a pause', () => {
+			const { player, advance, eventsOf } = setup();
+			player.play();
+			player.pause();
+			advance(0.1);
+			assert.equal(player.state, 'paused');
+			const last = eventsOf('playlist.stateChanged').at(-1);
+			assert.equal(last?.type === 'playlist.stateChanged' && last.duration, 10);
+			player.resume();
+			assert.equal(player.state, 'playing');
+		});
+
+		it('resumes into loading when the track has not loaded yet', () => {
+			const { player, advance } = setup();
+			player.play();
+			player.pause();
+			player.resume();
+			assert.equal(player.state, 'loading');
+			advance(0.1);
+			assert.equal(player.state, 'playing');
+		});
+
+		it('ignores pause when idle and resume when not paused', () => {
+			const { player, events } = setup();
+			player.pause();
+			player.resume();
+			assert.deepEqual(events, []);
+		});
+
+		it('seeks within the track, clamped to its length', () => {
+			const { player, advance, current } = setup();
+			player.play();
+			advance(0.1);
+			player.seek(4);
+			assert.equal(current().position, 4);
+			player.seek(99);
+			assert.equal(current().position, 10);
+			player.seek(-3);
+			assert.equal(current().position, 0);
+		});
+
+		it('applies a seek made while loading once the track has loaded', () => {
+			const { player, advance, current } = setup();
+			player.play();
+			player.seek(6);
+			advance(0.1);
+			assert.equal(current().position, 6);
+		});
+
+		it('rejects seeking to something that is not a number', () => {
+			const { player } = setup();
+			player.play();
+			assert.throws(() => player.seek(Number.NaN), InvalidCommandError);
+		});
+	});
+
+	describe('progress', () => {
+		it('reports progress every 250 ms while playing, and stops reporting when paused', () => {
+			const { player, advance, eventsOf } = setup();
+			player.play();
+			advance(0.1 + 1);
+			const progress = eventsOf('playlist.progress');
+			assert.equal(progress.length, 4);
+			assert.deepEqual(progress[0], { type: 'playlist.progress', playlistId: 'Combat', position: 0.25, duration: 10 });
+			player.pause();
+			advance(1);
+			assert.equal(eventsOf('playlist.progress').length, 4);
+		});
+
+		it('reports progress immediately after a seek', () => {
+			const { player, advance, eventsOf } = setup();
+			player.play();
+			advance(0.1);
+			player.seek(5);
+			assert.deepEqual(eventsOf('playlist.progress').at(-1), { type: 'playlist.progress', playlistId: 'Combat', position: 5, duration: 10 });
+		});
+	});
+
+	describe('errors', () => {
+		it('reports a failed track and skips to the next', () => {
+			const { player, engine, advance, eventsOf, current } = setup();
+			engine.script('/t0', { loadError: 'Not found' });
+			player.play();
+			advance(0.1);
+			assert.deepEqual(eventsOf('playlist.error'), [{ type: 'playlist.error', playlistId: 'Combat', trackId: 'Combat/0.mp3', message: 'Not found' }]);
+			assert.equal(engine.voices[0].stopped, true);
+			assert.equal(current().url, '/t1');
+		});
+
+		it('treats a rejected play() as a failed track', () => {
+			const { player, engine, advance, current } = setup();
+			engine.script('/t0', { playError: 'NotAllowedError' });
+			player.play();
+			advance(0);
+			assert.equal(current().url, '/t1');
+		});
+
+		it('stops instead of looping forever when every track fails', () => {
+			const { player, engine, advance, eventsOf } = setup();
+			for (const url of ['/t0', '/t1', '/t2']) {
+				engine.script(url, { loadError: 'broken' });
+			}
+			player.play();
+			advance(10);
+			assert.equal(player.state, 'idle');
+			assert.equal(eventsOf('playlist.error').length, 3);
+			assert.equal(engine.liveVoices.length, 0);
+		});
+
+		it('counts consecutive failures only, resetting after a track loads', () => {
+			const { player, engine, advance, eventsOf } = setup();
+			engine.script('/t0', { loadError: 'broken' });
+			engine.script('/t2', { loadError: 'broken' });
+			player.play();
+			advance(0.1 + 0.1 + 10 + 0.1 + 0.1 + 0.15);
+			assert.equal(eventsOf('playlist.error').length, 3);
+			assert.equal(player.state, 'playing');
+		});
+
+		it('skips tracks this browser cannot play without creating voices for them', () => {
+			const { player, engine, eventsOf, current } = setup({ isPlayable: (track) => track.url !== '/t0' });
+			player.play();
+			assert.deepEqual(engine.voices.map((voice) => voice.url), ['/t1']);
+			assert.equal(current().url, '/t1');
+			assert.match(/** @type {any} */ (eventsOf('playlist.error')[0]).message, /cannot play mp3/);
+		});
+
+		it('stops when no track can be played', () => {
+			const { player, engine } = setup({ isPlayable: () => false });
+			player.play();
+			assert.equal(player.state, 'idle');
+			assert.equal(engine.voices.length, 0);
+		});
+	});
+
+	describe('stale callbacks', () => {
+		it('ignores ended and error from a replaced voice, even if the engine still delivers them', () => {
+			const { player, engine, advance, states, current, events } = setup();
+			engine.script('/t0', { leaky: true, duration: 2 });
+			player.play();
+			advance(1);
+			player.next();
+			const before = states().length;
+			advance(2);
+			engine.voices[0].fail('late error');
+			advance(0.1);
+			assert.equal(current().url, '/t1');
+			assert.deepEqual(states().slice(before), ['playing:1']);
+			assert.deepEqual(events.filter((event) => event.type === 'playlist.error'), []);
+		});
+
+		it('ignores callbacks from a voice that was stopped', () => {
+			const { player, engine, advance, events } = setup();
+			engine.script('/t0', { leaky: true, duration: 2 });
+			player.play();
+			player.stop();
+			const before = events.length;
+			advance(5);
+			assert.equal(events.length, before);
+			assert.equal(player.state, 'idle');
+		});
+	});
+
+	describe('fades (future rules)', () => {
+		it('fades the old track out and the new one in on a default change', () => {
+			const { player, engine, advance } = setup({ rules: { crossfade: 2 } });
+			player.play();
+			advance(1);
+			player.next();
+			const [old, fresh] = engine.voices;
+			assert.deepEqual(old.gainRamps, [[0, 2]]);
+			assert.deepEqual(fresh.gainRamps, [[0, 0], [1, 2]]);
+			assert.equal(old.stopped, false);
+			advance(3);
+			assert.equal(old.stopped, true);
+		});
+
+		it('cuts fading voices immediately on an instant command', () => {
+			const { player, engine, advance } = setup({ rules: { crossfade: 2 } });
+			player.play();
+			advance(1);
+			player.next();
+			player.next('instant');
+			assert.equal(engine.liveVoicesOn('music').length, 1);
+		});
+
+		it('keeps at most 4 voices fading out', () => {
+			const { player, engine, advance } = setup({ tracks: 3, rules: { crossfade: 5 } });
+			player.play();
+			for (let i = 0; i < 8; i++) {
+				advance(0.2);
+				player.next();
+			}
+			assert.equal(engine.liveVoicesOn('music').length, 5);
+			advance(6);
+			assert.equal(engine.liveVoicesOn('music').length, 1);
+		});
+
+		it('fades out on a default stop and cuts on an instant stop', () => {
+			const faded = setup({ rules: { fadeOut: 2 } });
+			faded.player.play();
+			faded.advance(1);
+			faded.player.stop();
+			assert.equal(faded.player.state, 'idle');
+			assert.deepEqual(faded.engine.voices[0].gainRamps, [[0, 2]]);
+			assert.equal(faded.engine.liveVoices.length, 1);
+			faded.advance(3);
+			assert.equal(faded.engine.liveVoices.length, 0);
+
+			const cut = setup({ rules: { fadeOut: 2 } });
+			cut.player.play();
+			cut.advance(1);
+			cut.player.stop('instant');
+			assert.equal(cut.engine.liveVoices.length, 0);
+		});
+
+		it('stops a finished or failed track at once instead of fading it', () => {
+			const { player, engine, advance } = setup({ rules: { crossfade: 2 } });
+			engine.script('/t1', { loadError: 'broken' });
+			player.play();
+			advance(0.1 + 10);
+			assert.equal(engine.voices[0].stopped, true);
+			advance(0.1);
+			assert.equal(engine.voices[1].stopped, true);
+			assert.equal(engine.liveVoicesOn('music').length, 1);
+		});
+
+		it('does not fade voices that are not audible', () => {
+			const { player, engine, advance } = setup({ rules: { crossfade: 2 } });
+			player.play();
+			advance(1);
+			player.pause();
+			player.next();
+			assert.equal(engine.voices[0].stopped, true);
+		});
+	});
+
+	describe('invariant under random commands', () => {
+		it('never leaves more than the current voice playing once fades are over', () => {
+			let seed = 12345;
+			const random = () => {
+				seed = (seed * 1103515245 + 12345) % 2 ** 31;
+				return seed / 2 ** 31;
+			};
+			const transitions = /** @type {const} */ (['default', 'instant']);
+			const pick = (/** @type {readonly any[]} */ items) => items[Math.floor(random() * items.length)];
+
+			for (let run = 0; run < 400; run++) {
+				const rules = run % 2 === 0 ? {} : { crossfade: 1.5, fadeOut: 1, fadeIn: 0.5 };
+				const { player, engine, advance, clock } = setup({ tracks: 1 + (run % 4), rules });
+				if (run % 5 === 0) {
+					engine.script('/t1', { loadError: 'broken' });
+				}
+				if (run % 7 === 0) {
+					engine.script('/t0', { leaky: true, duration: 1 });
+				}
+				const commands = [
+					() => player.play(pick(transitions)),
+					() => player.stop(pick(transitions)),
+					() => player.next(pick(transitions)),
+					() => player.previous(pick(transitions)),
+					() => player.jumpTo(Math.floor(random() * (1 + (run % 4))), pick(transitions)),
+					() => player.seek(random() * 12),
+					() => player.pause(),
+					() => player.resume(),
+					() => advance(random() * 4),
+				];
+				for (let step = 0; step < 30; step++) {
+					pick(commands)();
+				}
+				advance(10);
+				const live = engine.liveVoicesOn('music').length;
+				if (player.state === 'idle') {
+					assert.equal(live, 0, `run ${run}: idle with ${live} live voices`);
+					assert.equal(clock.pendingTimerCount, 0, `run ${run}: idle with timers left`);
+				} else {
+					assert.ok(live <= 1, `run ${run}: ${player.state} with ${live} live voices`);
+				}
+			}
+		});
+	});
+});

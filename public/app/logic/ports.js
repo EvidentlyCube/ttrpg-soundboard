@@ -41,7 +41,7 @@
  * @property {number} duration seconds, NaN until `loaded`
  * @property {(target: number, seconds: number) => void} rampGain
  * @property {(type: 'loaded' | 'ended', handler: () => void) => void} on
- * @property {(type: 'error', handler: (error: VoiceError) => void) => void} onError
+ * @property {(handler: (error: VoiceError) => void) => void} onError
  */
 
 /**
