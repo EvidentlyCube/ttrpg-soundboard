@@ -1,10 +1,12 @@
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { createServer } from 'node:net';
 import { PassThrough } from 'node:stream';
 import { join } from 'node:path';
 import { main } from '../../../src/cli/main.js';
 import { USAGE } from '../../../src/cli/args.js';
+import { findFreePort } from '../../helpers/http-client.js';
 import { buildId3v2, textFrame } from '../../helpers/tag-builders.js';
 import { createTmpTree } from '../../helpers/tmp-tree.js';
 
@@ -14,11 +16,20 @@ afterEach(async () => {
 	await Promise.all(trees.splice(0).map((tree) => tree.remove()));
 });
 
+/** @param {import('../../helpers/tmp-tree.js').TreeSpec} spec */
+async function tree(spec) {
+	const created = await createTmpTree(spec);
+	trees.push(created);
+	return created.root;
+}
+
 /**
  * @param {string[]} argv
- * @param {string} [typed] what the user types in answer to questions
+ * @param {object} [options]
+ * @param {string} [options.typed] what the user types in answer to questions
+ * @param {(output: () => string) => Promise<void>} [options.whileRunning] runs once the server is up; shutdown follows
  */
-async function run(argv, typed = '') {
+async function run(argv, { typed = '', whileRunning = async () => {} } = {}) {
 	const input = new PassThrough();
 	input.end(typed);
 	let output = '';
@@ -28,6 +39,7 @@ async function run(argv, typed = '') {
 		output: { write: (chunk) => (output += chunk, true) },
 		errorOutput: { write: (chunk) => (errorOutput += chunk, true) },
 		env: {},
+		waitForShutdown: () => whileRunning(() => output),
 	});
 	return { code, output, errorOutput };
 }
@@ -40,46 +52,65 @@ describe('main', () => {
 	});
 
 	it('fails when the directory does not exist or is a file', async () => {
-		const tree = await createTmpTree({ 'file.mp3': '' });
-		trees.push(tree);
-		for (const path of [join(tree.root, 'missing'), join(tree.root, 'file.mp3')]) {
+		const root = await tree({ 'file.mp3': '' });
+		for (const path of [join(root, 'missing'), join(root, 'file.mp3')]) {
 			const result = await run([path]);
 			assert.equal(result.code, 1);
 			assert.equal(result.errorOutput, `Not a directory: ${path}\n\n${USAGE}\n`);
 		}
 	});
 
-	it('bootstraps the directory and reports the library', async () => {
-		const tree = await createTmpTree({ 'a.mp3': '', 'Combat': { '1.mp3': '' } });
-		trees.push(tree);
-		const result = await run([tree.root]);
+	it('serves the library until shutdown', async () => {
+		const root = await tree({ 'a.mp3': '', 'Combat': { '1.mp3': '' } });
+		const port = await findFreePort();
+		const result = await run([root, '--port', String(port)], {
+			whileRunning: async (output) => {
+				assert.match(output(), new RegExp(`Soundboard running at http://127\\.0\\.0\\.1:${port}\\n`));
+				const library = /** @type {{ sounds: { id: string }[] }} */ (await (await fetch(`http://127.0.0.1:${port}/api/library`)).json());
+				assert.deepEqual(library.sounds.map((sound) => sound.id), ['a.mp3']);
+			},
+		});
 		assert.equal(result.code, 0);
 		assert.match(result.output, /Loaded 1 playlist and 1 sound\./);
+		assert.match(result.output, /Stopped\.\n$/);
+		await assert.rejects(fetch(`http://127.0.0.1:${port}/`));
+	});
+
+	it('fails with a clear message when the port is in use', async () => {
+		const root = await tree({ 'a.mp3': '' });
+		const blocker = createServer();
+		await new Promise((resolve) => blocker.listen(0, '127.0.0.1', () => resolve(undefined)));
+		const address = blocker.address();
+		const port = typeof address === 'object' && address !== null ? address.port : 0;
+		try {
+			const result = await run([root, '--port', String(port)]);
+			assert.equal(result.code, 1);
+			assert.equal(result.errorOutput, `Port ${port} is already in use. Stop the program using it, or choose another port with --port.\n`);
+		} finally {
+			blocker.close();
+		}
 	});
 
 	it('exits with 0 when the user declines to continue', async () => {
-		const tree = await createTmpTree({ Combat: { Boss: { '1.mp3': '' } } });
-		trees.push(tree);
-		const result = await run([tree.root], 'n\n');
+		const root = await tree({ Combat: { Boss: { '1.mp3': '' } } });
+		const result = await run([root], { typed: 'n\n' });
 		assert.equal(result.code, 0);
 		assert.match(result.output, /Continue\? \[y\/N\] /);
-		assert.doesNotMatch(result.output, /Loaded/);
+		assert.doesNotMatch(result.output, /Loaded|running/);
 	});
 
 	it('reads answers typed ahead for later questions', async () => {
-		const tree = await createTmpTree({
+		const root = await tree({
 			Combat: { Boss: { '1.mp3': buildId3v2({ frames: [textFrame('TIT2', 'Tagged')] }) } },
 		});
-		trees.push(tree);
-		const result = await run([tree.root], 'y\ny\n');
+		const result = await run([root, '--port', String(await findFreePort())], { typed: 'y\ny\n' });
 		assert.equal(result.code, 0);
-		assert.deepEqual(JSON.parse(await readFile(join(tree.root, 'Combat', 'Boss', '1.mp3.json'), 'utf8')), { title: 'Tagged' });
+		assert.deepEqual(JSON.parse(await readFile(join(root, 'Combat', 'Boss', '1.mp3.json'), 'utf8')), { title: 'Tagged' });
 	});
 
 	it('exits with 1 when options files are invalid', async () => {
-		const tree = await createTmpTree({ 'a.mp3': '', 'a.mp3.json': '{' });
-		trees.push(tree);
-		const result = await run([tree.root]);
+		const root = await tree({ 'a.mp3': '', 'a.mp3.json': '{' });
+		const result = await run([root]);
 		assert.equal(result.code, 1);
 		assert.match(result.output, /Found 1 invalid file/);
 	});

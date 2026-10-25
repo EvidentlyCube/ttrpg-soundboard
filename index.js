@@ -5,4 +5,8 @@ process.exitCode = await main(process.argv.slice(2), {
 	output: process.stdout,
 	errorOutput: process.stderr,
 	env: process.env,
+	waitForShutdown: () => new Promise((resolve) => {
+		process.once('SIGINT', () => resolve());
+		process.once('SIGTERM', () => resolve());
+	}),
 });
