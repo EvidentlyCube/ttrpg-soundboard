@@ -10,10 +10,11 @@ Anything marked **[FUTURE]** is out of scope for now, but the design must leave 
 A local soundboard. A Node.js server scans a directory of audio files and serves a vanilla-JS web app. The browser does all audio playback.
 
 ```
-node index.js <path-to-audio-directory> [--port <number>]
+node index.js <path-to-audio-directory> [--port <number>] [--verbose]
 ```
 
 - The server listens on `127.0.0.1` only. The default port is `3000`.
+- Output is quiet by default: the startup summary, warnings and errors. `--verbose` also logs every HTTP request (§5.2).
 - After startup it prints `Soundboard running at http://127.0.0.1:3000`. The user opens that URL themselves.
 - It is always started by hand from a terminal. There is no unattended mode and no `--yes` option.
 
@@ -235,6 +236,9 @@ The server knows nothing about playback state. That keeps **[FUTURE]** LAN and r
 - `HEAD` returns the same headers with no body.
 
 Other server behavior:
+- Unexpected errors (500s, failed streams) are always printed to stderr with their stack trace.
+- With `--verbose`, each request is logged to stdout when its response finishes or the client disconnects:
+  `GET /media/Combat/01%20Battle.mp3 206 bytes=0-1023 12ms`. That's the method, the raw path, the status, the `Range` header if there was one, and the duration. A request whose client disconnected first ends with `(aborted)`.
 - If the port is already in use, print a clear error and exit `1`.
 - On SIGINT or SIGTERM, close the server and exit `0`.
 
