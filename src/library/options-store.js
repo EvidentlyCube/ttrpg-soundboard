@@ -32,7 +32,8 @@ export async function writeJsonAtomic(path, value) {
 		await writeFile(temporaryPath, `${JSON.stringify(value, null, '\t')}\n`);
 		await rename(temporaryPath, path);
 	} catch (error) {
-		await rm(temporaryPath, { force: true });
+		// Cleanup is best effort; the original error is the one worth reporting.
+		await rm(temporaryPath, { force: true }).catch(() => {});
 		throw error;
 	}
 }
