@@ -254,7 +254,7 @@ UI layer (DOM)  ──commands──▶  Soundboard (logic facade)  ──▶  A
                                                 (browser)                 (tests, manual clock)
 ```
 
-- `public/app/logic/**` **must not touch** `window`, `document` or any audio API. Everything it needs is injected: the `AudioEngine`, a `Clock`/timer port, and a `BackendApi` port (`fetchLibrary()`, `fetchSettings()`, `saveVolumes(volumes, { keepalive })`). Node imports and tests it directly.
+- `public/app/logic/**` **must not touch** `window`, `document` or any audio API. Everything it needs is injected: the `AudioEngine`, a `Clock`/timer port, a `BackendApi` port (`fetchLibrary()`, `fetchSettings()`, `saveVolumes(volumes, { keepalive })`), and a `Logger` port (`warn`, `error`) for the few things worth logging, since logic code cannot use `console`. The port types live in `public/app/logic/ports.js`. Node imports and tests it directly.
 - The UI calls only the facade's methods and listens to its events. The UI never reads logic internals.
 - **Commands and events are plain, serializable objects.** Each facade method builds a command (`{ type: 'playlist.next', playlistId, transition: 'instant' }`) and passes it to `dispatch(command)`. Events are `{ type, ...payload }`. This is what lets **[FUTURE]** remote control from a phone forward commands and events over a socket unchanged.
 
@@ -308,6 +308,7 @@ on(type, handler) / off(type, handler)
 | `audio.suspended` | `{}`, sent when the audio context leaves `running` without being asked (Safari interruption, Mac wake from sleep) |
 | `audio.resumed` | `{}` |
 | `sound.activeChanged` | `{ soundId, active }`, sent when the instance count goes from 0 to ≥1 or back |
+| `sound.error` | `{ soundId, message }`: decoding or playback failed, or the browser cannot play the format |
 | `playlist.stateChanged` | `{ playlistId, state, trackIndex, track, duration }` |
 | `playlist.progress` | `{ playlistId, position, duration }`, at about 4 Hz while playing |
 | `playlist.error` | `{ playlistId, trackId, message }` |
@@ -331,8 +332,12 @@ Voice:
 	seek(seconds)
 	position, duration (NaN until known), paused
 	rampGain(target, seconds)        // used by FUTURE fades
-	on('loaded' | 'ended' | 'error', handler)   // 'ended' fires exactly once
+	on('loaded' | 'ended', handler)  // 'ended' fires exactly once
+	onError(handler)                 // handler receives { message }
+	                                 // no event fires after stop()
 ```
+
+Event payloads never contain `NaN`: an unknown duration is sent as `null`, so every event survives JSON serialization.
 
 **WebAudioEngine** (browser):
 - One `AudioContext`, created inside the first `unlock()` call (the splash screen click), never at page load. The graph is `voiceGain → (musicBus | sfxBus) → masterGain → destination`. Each stream voice is `new Audio(url)` (`preload = 'auto'`) feeding `createMediaElementSource`. Each buffer voice is an `AudioBufferSourceNode`.
@@ -362,7 +367,7 @@ There are three sliders: Master, Music and Sound Effects. Gain is `value ** 2`, 
 - **At most 24 streamed sound instances in total**, across all sounds. Starting another stops the oldest streamed instance instantly. This keeps the number of media elements bounded (§14).
 - **Source choice.** Files of **256 KB or less** (`size` from the library) are decoded once with `loadBuffer` and cached, so they start almost instantly. Larger files stream through a stream voice.
   - *This changes the agreed 2 MB threshold.* A 2 MB MP3 is about 2 minutes of audio and would decode to roughly 40 MB of memory. 256 KB is about 15 s, or roughly 5 MB decoded.
-- **Buffer cache.** An LRU cache with a **64 MB** budget, measured as `length × channels × 4` bytes. Entries are evicted, least recently used first, when the budget is exceeded. A buffer that is currently playing is never evicted.
+- **Buffer cache.** An LRU cache with a **64 MB** budget, measured as `length × channels × 4` bytes. Entries are evicted, least recently used first, when the budget is exceeded. A buffer that is currently playing is never evicted, and neither is one that has just finished decoding, since its caller is about to play it.
 - **First press on an uncached small sound.** Decoding is asynchronous. Pressing the sound again while it decodes shares the same pending promise. **Race guard:** each sound has an `epoch` counter that `stopSound` increments. A pending start captures the epoch and is dropped if the epoch has changed by the time decoding finishes. "Stop All" therefore also cancels starts that haven't happened yet.
 - When a voice ends or fails, its instance is removed, and `sound.activeChanged` is sent when the count reaches 0.
 - Decode or load failure: `sound.error` (console plus a short-lived marker on the tile). The failed promise is evicted, so the next press tries again.
@@ -375,7 +380,7 @@ This is where the race-condition risk sits. The design rules:
 
 1. **Every command runs synchronously.** No command `await`s anything. Commands start async work (loading, `play()`) and return straight away, so two commands can never interleave.
 2. **Generation tokens.** Each playlist has a `generation` integer, incremented whenever the *current voice* changes or the playlist stops. Every callback from a voice (`loaded`, `ended`, `error`) is bound to the generation it was created under. **A callback with an old generation is ignored.** A late `ended` from a skipped track can therefore never advance or restart the playlist.
-3. **One current voice, plus a retiring set.** At most one voice is *current*. A replaced voice moves to `retiring`. Today the rules have no fades, so it is stopped instantly and removed. With **[FUTURE]** fades and crossfades it fades out first. **Any `'instant'` command stops every retiring voice immediately**, as well as replacing or stopping the current one. Each retiring voice also gets a **hard deadline** (fade duration + 1 s); when it passes, `stop()` is forced. This guarantees no sound plays forever. The retiring set is capped at 4 voices, and the oldest is stopped instantly when the cap is exceeded. This covers someone mashing "Next" while crossfades are on.
+3. **One current voice, plus a retiring set.** At most one voice is *current*. A replaced voice moves to `retiring`. Today the rules have no fades, so it is stopped instantly and removed. With **[FUTURE]** fades and crossfades it fades out first. **Any `'instant'` command stops every retiring voice immediately**, as well as replacing or stopping the current one. Only an audible voice is faded. A voice that is paused or still loading, or whose track has ended or failed, is stopped at once. Each retiring voice also gets a **hard deadline** (fade duration + 1 s); when it passes, `stop()` is forced. This guarantees no sound plays forever. The retiring set is capped at 4 voices, and the oldest is stopped instantly when the cap is exceeded. This covers someone mashing "Next" while crossfades are on.
 4. **Invariant, tested after random command sequences:** once enough time has passed for all fades to finish, the playlist owns at most one live voice when playing or paused, and zero when stopped.
 
 ### 8.1 States
