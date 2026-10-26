@@ -6,7 +6,7 @@ const ASSIGNMENT_OPERATORS = ['=', '+=', '-=', '*=', '/=', '%=', '**=', '??=', '
 
 export default [
 	{
-		ignores: ['node_modules/', 'test_fixtures/'],
+		ignores: ['node_modules/', 'test_fixtures/', 'public/vendor/'],
 	},
 	js.configs.recommended,
 	stylistic.configs.customize({

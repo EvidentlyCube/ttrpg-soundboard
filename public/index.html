@@ -1,11 +1,39 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="h-full">
 <head>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>Soundboard</title>
+	<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+	<!-- Plain CSS, applied before Tailwind has generated anything, so the page never flashes white. -->
+	<style>
+		html { background: #0e1014; color: #e7e9ee; color-scheme: dark; }
+	</style>
+	<script src="/vendor/tailwindcss-browser-4.3.3.js"></script>
+	<style type="text/tailwindcss">
+		@theme {
+			--color-surface: #0e1014;
+			--color-panel: #15181e;
+			--color-raised: #1d2129;
+			--color-raised-hover: #262b35;
+			--color-line: #2c313c;
+			--color-text: #e7e9ee;
+			--color-muted: #8b93a3;
+			--color-music: #5b8cff;
+			--color-sfx: #f2a541;
+			--color-danger: #f05d5e;
+			--font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+		}
+
+		@layer base {
+			body {
+				@apply h-full overflow-hidden bg-surface font-sans text-text antialiased;
+			}
+		}
+	</style>
+	<script type="module" src="/app/main.js"></script>
 </head>
 <body>
-	<p>Soundboard server is running. The interface arrives in a later build step.</p>
+	<div id="app" class="h-full"></div>
 </body>
 </html>
