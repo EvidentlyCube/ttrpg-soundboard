@@ -34,7 +34,8 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 **Goal.** "Customize" in a sound's context menu opens a dialog where the sound can be renamed and given its own volume, including a boost above its original loudness. There is no Save button: every change takes effect at once (the tile's title, the loudness of the sound, even while it plays) and is saved to the sound's options file shortly after.
 
 **Owner's decisions (review round 1).**
-- Volume range −30 to +12 dB in 0.5 dB steps. Clipping is allowed, with a warning in the dialog.
+- Volume from silent to +12 dB (gain 4). Clipping is allowed, with a warning in the dialog.
+- Volume is set with a custom widget (round 2, described under "The sound dialog").
 - Every change applies immediately and is saved with a 500 ms debounce. Sorting by the new title waits until the dialog closes.
 - An empty title is never saved: the last valid title stays in effect, and closing the dialog with an empty field restores it.
 - A play/stop button in the dialog.
@@ -47,8 +48,8 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
   { "title": "Big Explosion", "gain": 0.5957 }
   ```
   - `gain` is the linear multiplier a Web Audio `GainNode` takes: `1` plays the file as recorded, `2` doubles the amplitude. Missing means `1`.
-  - Validation (still fatal at startup): a finite number from **0 to 4**. 4 is just above +12 dB; values below the slider's range are accepted and the slider shows them at its bottom end.
-  - Written rounded to 4 decimal places, so files stay readable and converting back to dB gives the same 0.5 dB step.
+  - Validation (still fatal at startup): a finite number from **0 to 4**. 0 is silent and 4 is +12.04 dB.
+  - Written rounded to 4 decimal places, so files stay readable.
   - It is deliberately not called `volume`: the volumes in `.soundboard` are slider positions (§6.4), a different thing.
 - **§5.1 Domain model.** `AudioFile` gains `gain`. The server's `Library` becomes changeable at runtime: a sound's title and gain can be updated, and `sounds` is sorted again after a rename.
 - **§5.2 HTTP API.**
@@ -64,10 +65,10 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
   - `sound.saveFailed` `{ soundId, message }`. The change stays in effect in memory, and the next change retries with the full set of values.
 - **§6.3 AudioEngine port.** Each voice gets a second gain stage for its own volume, separate from the one used for fades. A playlist fading a track then never needs to know the track's volume, and the later playlist and track volumes fit the same slot:
   - `createStreamVoice({ url, bus, gain })` and `createBufferVoice({ buffer, bus, gain })`, where `gain` defaults to `1`;
-  - `voice.setGain(gain)`, smoothed like the bus gains (`setTargetAtTime`), so dragging the slider never clicks.
+  - `voice.setGain(gain)`, smoothed like the bus gains (`setTargetAtTime`), so changing the volume never clicks.
 
   The graph becomes `source → voice gain → voice fade → bus → master`.
-- **§6.4 Volume.** A section on item volumes: stored as linear gain, shown as decibels (`dB = 20 · log10(gain)`, `gain = 10^(dB / 20)`), the −30 to +12 dB range of the controls, and clipping above 0 dB.
+- **§6.4 Volume.** A section on item volumes: stored as linear gain, shown as decibels (`dB = 20 · log10(gain)`, `gain = 10^(dB / 20)`, gain 0 shown as `−∞ dB`), the 0 to 4 range, and clipping above gain 1.
 - **§7 SoundPlayer.** New instances start at the sound's gain; a change is applied to the instances already playing.
 - **§9.3 Context menus.** "Customize" in the sound menu is enabled. The playlist one stays a stub until feature 2.
 - **New §9.7 Dialogs.** A shared, centered modal `Dialog` component, which every later Customize dialog reuses:
@@ -77,7 +78,21 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
   - Opening it closes any open popup. If the system suspends audio while it is open, the resume splash covers it and the dialog stays.
 - **The sound dialog** contains:
   - **Title:** a text field, focused on open, with the file name shown below it for reference. Each edit is sent as you type. While the field is empty it is marked invalid and nothing is sent; the tile keeps the last valid title, and closing the dialog puts that title back in the field.
-  - **Volume:** a slider from −30 to +12 dB in 0.5 dB steps with a mark at 0 dB, and a number field next to it, kept in sync. Values are shown as `+3.0 dB`, `0 dB` and `−12.5 dB`. Double-clicking the slider resets it to 0 dB. Above 0 dB a warning reads "Boosting can distort loud sounds."
+  - **Volume:** the gain widget (below). Above gain 1 a warning reads "Boosting can distort loud sounds."
+- **The gain widget** (`ui/gain-control.js`), reusable by the later playlist and track dialogs. It looks like the volume control of many media players:
+  ```
+  ▁ ▂ ▃ ▄ ▅ ▆ ▇ █ █ █  ┌──────┐
+  ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔  │boost │   +3.5 dB
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ```
+  - **A row of rectangles that get taller** from left to right covers gain 0 to 1, about three quarters of the width. They light up in proportion to the gain, so the last lit rectangle can be partly lit.
+  - **One wider rectangle** to their right covers gain 1 to 4. It fills in proportion to the boost and lights up **yellow** while the gain is above 1.
+  - **A thick line** under the whole widget lights up to the same point, yellow over the boost part.
+  - **Pressing** anywhere on the widget sets the gain for that point, and dragging keeps setting it. Within the rectangles the gain is linear in the position (halfway is gain 0.5, −6 dB). A point within 2 % of the 100 % mark snaps to exactly 1, so "as recorded" is easy to hit. Double-clicking resets to 1.
+  - **The dB readout** on the right shows the gain as `+3.5 dB`, `0.0 dB`, `−12.0 dB` or `−∞ dB`. Clicking it turns it into a text field, focused and selected. Enter or leaving the field applies the value, Esc cancels. Values above +12.04 dB are clamped to gain 4; `-inf` or anything at or below −60 dB means gain 0.
+  - For the keyboard it is a `role="slider"`: the arrow keys change the gain by 1 dB, and Home and End go to silent and to gain 4.
+  - The lit part is drawn by clipping a lit copy of the shapes over a dim copy with an inline style, so updates during a drag never change classes (§9.6).
+  - The mapping between gain and position, snapping, and dB parsing and formatting are pure functions with unit tests.
   - **A play/stop button**, using `playSound` and `stopSound`, to hear the sound while adjusting it.
 - **Sorting on screen.** While the dialog is open, the tile's title updates in place. When the dialog closes, the sound grid is redrawn in the library's sorted order, so the tile moves only then.
 
@@ -90,8 +105,9 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 3. **Voice gain in the engine port.** The `gain` option and `setGain()` on the port, in `FakeAudioEngine` (which records them) and in `WebAudioEngine` (the extra smoothed gain node). `gainToDb()` and `dbToGain()` in `logic/volume.js`. *Tests:* the conversions, and the fake recording gains. `WebAudioEngine` goes on the manual checklist.
 4. **Sound gain in playback.** `SoundPlayer` starts instances at the sound's gain and applies changes to playing instances. *Tests:* new and playing instances, buffered and streamed, a sound without `gain`.
 5. **Facade and saving.** The `customizeSound` command with validation; the library kept sorted with the browser-side sort; `sound.changed`; the debounced per-sound save with one request in flight, flushing, and `sound.saveFailed`; `saveSoundOptions` in the `BackendApi` port, `HttpBackendApi` and the fake. *Tests:* immediate effect, empty titles rejected, the debounce and merging of changes, out-of-order protection, failures and retry, flush, the sort agreeing with the server's, and `HttpBackendApi` against the real server.
-6. **UI.** The shared `Dialog`, a reusable dB volume control (slider, number field, warning), the sound dialog, the enabled menu item, tile titles updating in place, and the grid re-sorting when the dialog closes. dB formatting and parsing go in `ui/format.js`. *Tests:* formatting and parsing of dB values. The rest goes on the manual checklist in `TESTING.md`.
-7. **Design update.** `DESIGN.md` in its own commit; then this proposal is removed.
+6. **Gain widget.** Its pure helpers (position ↔ gain, snapping, dB formatting and parsing) test-first, then the component. *Tests:* the helpers. The component goes on the manual checklist in `TESTING.md`.
+7. **Dialog.** The shared `Dialog`, the sound dialog with the gain widget and the warning, the enabled menu item, tile titles updating in place, and the grid re-sorting when the dialog closes. *Tests:* manual checklist in `TESTING.md`.
+8. **Design update.** `DESIGN.md` in its own commit; then this proposal is removed.
 
 ---
 
@@ -105,7 +121,7 @@ These are the next features, in roughly the order they will be built. Each will 
 
 #### 2. Customize dialog for playlists
 
-Rename the playlist and set its volume, using the dialog and dB control from feature 1.
+Rename the playlist and set its volume, using the dialog and gain widget from feature 1.
 
 - **Seam:** the shared `Dialog` and volume control, the `PATCH` pattern (`PATCH /api/playlists/<id>`, written to `<dir>.json`), and the per-voice volume slot from feature 1.
 - **Notes:** the playlist gain can simply be multiplied into each voice's gain (`playlist gain × track gain`), with no extra gain node per playlist. Changing it while playing updates the current voice and any voices fading out. Tracks are sorted by path, not title (§2.2), so renaming a track never moves it.
