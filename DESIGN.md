@@ -376,8 +376,8 @@ on(type, handler) → unsubscribe, off(type, handler)
 | `playlist.changed` | `{ playlist }`, the playlist (with its tracks) with its new title, gain or crossfade, right after `customizePlaylist` |
 | `playlist.saved` | `{ playlistId }`, once every change to that playlist has been saved |
 | `playlist.saveFailed` | `{ playlistId, message }`, as for sounds |
-| `playlist.stateChanged` | `{ playlistId, state, trackIndex, track, duration }` |
-| `playlist.progress` | `{ playlistId, position, duration }`, every 250 ms while playing and right after a seek |
+| `playlist.stateChanged` | `{ playlistId, state, trackIndex, track, duration, crossfadeFrom }` |
+| `playlist.progress` | `{ playlistId, position, duration, crossfadeFrom }`, every 250 ms while playing, right after a seek, and when the rules change |
 | `playlist.error` | `{ playlistId, trackId, message }` |
 | `volume.changed` | `{ bus, value }` |
 
@@ -535,6 +535,7 @@ With a non-zero `crossfade` rule, one track gives way to the next by fading out 
 - **Manual changes.** Next, Previous and jumps with `'default'` use the same overlap, if the old track is audible. `'instant'` cuts over and stops every voice still fading out.
 - **One track, looping.** The track crossfades into a new start of itself.
 - **Stop and pause** silence both tracks (§8.1).
+- **For display**, snapshots and the `playlist.stateChanged` and `playlist.progress` events carry `crossfadeFrom`: the position in the current track where the crossfade into the next will start, `duration − overlap`. It is `null` when there won't be one (no crossfade, an unknown duration, or no next track). `setRules` sends a progress event at once, so the display follows a new setting even while paused.
 
 ---
 
@@ -590,7 +591,7 @@ Each bar shows:
 - The playlist title and `m:ss / m:ss` (`h:mm:ss` from an hour on), with `--:--` while the duration is unknown.
 - The track title with a ▾ chevron. Clicking it opens the **track list popover**.
 - ⏮ previous, ⏯ pause/resume, ⏭ next, and ⏹ stop. Previous, next and stop use the `'default'` transition; the instant versions are in the context menu.
-- A progress bar. Pressing anywhere on it seeks to that point.
+- A progress bar. Pressing anywhere on it seeks to that point. When a crossfade is coming (`crossfadeFrom`, §8.4), the stretch from that point to the end is drawn in a lighter blue (`bg-music/40`) under the playback fill, so it is clear where the next track will take over. Its width is set with an inline style, like the fill's.
 
 The track list popover lists every track, numbered, with the current one marked and scrolled into view. Tracks this browser can't play are disabled. Clicking a track calls `jumpToTrack` with `'default'`.
 
