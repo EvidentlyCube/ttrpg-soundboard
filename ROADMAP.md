@@ -33,35 +33,49 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 **Goal.** A playlist can have a crossfade, set in its Customize dialog. When one track gives way to the next, whether it ended on its own or Next, Previous or a pick from the track list moved on, the old track fades out while the new one fades in over that time. The "(Instant)" commands still cut over at once.
 
+**Owner's decisions (review round 1).**
+- A `'default'` stop during a crossfade cuts both tracks: Stop means silence. Feature 4 changes this to "the fading-out track carries on".
+- Pause during a crossfade stops the track that is fading out; Resume continues only the new one. Once fade in/out exists (feature 4), pausing no longer cuts the crossfade.
+- Range 0 to 30 s; the slider covers 0 to 10 s, a number field allows the rest.
+- A crossfade is at most half a track's length. The dialog doesn't allow more than half the playlist's shortest track, and the player clamps to half of each track anyway.
+- Both fades start immediately when the change happens, not when the new track has loaded, so the old track can never end before its fade-out finishes.
+- The server reads each audio file's duration, stores it in the file's `.json`, and sends it to the browser.
+
 **Design changes.**
 
-- **§2.3, §5.1, §5.2.** Playlist options gain `crossfade`: seconds, a number from `0` to `30`, default `0` (no crossfade). Validation is fatal at startup like the other keys. It is part of `Playlist`, `/api/library` and `PATCH /api/playlists/<id>`; `PATCH /api/sounds/<id>` keeps rejecting it.
-- **§6.1, §6.2.** `customizePlaylist(playlistId, { title?, gain?, crossfade? })`; `playlist.changed` carries it. A new value takes effect at once: on the next change of track, and on the end of the track playing now.
-- **§8.2 Extension points.** `resolvePlaybackRules(playlist)` reads `crossfade` from the playlist instead of always returning the defaults. `PlaylistPlayer.setRules(rules)` replaces the rules of a playing playlist.
-- **§8 PlaylistPlayer**, the core of the feature:
-  - **At a natural end.** Once a track has loaded and plays, the player sets a clock timer, tied to the current generation, for `duration − position − crossfade`. When it fires, the next track starts and the two fade across. Seek, pause, resume and a change of the setting re-plan the timer; leaving `playing` cancels it. If the duration is unknown or the timer is late, `ended` still advances as today (then the new track only fades in).
-  - **When the fades start.** Both fades begin when the new track actually starts playing (`loaded`), not when it is requested. Until then the old track plays on at full volume, so no part of the crossfade is spent waiting for the file. The old track's fade-out is shortened to the time it has left, so it never stops mid-fade.
-  - **Manual changes.** Next, Previous and jumps with `'default'` crossfade the same way, if the old track is audible. A paused or still-loading old track is stopped at once, as today.
-  - **Short tracks.** The crossfade used for a track is at most half its length, so a short track still plays on its own for a while.
-  - **One track, looping.** A playlist with one track crossfades into a new start of the same track.
-  - The retiring set, its deadline (fade + 1 s) and its cap of 4 already cover a crossfade, as does `'instant'` cutting every fading voice.
-- **§9.7.** The playlist dialog gets a **Crossfade** section: a slider from 0 to 10 s in 0.5 s steps and a number field next to it for exact values up to 30 s, shown as `2.5 s`; `0` reads "Off".
+- **Durations (§2.3, §3, §4, §5).**
+  - New `readDuration(path) → Promise<number | null>` in `src/metadata/`, reading only small parts of the file, like `readTitle`:
+    - **MP3:** skip the ID3v2 tag and find the first frame header. With a Xing/Info or VBRI header, `frames × samples per frame ÷ sample rate`. Otherwise, as constant bitrate, `audio bytes × 8 ÷ bitrate` (audio bytes exclude the ID3v2 tag and a trailing ID3v1 tag).
+    - **Ogg:** the sample rate comes from the Vorbis identification header (Opus is always 48 kHz, minus its pre-skip). The last page of the first stream, found in the final 64 KB, gives the granule position, so the duration is `granule ÷ sample rate`.
+    - Anything unreadable gives `null`.
+  - Sound and track options gain `duration` (seconds, rounded to 2 decimals) and `durationOfSize` (the file size in bytes it was measured at). Both are written by the app, never edited by hand.
+  - **Bootstrap** (both modes, no question asked) measures every audio file whose options have no `duration`, or a `durationOfSize` different from the file's current size. That covers a file replaced under the same name. It writes the result while writing the other options. A file whose duration can't be read gets `"duration": null`, so it isn't measured again on every start.
+  - `AudioFile` and `/api/library` gain `duration: number | null`.
+- **Crossfade setting (§2.3, §5.1, §5.2).** Playlist options gain `crossfade`: seconds, `0` to `30`, default `0` (off). It is validated (fatal at startup) and is part of `Playlist`, `/api/library` and `PATCH /api/playlists/<id>`; `PATCH /api/sounds/<id>` keeps rejecting it.
+- **§6.1, §6.2.** `customizePlaylist(playlistId, { title?, gain?, crossfade? })`; `playlist.changed` carries it. A new value takes effect at once, also for the end of the track playing now.
+- **§8.2.** `resolvePlaybackRules(playlist)` reads `crossfade` from the playlist. `PlaylistPlayer.setRules(rules)` replaces the rules of a playing playlist.
+- **§8 PlaylistPlayer:**
+  - **Effective crossfade** for a track: `min(crossfade, track duration ÷ 2)`. It uses the duration the voice reports once loaded, and the stored one before that.
+  - **At a natural end.** While a track plays, a clock timer tied to the current generation fires at `duration − position − crossfade`. Then the next track starts, and the old one fades out over the time it has left while the new one fades in over the crossfade. Seek, resume and a change of the setting re-plan the timer; pause, stop and a change of track cancel it. If the duration is unknown or the timer is late, `ended` still advances as today, and the new track only fades in.
+  - **Manual changes.** Next, Previous and jumps with `'default'` crossfade too, if the old track is audible. A paused or still-loading old track is stopped at once, as today.
+  - **Stop and pause** cut voices that are fading out (see the decisions above).
+  - **One track, looping:** the track crossfades into a new start of itself.
+  - The retiring set, its deadline (fade + 1 s) and its cap of 4 already cover crossfades, as does `'instant'` cutting every fading voice.
+- **§9.7.** The playlist dialog gets a **Crossfade** section: a slider in 0.5 s steps and a number field, shown as `2.5 s`, with `0` reading "Off". The slider's maximum is `min(10 s, half the shortest known track)`, the field's `min(30 s, half the shortest known track)`. Tracks with an unknown duration don't limit it. A value already above the limit (for example, after a shorter track was added) is shown as stored, with a note that short tracks use less.
 
 **Open questions.**
 
-1. **Stopping during a crossfade.** The owner's note says a stop while the next track fades in "should stop immediately". *Recommended: until fade-out exists (feature 4), a `'default'` stop also cuts the track that is fading out*, so Stop always means silence. Feature 4 then changes it to "the fading-out track carries on", as already decided there.
-2. **Pausing during a crossfade.** *Recommended: Pause also stops the track that is fading out*, so Pause means silence and Resume continues only the new track. The alternative is letting the old track finish its fade while the new one is paused, which sounds odd.
-3. **Range.** *Recommended: 0 to 30 s stored; the slider covers 0 to 10 s*, which is where nearly all crossfades are, and the number field allows longer ones.
-4. **Short tracks.** *Recommended: at most half the track's length*, as above. The alternative is skipping the crossfade entirely for tracks shorter than twice its length.
-5. **Fades start on `loaded`.** *Recommended*, as above. The simpler alternative starts both fades at the request; with a local server the difference is a few hundred milliseconds, but Safari may take longer to start a stream.
+1. **Re-measuring replaced files.** *Recommended: `durationOfSize`, as above.* A replaced file almost always changes size, and the size is already known from scanning, so no extra reading is needed. Comparing modification times would also work, but copying files around can change those without changing the audio.
+2. **Sounds too?** *Recommended: yes, measure sounds as well.* Feature 6 (sound start and end points) needs their durations for its slider, and it costs the same.
 
 **Plan.**
 
-1. **Format.** `crossfade` in playlist validation, `Playlist`, `/api/library` and the playlist `PATCH` (and not the sound one). *Tests:* validation and messages, bootstrap, the editor keeping other keys, the API.
-2. **Rules at runtime.** `resolvePlaybackRules` reads the playlist; `PlaylistPlayer.setRules`; `customizePlaylist` and `OptionsSync` carry `crossfade`; `LibraryModel` validates it. *Tests:* rules resolution, commands and the facade.
-3. **Crossfading in the player.** Fades that start on `loaded` with the old track's fade-out shortened to its time left; the natural-end timer and its re-planning on seek, pause, resume and rule changes; the short-track limit; stop and pause cutting fading voices (per questions 1 and 2). *Tests:* each case on the fake clock and engine, stale timers from replaced tracks ignored, and the randomized invariant extended with crossfades and natural ends.
-4. **UI.** The Crossfade section in the playlist dialog. *Tests:* formatting and parsing of seconds; the manual checklist and a headless Chromium run.
-5. **Design update.** `DESIGN.md` in its own commit; then this proposal and its backlog entry are removed.
+1. **Reading durations.** `readDuration` for MP3 (Xing, VBRI, constant bitrate) and Ogg (Vorbis, Opus). *Tests:* frames built in code, like the tag builders: each header kind, ID3 tags before and after, truncated and random data never throwing; then the real fixture files against their known lengths.
+2. **Storing and serving them.** Bootstrap measures missing and stale durations and writes them; validation of `duration` and `durationOfSize`; `AudioFile` and `/api/library`. *Tests:* first and later runs, a replaced file re-measured, an unreadable file stored as `null` and not measured again.
+3. **The crossfade setting.** `crossfade` in playlist validation, `Playlist`, `/api/library`, the playlist `PATCH`, `resolvePlaybackRules`, `PlaylistPlayer.setRules`, `customizePlaylist`, `OptionsSync` and `LibraryModel`. *Tests:* validation, the API, rules resolution, commands and the facade.
+4. **Crossfading in the player.** The effective crossfade, the natural-end timer and its re-planning, manual changes, stop and pause cutting fading voices. *Tests:* each case on the fake clock and engine, stale timers ignored, and the randomized invariant extended with crossfades and natural ends.
+5. **UI.** The Crossfade section with its limit. *Tests:* formatting, parsing and the limit calculation; the manual checklist and a headless Chromium run.
+6. **Design update.** `DESIGN.md` in its own commit; then this proposal and its backlog entry are removed.
 
 ---
 
