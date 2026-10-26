@@ -33,12 +33,13 @@ export class Dialog {
 			'role': 'dialog',
 			'aria-modal': 'true',
 			'aria-label': title,
-			'class': 'w-full max-w-lg rounded-xl border border-line bg-panel shadow-2xl',
+			'class': 'flex max-h-[90vh] w-full max-w-lg flex-col rounded-xl border border-line bg-panel shadow-2xl',
 			'data-dialog': true,
 		},
-		h('div', { class: 'flex items-center justify-between gap-4 border-b border-line px-5 py-3' },
+		h('div', { class: 'flex shrink-0 items-center justify-between gap-4 border-b border-line px-5 py-3' },
 			h('h2', { class: 'truncate text-base font-semibold' }, title), close),
-		h('div', { class: 'px-5 py-4' }, body));
+		// Long contents, such as a playlist's track list, scroll under the fixed header.
+		h('div', { 'class': 'min-h-0 overflow-y-auto px-5 py-4', 'data-dialog-body': true }, body));
 		const backdrop = h('div', {
 			'class': 'fixed inset-0 z-30 grid place-items-center bg-black/50 p-4',
 			'data-dialog-backdrop': true,

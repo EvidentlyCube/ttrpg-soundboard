@@ -91,6 +91,10 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] Changing the volume while it plays changes the loudness at once, without clicks, and the next track keeps the new volume.
 - [ ] Renaming updates the tile and the player bar while typing; the tile moves into sorted order only when the dialog closes, and the footer order never changes.
 - [ ] The playlist's `.json` file keeps its `includedSubdirectories` after saving.
+- [ ] The dialog opens on the "Playlist" tab. The arrow keys and clicks switch to "Tracks (N)" and back; Play and the save status stay visible on both.
+- [ ] On "Tracks", each row shows number, title and duration. One row opens at a time; clicking the open row closes it.
+- [ ] Renaming a track updates its row, the footer (if it is playing) and the footer's track list while typing, without moving any track. It survives a reload.
+- [ ] A playlist with many tracks scrolls inside the dialog, with the tabs and the Play row staying in place.
 
 **Crossfade**
 - [ ] The first start of a new library prints "Measuring the duration of N audio files…"; the next start doesn't. Touching a file (`touch`) only re-hashes it; replacing it with another recording updates its `duration`.

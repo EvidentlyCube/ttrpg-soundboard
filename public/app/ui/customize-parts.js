@@ -60,6 +60,51 @@ export function playToggle(onClick) {
 	return { element, show };
 }
 
+/**
+ * Tabs over panels, the first one selected. The tab bar stays at the top while the dialog scrolls. Left and right
+ * arrows move between tabs, and only the selected panel is shown.
+ * @param {{ id: string, label: string, panel: HTMLElement }[]} tabs
+ * @returns {{ bar: HTMLElement, panels: HTMLElement[] }}
+ */
+export function tabs(tabs) {
+	const buttons = tabs.map(({ id, label }) => h('button', {
+		'type': 'button',
+		'role': 'tab',
+		'id': `tab-${id}`,
+		'aria-controls': `panel-${id}`,
+		'data-tab': id,
+		'class': 'cursor-pointer border-b-2 border-transparent px-1 pb-2 text-sm font-medium text-muted hover:text-text aria-selected:border-music aria-selected:text-text',
+	}, label));
+	const panels = tabs.map(({ id, panel }) => {
+		panel.id = `panel-${id}`;
+		panel.setAttribute('role', 'tabpanel');
+		panel.setAttribute('aria-labelledby', `tab-${id}`);
+		return panel;
+	});
+	const select = (/** @type {number} */ index) => {
+		buttons.forEach((button, i) => {
+			button.setAttribute('aria-selected', String(i === index));
+			button.tabIndex = i === index ? 0 : -1;
+			panels[i].hidden = i !== index;
+		});
+	};
+	buttons.forEach((button, index) => {
+		button.addEventListener('click', () => select(index));
+		button.addEventListener('keydown', (event) => {
+			const step = { ArrowRight: 1, ArrowLeft: -1 }[event.key];
+			if (step) {
+				event.preventDefault();
+				const next = (index + step + buttons.length) % buttons.length;
+				select(next);
+				buttons[next].focus();
+			}
+		});
+	});
+	select(0);
+	const bar = h('div', { class: 'sticky -top-4 z-10 -mx-5 -mt-4 flex gap-5 border-b border-line bg-panel px-5 pt-3', role: 'tablist' }, buttons);
+	return { bar, panels };
+}
+
 /** The save indicator: a spinner while saving, a checkmark once saved, a red message when saving failed. */
 export function saveStatus() {
 	const element = h('div', { 'class': 'flex h-5 items-center gap-2 text-sm text-danger', 'role': 'status', 'data-save-status': true });

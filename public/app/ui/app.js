@@ -178,8 +178,9 @@ class Board extends Component {
 		const soundboard = this.#soundboard;
 		const playlist = soundboard.getLibrary()?.playlists.find((entry) => entry.id === playlistId);
 		if (playlist) {
-			this.#openEditor('Customize playlist', new PlaylistEditor({ soundboard, playlist }), () => {
-				soundboard.flushPlaylistOptions(playlistId);
+			const editor = new PlaylistEditor({ soundboard, playlist });
+			this.#openEditor('Customize playlist', editor, () => {
+				editor.flushEdits();
 				sortTiles(soundboard.getLibrary()?.playlists ?? [], this.#playlistTiles, this.#playlistGrid);
 			});
 		}

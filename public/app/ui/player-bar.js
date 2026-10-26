@@ -100,6 +100,8 @@ export class PlayerBar extends Component {
 		const playlistTitle = h('span', { class: 'truncate text-xs font-semibold uppercase tracking-wide text-music' }, title);
 		this.own(soundboard.on('playlist.changed', ({ playlist }) => {
 			if (playlist.id === id) {
+				// Kept for the track list popover, which shows the newest track titles.
+				this.#playlist = playlist;
 				playlistTitle.textContent = playlist.title;
 			}
 		}));

@@ -1,10 +1,11 @@
 import { MAX_CROSSFADE } from '../logic/playback-rules.js';
 import { Component } from './component.js';
-import { playToggle, saveStatus, sectionLabel, titleField } from './customize-parts.js';
+import { playToggle, saveStatus, sectionLabel, tabs, titleField } from './customize-parts.js';
 import { h } from './dom.js';
 import { GainControl } from './gain-control.js';
 import { SecondsControl } from './seconds-control.js';
 import { crossfadeLimits, formatSeconds, SECONDS_LIMITS } from './seconds-scale.js';
+import { TrackAccordion } from './track-accordion.js';
 
 /** @typedef {import('../logic/ports.js').PlaylistJson} PlaylistJson */
 /** @typedef {import('../logic/soundboard.js').Soundboard} Soundboard */
@@ -18,6 +19,8 @@ import { crossfadeLimits, formatSeconds, SECONDS_LIMITS } from './seconds-scale.
 export class PlaylistEditor extends Component {
 	#soundboard;
 	#playlist;
+	/** Tracks renamed while the dialog was open, whose saves are flushed when it closes. @type {Set<string>} */
+	#editedTracks = new Set();
 
 	/**
 	 * @param {object} options
@@ -120,13 +123,53 @@ export class PlaylistEditor extends Component {
 			}
 		}));
 
-		return h('div', { class: 'space-y-5' },
+		const trackIds = new Set(this.#playlist.tracks.map((track) => track.id));
+		const tracks = new TrackAccordion({
+			soundboard,
+			playlist: this.#playlist,
+			onEdit: (trackId) => {
+				this.#editedTracks.add(trackId);
+				status.show('saving');
+			},
+		});
+		const tracksPanel = h('div');
+		tracks.mount(tracksPanel);
+		this.own(() => tracks.destroy());
+		this.own(soundboard.on('track.saved', (event) => {
+			if (trackIds.has(event.trackId)) {
+				status.show('saved');
+			}
+		}));
+		this.own(soundboard.on('track.saveFailed', (event) => {
+			if (trackIds.has(event.trackId)) {
+				status.show('failed', event.message);
+			}
+		}));
+
+		const settingsPanel = h('div', { class: 'space-y-5' },
 			title.element,
 			h('div', { class: 'space-y-1.5' }, sectionLabel('Volume'), gainSlot),
 			timings.fadeIn.element,
 			timings.crossfade.element,
-			timings.fadeOut.element,
-			h('div', { class: 'flex items-center justify-between gap-4' }, play.element, status.element));
+			timings.fadeOut.element);
+		const { bar, panels } = tabs([
+			{ id: 'playlist', label: 'Playlist', panel: settingsPanel },
+			{ id: 'tracks', label: `Tracks (${this.#playlist.tracks.length})`, panel: tracksPanel },
+		]);
+		return h('div', { class: 'space-y-5' },
+			bar,
+			...panels,
+			// Stays in view on either tab, however long the track list is.
+			h('div', { class: 'sticky -bottom-4 -mx-5 -mb-4 flex items-center justify-between gap-4 border-t border-line bg-panel px-5 py-3' },
+				play.element, status.element));
+	}
+
+	/** Saves at once whatever is still waiting: the playlist's own options and every track renamed in the dialog. */
+	flushEdits() {
+		this.#soundboard.flushPlaylistOptions(this.#playlist.id);
+		for (const trackId of this.#editedTracks) {
+			this.#soundboard.flushTrackOptions(trackId);
+		}
 	}
 
 	/** Focuses the title field, for when the dialog opens. */
