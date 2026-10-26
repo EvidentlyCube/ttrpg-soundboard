@@ -1,9 +1,12 @@
 import { InvalidCommandError } from './errors.js';
+import { sortBy } from './sort.js';
+import { MAX_GAIN } from './volume.js';
 
 /** @typedef {import('./ports.js').AudioFileJson} AudioFileJson */
 /** @typedef {import('./ports.js').AudioFormat} AudioFormat */
 /** @typedef {import('./ports.js').LibraryJson} LibraryJson */
 /** @typedef {import('./ports.js').PlaylistJson} PlaylistJson */
+/** @typedef {import('./ports.js').SoundOptions} SoundOptions */
 
 /** The library sent by the server, indexed for lookups and checked against what this browser can play. */
 export class LibraryModel {
@@ -57,5 +60,30 @@ export class LibraryModel {
 	/** @param {AudioFileJson} file */
 	isPlayable(file) {
 		return !this.#unplayable.has(file.id);
+	}
+
+	/**
+	 * Replaces the sound with a changed copy and keeps the sounds sorted by title. Earlier `json` snapshots are left as
+	 * they were, since the UI may still hold them.
+	 * @param {string} id
+	 * @param {SoundOptions} changes
+	 * @returns {AudioFileJson} the changed sound
+	 */
+	updateSound(id, { title, gain }) {
+		const current = this.sound(id);
+		const trimmed = title?.trim();
+		if (trimmed === '') {
+			throw new InvalidCommandError('A title cannot be empty');
+		}
+		if (gain !== undefined && !(gain >= 0 && gain <= MAX_GAIN)) {
+			throw new InvalidCommandError(`Gain must be a number from 0 to ${MAX_GAIN}, got ${gain}`);
+		}
+		const sound = { ...current, title: trimmed ?? current.title, gain: gain ?? current.gain };
+		this.#sounds.set(id, sound);
+		this.#json = {
+			...this.#json,
+			sounds: sortBy(this.#json.sounds.map((entry) => (entry.id === id ? sound : entry)), (entry) => entry.title),
+		};
+		return sound;
 	}
 }

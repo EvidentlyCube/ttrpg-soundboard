@@ -73,7 +73,10 @@
  * @property {() => Promise<LibraryJson>} fetchLibrary
  * @property {() => Promise<{ volumes: Volumes }>} fetchSettings
  * @property {(volumes: Volumes, options: { keepalive: boolean }) => Promise<void>} saveVolumes
+ * @property {(soundId: string, options: SoundOptions, request: { keepalive: boolean }) => Promise<void>} saveSoundOptions
  */
+
+/** @typedef {{ title?: string, gain?: number }} SoundOptions */
 
 /**
  * @typedef {object} Logger

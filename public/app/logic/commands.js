@@ -12,10 +12,14 @@ import { isTransition } from './transitions.js';
  * 	| { type: 'playlist.play' | 'playlist.stop' | 'playlist.next' | 'playlist.previous', playlistId: string, transition?: Transition }
  * 	| { type: 'playlist.jump', playlistId: string, trackIndex: number, transition?: Transition }
  * 	| { type: 'playlist.seek', playlistId: string, seconds: number }
- * 	| { type: 'volume.set', bus: Bus, value: number }} Command
+ * 	| { type: 'volume.set', bus: Bus, value: number }
+ * 	| { type: 'sound.customize', soundId: string, title?: string, gain?: number }} Command
  */
 
-/** @type {Record<Command['type'], { strings?: string[], numbers?: string[], transition?: boolean }>} */
+/**
+ * `optional` fields may be left out, but at least one of them must be given.
+ * @type {Record<Command['type'], { strings?: string[], numbers?: string[], transition?: boolean, optional?: Record<string, 'string' | 'number'> }>}
+ */
 const SHAPES = {
 	'sound.play': { strings: ['soundId'] },
 	'sound.stop': { strings: ['soundId'] },
@@ -29,6 +33,7 @@ const SHAPES = {
 	'playlist.jump': { strings: ['playlistId'], numbers: ['trackIndex'], transition: true },
 	'playlist.seek': { strings: ['playlistId'], numbers: ['seconds'] },
 	'volume.set': { strings: ['bus'], numbers: ['value'] },
+	'sound.customize': { strings: ['soundId'], optional: { title: 'string', gain: 'number' } },
 };
 
 /**
@@ -57,6 +62,17 @@ export function validateCommand(value) {
 	}
 	if (shape.transition && command.transition !== undefined && !isTransition(command.transition)) {
 		throw new InvalidCommandError(`"transition" must be "default" or "instant" in ${command.type}`);
+	}
+	if (shape.optional) {
+		const given = Object.entries(shape.optional).filter(([key]) => command[key] !== undefined);
+		if (given.length === 0) {
+			throw new InvalidCommandError(`${command.type} needs ${Object.keys(shape.optional).map((key) => `"${key}"`).join(' or ')}`);
+		}
+		for (const [key, type] of given) {
+			if (typeof command[key] !== type) {
+				throw new InvalidCommandError(`"${key}" must be a ${type} in ${command.type}`);
+			}
+		}
 	}
 	return /** @type {Command} */ (value);
 }

@@ -13,6 +13,7 @@ const EVENT_TYPES = /** @type {const} */ ([
 	'sound.activeChanged', 'sound.error',
 	'playlist.stateChanged', 'playlist.progress', 'playlist.error',
 	'volume.changed',
+	'sound.changed', 'sound.saved', 'sound.saveFailed',
 ]);
 
 /** @param {{ canPlay?: (format: 'mp3' | 'ogg') => boolean }} [options] */
@@ -198,6 +199,68 @@ describe('Soundboard', () => {
 			soundboard.setVolume('sfx', 0.2);
 			soundboard.flushSettings();
 			assert.deepEqual(api.saves, [{ volumes: { master: 1, music: 1, sfx: 0.2 }, keepalive: true }]);
+		});
+	});
+
+	describe('customizing sounds', () => {
+		it('applies a gain at once to playing and later instances', async () => {
+			const { soundboard, engine } = await started();
+			soundboard.playSound('Rain.ogg');
+			soundboard.customizeSound('Rain.ogg', { gain: 2 });
+			soundboard.playSound('Rain.ogg');
+			assert.deepEqual(engine.voices.map((voice) => voice.gain), [2, 2]);
+		});
+
+		it('announces the changed sound and keeps the library sorted', async () => {
+			const { soundboard, eventsOf } = await started();
+			soundboard.customizeSound('Boom.mp3', { title: ' Thunder ' });
+			assert.deepEqual(eventsOf('sound.changed'), [{
+				type: 'sound.changed',
+				sound: { id: 'Boom.mp3', title: 'Thunder', format: 'mp3', size: 1000, gain: 1, url: '/media/Boom.mp3' },
+			}]);
+			assert.deepEqual(soundboard.getLibrary()?.sounds.map((sound) => sound.title), ['Rain', 'Thunder']);
+		});
+
+		it('saves the full options 500 ms after the last change, then reports them saved', async () => {
+			const { soundboard, api, clock, settle, eventsOf } = await started();
+			soundboard.customizeSound('Boom.mp3', { title: 'Thunder' });
+			soundboard.customizeSound('Boom.mp3', { gain: 0.5 });
+			clock.advance(499);
+			assert.deepEqual(api.soundSaves, []);
+			clock.advance(1);
+			assert.deepEqual(api.soundSaves, [{ soundId: 'Boom.mp3', options: { title: 'Thunder', gain: 0.5 }, keepalive: false }]);
+			await settle();
+			assert.deepEqual(eventsOf('sound.saved'), [{ type: 'sound.saved', soundId: 'Boom.mp3' }]);
+		});
+
+		it('reports a failed save and keeps the change in effect', async () => {
+			const { soundboard, api, clock, settle, eventsOf, logged } = await started();
+			api.saveError = new Error('disk full');
+			soundboard.customizeSound('Boom.mp3', { gain: 3 });
+			clock.advance(500);
+			await settle();
+			assert.deepEqual(eventsOf('sound.saveFailed'), [{ type: 'sound.saveFailed', soundId: 'Boom.mp3', message: 'disk full' }]);
+			assert.equal(soundboard.getLibrary()?.sounds[0].gain, 3);
+			assert.equal(logged.length, 1);
+		});
+
+		it('saves at once when the sound is flushed, and with keepalive when the page closes', async () => {
+			const { soundboard, api } = await started();
+			soundboard.customizeSound('Boom.mp3', { gain: 0.5 });
+			soundboard.flushSoundOptions('Boom.mp3');
+			soundboard.customizeSound('Rain.ogg', { gain: 2 });
+			soundboard.flushSettings();
+			assert.deepEqual(api.soundSaves.map(({ soundId, keepalive }) => [soundId, keepalive]), [['Boom.mp3', false], ['Rain.ogg', true]]);
+		});
+
+		it('rejects an empty title or a bad gain without changing or saving anything', async () => {
+			const { soundboard, api, clock, events } = await started();
+			assert.throws(() => soundboard.customizeSound('Boom.mp3', { title: '' }), InvalidCommandError);
+			assert.throws(() => soundboard.customizeSound('Boom.mp3', { gain: 5 }), InvalidCommandError);
+			assert.throws(() => soundboard.customizeSound('Nope', { gain: 1 }), InvalidCommandError);
+			clock.advance(1000);
+			assert.deepEqual(api.soundSaves, []);
+			assert.deepEqual(events, []);
 		});
 	});
 

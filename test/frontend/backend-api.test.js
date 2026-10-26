@@ -52,6 +52,18 @@ describe('HttpBackendApi against the real server', () => {
 		);
 	});
 
+	it('saves sound options, with or without keepalive', async () => {
+		await api.saveSoundOptions('Boom.mp3', { title: 'Big Boom', gain: 2 }, { keepalive: false });
+		await api.saveSoundOptions('Boom.mp3', { title: 'Bigger Boom', gain: 2 }, { keepalive: true });
+		const saved = JSON.parse(await readFile(join(tree.root, 'Boom.mp3.json'), 'utf8'));
+		assert.deepEqual(saved, { title: 'Bigger Boom', gain: 2 });
+		assert.equal((await api.fetchLibrary()).sounds[0].title, 'Bigger Boom');
+	});
+
+	it('encodes sound ids in the path', async () => {
+		await assert.rejects(api.saveSoundOptions('No such/sound #1.mp3', { gain: 1 }, { keepalive: false }), /PATCH \/api\/sounds\/No%20such%2Fsound%20%231.mp3 failed: Unknown sound "No such\/sound #1.mp3"/);
+	});
+
 	it('rejects when the server cannot be reached', async () => {
 		await assert.rejects(new HttpBackendApi('http://127.0.0.1:1').fetchLibrary());
 	});
