@@ -1,6 +1,6 @@
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, readFile, stat, utimes, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
 	BootstrapService,
@@ -49,6 +49,18 @@ async function readJson(root, relativePath) {
 	return JSON.parse(await readFile(join(root, ...relativePath.split('/')), 'utf8'));
 }
 
+/**
+ * An audio options file without the measured duration, which the tests under "durations" check on their own.
+ * @param {string} root
+ * @param {string} relativePath
+ */
+async function readOptions(root, relativePath) {
+	const options = await readJson(root, relativePath);
+	delete options.duration;
+	delete options.measuredFrom;
+	return options;
+}
+
 /** @param {string} root */
 async function listFiles(root) {
 	return (await readdir(root, { recursive: true })).toSorted();
@@ -72,8 +84,8 @@ describe('BootstrapService', () => {
 			const { outcome, prompter } = await bootstrap(root);
 
 			assert.deepEqual(prompter.questions, []);
-			assert.deepEqual(await readJson(root, 'Boom.mp3.json'), { title: 'Boom.mp3' });
-			assert.deepEqual(await readJson(root, 'Combat/1.ogg.json'), { title: '1.ogg' });
+			assert.deepEqual(await readOptions(root, 'Boom.mp3.json'), { title: 'Boom.mp3' });
+			assert.deepEqual(await readOptions(root, 'Combat/1.ogg.json'), { title: '1.ogg' });
 			assert.deepEqual(await readJson(root, 'Combat.json'), { title: 'Combat', includedSubdirectories: [] });
 			assert.deepEqual(await readJson(root, '.soundboard'), { version: 1, volumes: { master: 1, music: 1, sfx: 1 } });
 			assert.equal(outcome.status, 'ready');
@@ -100,22 +112,22 @@ describe('BootstrapService', () => {
 				{ path: 'Boom.mp3', title: 'Tagged Title' },
 				{ path: 'Combat/1.ogg', title: 'Ogg Title' },
 			]]);
-			assert.deepEqual(await readJson(root, 'Boom.mp3.json'), { title: 'Tagged Title' });
-			assert.deepEqual(await readJson(root, 'Plain.mp3.json'), { title: 'Plain.mp3' });
-			assert.deepEqual(await readJson(root, 'Combat/1.ogg.json'), { title: 'Ogg Title' });
+			assert.deepEqual(await readOptions(root, 'Boom.mp3.json'), { title: 'Tagged Title' });
+			assert.deepEqual(await readOptions(root, 'Plain.mp3.json'), { title: 'Plain.mp3' });
+			assert.deepEqual(await readOptions(root, 'Combat/1.ogg.json'), { title: 'Ogg Title' });
 		});
 
 		it('uses file names when metadata titles are declined', async () => {
 			const root = await tree({ 'Boom.mp3': TITLED_MP3 });
 			await bootstrap(root, [false]);
-			assert.deepEqual(await readJson(root, 'Boom.mp3.json'), { title: 'Boom.mp3' });
+			assert.deepEqual(await readOptions(root, 'Boom.mp3.json'), { title: 'Boom.mp3' });
 		});
 
 		it('only reads metadata for files without options and keeps existing options files', async () => {
 			const root = await tree({ 'Boom.mp3': TITLED_MP3, 'Boom.mp3.json': '{ "title": "Mine", "extra": 1 }' });
 			const { prompter } = await bootstrap(root);
 			assert.deepEqual(prompter.questions, []);
-			assert.deepEqual(await readJson(root, 'Boom.mp3.json'), { title: 'Mine', extra: 1 });
+			assert.deepEqual(await readOptions(root, 'Boom.mp3.json'), { title: 'Mine', extra: 1 });
 		});
 
 		it('asks about nested directories and records them when accepted', async () => {
@@ -180,8 +192,8 @@ describe('BootstrapService', () => {
 
 			assert.deepEqual(prompter.questions, []);
 			assert.deepEqual(reporter.callsTo('metadataTitles'), []);
-			assert.deepEqual(await readJson(root, 'New.mp3.json'), { title: 'Tagged Title' });
-			assert.deepEqual(await readJson(root, 'Plain.ogg.json'), { title: 'Plain.ogg' });
+			assert.deepEqual(await readOptions(root, 'New.mp3.json'), { title: 'Tagged Title' });
+			assert.deepEqual(await readOptions(root, 'Plain.ogg.json'), { title: 'Plain.ogg' });
 		});
 
 		it('does not rewrite the settings file', async () => {
@@ -214,9 +226,9 @@ describe('BootstrapService', () => {
 				'Combat.json': JSON.stringify({ includedSubdirectories: ['Boss'] }),
 				'Combat': { Boss: { '1.mp3': '', '1.mp3.json': '{}' } },
 			});
-			const { prompter, reporter } = await bootstrap(root);
+			const { prompter } = await bootstrap(root);
 			assert.deepEqual(prompter.questions, []);
-			assert.deepEqual(reporter.callsTo('optionsGenerated'), []);
+			assert.deepEqual(await readJson(root, 'Combat.json'), { includedSubdirectories: ['Boss'] });
 		});
 
 		it('treats every subdirectory of a new playlist as new', async () => {
@@ -268,6 +280,66 @@ describe('BootstrapService', () => {
 
 		it('passes file system errors through', async () => {
 			await assert.rejects(bootstrap(join(await tree({}), 'missing')), { code: 'ENOENT' });
+		});
+	});
+
+	describe('durations', () => {
+		async function fixture() {
+			const copy = await copyFixture('example_soundboard');
+			trees.push(copy);
+			return copy.root;
+		}
+		const SOUND = 'Sound OGG no title tag.ogg';
+
+		it('measures every sound and track on the first run and stores it with what it was measured from', async () => {
+			const root = await fixture();
+			const { outcome, reporter } = await bootstrap(root, [true]);
+			const options = await readJson(root, `${SOUND}.json`);
+			const { size, mtime } = await stat(join(root, SOUND));
+			assert.ok(Math.abs(options.duration - 4.95) < 0.1, String(options.duration));
+			assert.deepEqual({ ...options.measuredFrom, sha1: options.measuredFrom.sha1.length }, { size, modified: mtime.toISOString(), sha1: 40 });
+			assert.equal(readyLibrary(outcome).sounds.find((sound) => sound.id === SOUND)?.duration, options.duration);
+			assert.ok(readyLibrary(outcome).playlists.every((playlist) => playlist.tracks.every((track) => (track.duration ?? 0) > 29)));
+			assert.deepEqual(reporter.callsTo('measuringDurations'), [10]);
+		});
+
+		it('reads nothing again on a later run when nothing changed', async () => {
+			const root = await fixture();
+			await bootstrap(root, [true]);
+			const { reporter } = await bootstrap(root);
+			assert.deepEqual(reporter.callsTo('measuringDurations'), []);
+			assert.deepEqual(reporter.callsTo('optionsGenerated'), []);
+		});
+
+		it('only refreshes the record of a file that was touched but not changed', async () => {
+			const root = await fixture();
+			await bootstrap(root, [true]);
+			const before = await readJson(root, `${SOUND}.json`);
+			const touched = new Date('2030-01-01T00:00:00Z');
+			await utimes(join(root, SOUND), touched, touched);
+			const { reporter } = await bootstrap(root);
+			const after = await readJson(root, `${SOUND}.json`);
+			assert.deepEqual(reporter.callsTo('measuringDurations'), [1]);
+			assert.equal(after.duration, before.duration);
+			assert.deepEqual(after.measuredFrom, { ...before.measuredFrom, modified: touched.toISOString() });
+		});
+
+		it('measures a file again when it was replaced under the same name', async () => {
+			const root = await fixture();
+			await bootstrap(root, [true]);
+			await copyFile(join(root, 'Music Ogg', 'Song 1 OGG with title tag.ogg'), join(root, SOUND));
+			await bootstrap(root);
+			const after = await readJson(root, `${SOUND}.json`);
+			assert.ok(Math.abs(after.duration - 30.25) < 0.1, String(after.duration));
+			assert.equal(after.title, 'Sound OGG no title tag.ogg', 'the title is kept');
+		});
+
+		it('stores null for a file whose duration cannot be read, and does not try again', async () => {
+			const root = await tree({ '.soundboard': SETTINGS, 'Broken.mp3': 'not audio' });
+			await bootstrap(root);
+			assert.equal((await readJson(root, 'Broken.mp3.json')).duration, null);
+			const { reporter } = await bootstrap(root);
+			assert.deepEqual(reporter.callsTo('measuringDurations'), []);
 		});
 	});
 

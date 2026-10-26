@@ -166,12 +166,13 @@ describe('server', () => {
 						format: 'ogg',
 						size: 1000,
 						gain: 1,
+						duration: null,
 						url: '/media/Combat/Za%C5%BC%C3%B3%C5%82%C4%87%20%E2%99%AA%20%231.ogg',
 					}],
 				}],
 				sounds: [
-					{ id: 'Boom.mp3', title: 'Big Boom', format: 'mp3', size: 1000, gain: 0.5, url: '/media/Boom.mp3' },
-					{ id: 'Long.ogg', title: 'Long.ogg', format: 'ogg', size: LARGE_AUDIO.length, gain: 1, url: '/media/Long.ogg' },
+					{ id: 'Boom.mp3', title: 'Big Boom', format: 'mp3', size: 1000, gain: 0.5, duration: null, url: '/media/Boom.mp3' },
+					{ id: 'Long.ogg', title: 'Long.ogg', format: 'ogg', size: LARGE_AUDIO.length, gain: 1, duration: null, url: '/media/Long.ogg' },
 				],
 			});
 		});
@@ -240,8 +241,9 @@ describe('server', () => {
 		it('saves a change to the options file and returns the updated sound', async () => {
 			const response = await patchSound('Long.ogg', { title: ' Aaa Long ', gain: 2 });
 			assert.equal(response.status, 200);
-			assert.deepEqual(await response.json(), { id: 'Long.ogg', title: 'Aaa Long', format: 'ogg', size: LARGE_AUDIO.length, gain: 2, url: '/media/Long.ogg' });
-			assert.deepEqual(JSON.parse(await readFile(join(musicRoot, 'Long.ogg.json'), 'utf8')), { title: 'Aaa Long', gain: 2 });
+			assert.deepEqual(await response.json(), { id: 'Long.ogg', title: 'Aaa Long', format: 'ogg', size: LARGE_AUDIO.length, gain: 2, duration: null, url: '/media/Long.ogg' });
+			const { title, gain } = JSON.parse(await readFile(join(musicRoot, 'Long.ogg.json'), 'utf8'));
+			assert.deepEqual({ title, gain }, { title: 'Aaa Long', gain: 2 });
 		});
 
 		it('serves the changed and re-sorted library afterwards', async () => {

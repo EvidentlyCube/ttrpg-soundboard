@@ -1,6 +1,6 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { symlink } from 'node:fs/promises';
+import { stat, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { scanAudioDirectory } from '../../../src/library/scanner.js';
 import { copyFixture, createTmpTree } from '../../helpers/tmp-tree.js';
@@ -48,13 +48,14 @@ describe('scanAudioDirectory', () => {
 		assert.equal(scan.settingsPath, join(tree.root, '.soundboard'));
 	});
 
-	it('lists sounds with their size, paths and options file', () => {
+	it('lists sounds with their size, date, paths and options file', async () => {
 		assert.deepEqual(scan.sounds.map((sound) => sound.id), ['Boom.mp3', 'Café.mp3', 'Creak.ogg']);
 		assert.deepEqual(scan.sounds[0], {
 			id: 'Boom.mp3',
 			name: 'Boom.mp3',
 			format: 'mp3',
 			size: 5,
+			modified: (await stat(join(tree.root, 'Boom.mp3'))).mtime.toISOString(),
 			absolutePath: join(tree.root, 'Boom.mp3'),
 			optionsPath: join(tree.root, 'Boom.mp3.json'),
 			hasOptions: true,

@@ -35,6 +35,30 @@ describe('validateAudioOptions', () => {
 		}
 	});
 
+	it('accepts a measured duration, or null for one that could not be read', () => {
+		const measuredFrom = { size: 1000, modified: '2026-10-24T16:41:00.000Z', sha1: 'a'.repeat(40) };
+		assert.deepEqual(validateAudioOptions({ duration: 213.47, measuredFrom }), []);
+		assert.deepEqual(validateAudioOptions({ duration: null, measuredFrom }), []);
+		assert.deepEqual(validateAudioOptions({ duration: 0, measuredFrom }), []);
+	});
+
+	it('rejects a malformed duration or measuredFrom', () => {
+		const measuredFrom = { size: 1000, modified: '2026-10-24T16:41:00.000Z', sha1: 'a'.repeat(40) };
+		assert.deepEqual(validateAudioOptions({ duration: -1, measuredFrom }), ['"duration" must be a non-negative number or null']);
+		assert.deepEqual(validateAudioOptions({ duration: '3', measuredFrom }), ['"duration" must be a non-negative number or null']);
+		for (const bad of [null, [], { ...measuredFrom, size: -1 }, { ...measuredFrom, size: 1.5 }, { ...measuredFrom, modified: 5 }, { ...measuredFrom, sha1: 'xyz' }]) {
+			assert.deepEqual(validateAudioOptions({ duration: 1, measuredFrom: bad }), [
+				'"measuredFrom" must be an object with "size", "modified" and a 40-character hex "sha1"',
+			], JSON.stringify(bad));
+		}
+	});
+
+	it('requires duration and measuredFrom together', () => {
+		const measuredFrom = { size: 1000, modified: '2026-10-24T16:41:00.000Z', sha1: 'a'.repeat(40) };
+		assert.deepEqual(validateAudioOptions({ duration: 1 }), ['"duration" and "measuredFrom" must be present together']);
+		assert.deepEqual(validateAudioOptions({ measuredFrom }), ['"duration" and "measuredFrom" must be present together']);
+	});
+
 	it('reports a bad title and a bad gain together', () => {
 		assert.deepEqual(validateAudioOptions({ title: '', gain: 9 }), [
 			'"title" must be a non-empty string',

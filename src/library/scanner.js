@@ -13,6 +13,7 @@ import { compareNatural, sortBy } from './sort.js';
  * @property {string} name file name exactly as the file system returned it
  * @property {AudioFormat} format
  * @property {number} size bytes
+ * @property {string} modified the modification time, as an ISO 8601 string
  * @property {string} absolutePath
  * @property {string} optionsPath
  * @property {boolean} hasOptions
@@ -43,7 +44,7 @@ import { compareNatural, sortBy } from './sort.js';
 export const SETTINGS_FILE_NAME = '.soundboard';
 
 /**
- * Walks the audio directory and classifies everything in it (DESIGN.md §2.1). Reads directory listings and file sizes only.
+ * Walks the audio directory and classifies everything in it (DESIGN.md §2.1). Reads directory listings and file sizes and dates only.
  * @param {string} root
  * @returns {Promise<ScanResult>}
  */
@@ -122,12 +123,13 @@ function scanAudioFiles(root, relativeDirectory, classification) {
 	return Promise.all(classification.audioFiles.map(async ({ name, format }) => {
 		const id = joinRelative(relativeDirectory, name);
 		const absolutePath = toAbsolute(root, id);
-		const { size } = await stat(absolutePath);
+		const { size, mtime } = await stat(absolutePath);
 		return {
 			id,
 			name,
 			format,
 			size,
+			modified: mtime.toISOString(),
 			absolutePath,
 			optionsPath: `${absolutePath}.json`,
 			hasOptions: classification.audioWithOptions.has(name),

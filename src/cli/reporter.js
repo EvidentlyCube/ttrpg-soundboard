@@ -81,6 +81,12 @@ export class ConsoleReporter {
 		this.#print(`Created or updated ${count(created, 'options file')}.`);
 	}
 
+	/** @type {Reporter['measuringDurations']} */
+	measuringDurations(files) {
+		// Said before the work starts: the first run reads every file once, which can take a while.
+		this.#print(`Measuring the duration of ${count(files, 'audio file')}…`);
+	}
+
 	/** @type {Reporter['libraryLoaded']} */
 	libraryLoaded(library) {
 		this.#print(`Loaded ${count(library.playlists.length, 'playlist')} and ${count(library.sounds.length, 'sound')}.`);

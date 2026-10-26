@@ -55,8 +55,8 @@ describe('HttpBackendApi against the real server', () => {
 	it('saves sound options, with or without keepalive', async () => {
 		await api.saveSoundOptions('Boom.mp3', { title: 'Big Boom', gain: 2 }, { keepalive: false });
 		await api.saveSoundOptions('Boom.mp3', { title: 'Bigger Boom', gain: 2 }, { keepalive: true });
-		const saved = JSON.parse(await readFile(join(tree.root, 'Boom.mp3.json'), 'utf8'));
-		assert.deepEqual(saved, { title: 'Bigger Boom', gain: 2 });
+		const { title, gain } = JSON.parse(await readFile(join(tree.root, 'Boom.mp3.json'), 'utf8'));
+		assert.deepEqual({ title, gain }, { title: 'Bigger Boom', gain: 2 });
 		assert.equal((await api.fetchLibrary()).sounds[0].title, 'Bigger Boom');
 	});
 

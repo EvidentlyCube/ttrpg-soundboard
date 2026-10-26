@@ -14,6 +14,7 @@ function audio(id, hasOptions = false) {
 		name,
 		format: id.endsWith('.ogg') ? 'ogg' : 'mp3',
 		size: 100,
+		modified: '2026-10-24T16:41:00.000Z',
 		absolutePath: `/music/${id}`,
 		optionsPath: `/music/${id}.json`,
 		hasOptions,
@@ -58,9 +59,16 @@ describe('buildLibrary', () => {
 		const scan = scanOf({ sounds: [audio('Boom.mp3', true), audio('Creak.ogg')] });
 		const library = buildLibrary(scan, new Map([['/music/Boom.mp3.json', { title: 'Big Boom' }]]));
 		assert.deepEqual(library.sounds, [
-			{ id: 'Boom.mp3', title: 'Big Boom', format: 'mp3', size: 100, gain: 1, absolutePath: '/music/Boom.mp3' },
-			{ id: 'Creak.ogg', title: 'Creak.ogg', format: 'ogg', size: 100, gain: 1, absolutePath: '/music/Creak.ogg' },
+			{ id: 'Boom.mp3', title: 'Big Boom', format: 'mp3', size: 100, gain: 1, duration: null, absolutePath: '/music/Boom.mp3' },
+			{ id: 'Creak.ogg', title: 'Creak.ogg', format: 'ogg', size: 100, gain: 1, duration: null, absolutePath: '/music/Creak.ogg' },
 		]);
+	});
+
+	it('takes the measured duration from options', () => {
+		const scan = scanOf({ sounds: [audio('Boom.mp3', true)] });
+		const measuredFrom = { size: 100, modified: '2026-10-24T16:41:00.000Z', sha1: 'a'.repeat(40) };
+		const library = buildLibrary(scan, new Map([['/music/Boom.mp3.json', { duration: 4.5, measuredFrom }]]));
+		assert.equal(library.sounds[0].duration, 4.5);
 	});
 
 	it('takes the gain of sounds and tracks from options, defaulting to 1', () => {

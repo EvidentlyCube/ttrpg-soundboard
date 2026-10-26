@@ -29,6 +29,7 @@ function sound(name) {
 		name,
 		format: /** @type {const} */ ('mp3'),
 		size: 0,
+		modified: '2026-10-24T16:41:00.000Z',
 		absolutePath: join(tree.root, name),
 		optionsPath: join(tree.root, `${name}.json`),
 		hasOptions: true,

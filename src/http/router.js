@@ -101,8 +101,8 @@ function toPlaylistJson({ id, title, gain, tracks }) {
 }
 
 /** @param {import('../library/library.js').AudioFile} file */
-function toFileJson({ id, title, format, size, gain }) {
-	return { id, title, format, size, gain, url: mediaUrl(id) };
+function toFileJson({ id, title, format, size, gain, duration }) {
+	return { id, title, format, size, gain, duration, url: mediaUrl(id) };
 }
 
 /**

@@ -3,7 +3,8 @@
  * Unknown keys are always allowed, so files written by future versions still load.
  */
 
-/** @typedef {{ title?: string, gain?: number }} AudioOptions */
+/** @typedef {{ size: number, modified: string, sha1: string }} MeasuredFrom what a stored duration was measured from */
+/** @typedef {{ title?: string, gain?: number, duration?: number | null, measuredFrom?: MeasuredFrom }} AudioOptions */
 /** @typedef {{ title?: string, gain?: number, includedSubdirectories?: string[] }} PlaylistOptions */
 /** @typedef {{ master: number, music: number, sfx: number }} Volumes */
 /** @typedef {{ version: number, volumes?: Partial<Volumes> }} SettingsFile */
@@ -26,7 +27,7 @@ export function validateAudioOptions(value) {
 	if (!isPlainObject(value)) {
 		return [NOT_AN_OBJECT];
 	}
-	return [...checkTitle(value), ...checkGain(value)];
+	return [...checkTitle(value), ...checkGain(value), ...checkDuration(value)];
 }
 
 /**
@@ -98,6 +99,33 @@ function checkTitle(value) {
 		return ['"title" must be a non-empty string'];
 	}
 	return [];
+}
+
+/** @param {Record<string, unknown>} value */
+function checkDuration(value) {
+	const problems = [];
+	if (('duration' in value) !== ('measuredFrom' in value)) {
+		problems.push('"duration" and "measuredFrom" must be present together');
+	}
+	const { duration, measuredFrom } = value;
+	if ('duration' in value && duration !== null && !(typeof duration === 'number' && Number.isFinite(duration) && duration >= 0)) {
+		problems.push('"duration" must be a non-negative number or null');
+	}
+	if ('measuredFrom' in value && !isMeasuredFrom(measuredFrom)) {
+		problems.push('"measuredFrom" must be an object with "size", "modified" and a 40-character hex "sha1"');
+	}
+	return problems;
+}
+
+/** @param {unknown} value */
+function isMeasuredFrom(value) {
+	return isPlainObject(value)
+		&& typeof value.size === 'number'
+		&& Number.isInteger(value.size)
+		&& value.size >= 0
+		&& typeof value.modified === 'string'
+		&& typeof value.sha1 === 'string'
+		&& /^[0-9a-f]{40}$/.test(value.sha1);
 }
 
 /** @param {Record<string, unknown>} value */

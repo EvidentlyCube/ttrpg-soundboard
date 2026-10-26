@@ -14,6 +14,7 @@
  * @property {AudioFormat} format
  * @property {number} size bytes
  * @property {number} gain linear multiplier for its own volume; 1 plays it as recorded
+ * @property {number | null} duration seconds, measured by the server; null when unknown
  * @property {string} url
  */
 

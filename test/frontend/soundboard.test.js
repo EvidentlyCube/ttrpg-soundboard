@@ -217,7 +217,7 @@ describe('Soundboard', () => {
 			soundboard.customizeSound('Boom.mp3', { title: ' Thunder ' });
 			assert.deepEqual(eventsOf('sound.changed'), [{
 				type: 'sound.changed',
-				sound: { id: 'Boom.mp3', title: 'Thunder', format: 'mp3', size: 1000, gain: 1, url: '/media/Boom.mp3' },
+				sound: { id: 'Boom.mp3', title: 'Thunder', format: 'mp3', size: 1000, gain: 1, duration: 1.5, url: '/media/Boom.mp3' },
 			}]);
 			assert.deepEqual(soundboard.getLibrary()?.sounds.map((sound) => sound.title), ['Rain', 'Thunder']);
 		});

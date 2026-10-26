@@ -1,5 +1,6 @@
 import { readTitle } from '../metadata/index.js';
 import { ValidationError } from './errors.js';
+import { isMeasured, measureIfNeeded } from './durations.js';
 import { buildLibrary } from './library.js';
 import { readValidatedJson, updateJsonFile, writeJsonAtomic } from './options-store.js';
 import { scanAudioDirectory } from './scanner.js';
@@ -23,6 +24,7 @@ import { validateAudioOptions, validatePlaylistOptions, validateSettingsFile } f
  * @property {(paths: string[]) => void} nestedDirectories root-relative paths, such as `Combat/Boss`
  * @property {(titles: { path: string, title: string }[]) => void} metadataTitles
  * @property {(count: number) => void} optionsGenerated
+ * @property {(count: number) => void} measuringDurations sent before files are read to measure their durations
  * @property {(library: Library) => void} libraryLoaded
  */
 
@@ -76,16 +78,31 @@ export class BootstrapService {
 		}
 
 		const isFirstRun = !scan.hasSettingsFile;
-		const missingOptions = [...scan.sounds, ...playlists.flatMap((playlist) => playlist.tracks)].filter((audio) => !audio.hasOptions);
+		const audioFiles = [...scan.sounds, ...playlists.flatMap((playlist) => playlist.tracks)];
+		const missingOptions = audioFiles.filter((audio) => !audio.hasOptions);
 		const titles = await this.#chooseTitles(missingOptions, isFirstRun);
+
+		const toMeasure = audioFiles.filter((audio) => !isMeasured(audio, optionsByPath.get(audio.optionsPath)));
+		if (toMeasure.length > 0) {
+			this.#reporter.measuringDurations(toMeasure.length);
+		}
 
 		let written = 0;
 		for (const audio of missingOptions) {
 			/** @type {AudioOptions} */
-			const options = { title: titles.get(audio.id) ?? audio.name };
+			const options = { title: titles.get(audio.id) ?? audio.name, ...(await measureIfNeeded(audio, undefined)) };
 			await writeJsonAtomic(audio.optionsPath, options);
 			optionsByPath.set(audio.optionsPath, options);
 			written++;
+		}
+		for (const audio of audioFiles.filter((file) => file.hasOptions)) {
+			const existing = /** @type {AudioOptions | undefined} */ (optionsByPath.get(audio.optionsPath));
+			const measurement = await measureIfNeeded(audio, existing);
+			if (measurement) {
+				await updateJsonFile(audio.optionsPath, (current) => ({ ...current, ...measurement }));
+				optionsByPath.set(audio.optionsPath, { ...existing, ...measurement });
+				written++;
+			}
 		}
 		for (const playlist of playlists) {
 			const added = newSubdirectories.get(playlist.id) ?? [];

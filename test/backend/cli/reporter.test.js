@@ -60,6 +60,13 @@ describe('ConsoleReporter', () => {
 		assert.equal(output(), 'Found 1 nested directory inside playlists:\n  Combat/Boss\nCreated or updated 1 options file.\n');
 	});
 
+	it('says how many durations are about to be measured', () => {
+		const { reporter, output } = createReporter();
+		reporter.measuringDurations(1);
+		reporter.measuringDurations(12);
+		assert.equal(output(), 'Measuring the duration of 1 audio file…\nMeasuring the duration of 12 audio files…\n');
+	});
+
 	it('lists found metadata titles', () => {
 		const { reporter, output } = createReporter();
 		reporter.metadataTitles([{ path: 'Combat/1.mp3', title: 'Battle' }]);

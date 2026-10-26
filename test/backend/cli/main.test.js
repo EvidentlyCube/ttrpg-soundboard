@@ -119,7 +119,7 @@ describe('main', () => {
 		});
 		const result = await run([root, '--port', String(await findFreePort())], { typed: 'y\ny\n' });
 		assert.equal(result.code, 0);
-		assert.deepEqual(JSON.parse(await readFile(join(root, 'Combat', 'Boss', '1.mp3.json'), 'utf8')), { title: 'Tagged' });
+		assert.equal(JSON.parse(await readFile(join(root, 'Combat', 'Boss', '1.mp3.json'), 'utf8')).title, 'Tagged');
 	});
 
 	it('exits with 1 when options files are invalid', async () => {

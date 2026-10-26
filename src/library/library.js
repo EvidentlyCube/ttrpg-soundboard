@@ -12,6 +12,7 @@ import { sortBy } from './sort.js';
  * @property {import('./classify.js').AudioFormat} format
  * @property {number} size
  * @property {number} gain linear multiplier for its own volume; 1 plays it as recorded
+ * @property {number | null} duration seconds, as measured at startup; null when it could not be read
  * @property {string} absolutePath
  */
 
@@ -48,6 +49,7 @@ export function buildLibrary(scan, optionsByPath) {
 			format,
 			size,
 			gain: options?.gain ?? 1,
+			duration: options?.duration ?? null,
 			absolutePath,
 		};
 	};

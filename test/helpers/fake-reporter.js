@@ -41,6 +41,11 @@ export class FakeReporter {
 		this.calls.push(['optionsGenerated', count]);
 	}
 
+	/** @type {Reporter['measuringDurations']} */
+	measuringDurations(count) {
+		this.calls.push(['measuringDurations', count]);
+	}
+
 	/** @type {Reporter['libraryLoaded']} */
 	libraryLoaded(library) {
 		this.calls.push(['libraryLoaded', library]);
