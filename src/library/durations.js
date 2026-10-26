@@ -31,7 +31,7 @@ export function isMeasured(audio, options) {
 }
 
 /**
- * Works out what to store about a file's duration (DESIGN.md §3.4). Nothing is read for a file whose size and date
+ * Works out what to store about a file's duration (DESIGN.md §3.5). Nothing is read for a file whose size and date
  * match the record. Otherwise the whole file is hashed: the same hash only refreshes the record, since the file was
  * merely copied or touched, and a new hash means it was replaced and is measured again.
  * @param {ScannedAudio} audio

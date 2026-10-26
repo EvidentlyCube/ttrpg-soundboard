@@ -258,7 +258,7 @@ export class PlaylistPlayer {
 	}
 
 	/**
-	 * The timing for moving from the current track to another (DESIGN.md §8). A crossfade lasts at most half of either
+	 * The timing for moving from the current track to another (DESIGN.md §8.4). A crossfade lasts at most half of either
 	 * track, and the fade-out never outlasts what is left of the current track.
 	 * @param {Transition} transition
 	 * @param {number} toIndex
