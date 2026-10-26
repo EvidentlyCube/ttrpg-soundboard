@@ -78,6 +78,13 @@ export class PlayerBar extends Component {
 		});
 
 		const fill = h('div', { class: 'absolute inset-y-0 left-0 rounded-full bg-music transition-[width] duration-200 ease-linear', style: { width: '0%' } });
+		// Where the crossfade into the next track will happen; the fill passes over it as the track plays.
+		const crossfadeBand = h('div', {
+			'class': 'absolute inset-y-0 right-0 rounded-r-full bg-music/40',
+			'title': 'Crossfade into the next track',
+			'hidden': true,
+			'data-crossfade-band': true,
+		});
 		const progress = h('div', {
 			'class': 'flex flex-1 cursor-pointer items-center py-2',
 			'title': 'Seek',
@@ -88,7 +95,7 @@ export class PlayerBar extends Component {
 					soundboard.seek(id, ((event.clientX - rect.left) / rect.width) * this.#duration);
 				}
 			},
-		}, h('div', { class: 'relative h-1.5 w-full rounded-full bg-line' }, fill));
+		}, h('div', { class: 'relative h-1.5 w-full rounded-full bg-line' }, crossfadeBand, fill));
 
 		const playlistTitle = h('span', { class: 'truncate text-xs font-semibold uppercase tracking-wide text-music' }, title);
 		this.own(soundboard.on('playlist.changed', ({ playlist }) => {
@@ -113,8 +120,19 @@ export class PlayerBar extends Component {
 			time.textContent = `${formatTime(position)} / ${formatTime(this.#duration)}`;
 			fill.style.width = this.#duration ? `${Math.min(100, (position / this.#duration) * 100)}%` : '0%';
 		};
-		/** @param {{ state: PlaylistState, track: AudioFileJson | null, trackIndex: number | null, duration: number | null }} state */
-		const showState = ({ state, track, trackIndex, duration }) => {
+		/** @param {number | null} crossfadeFrom */
+		const showCrossfade = (crossfadeFrom) => {
+			const duration = this.#duration;
+			crossfadeBand.hidden = crossfadeFrom === null || !duration;
+			if (crossfadeFrom !== null && duration) {
+				crossfadeBand.style.width = `${Math.max(0, 100 - (crossfadeFrom / duration) * 100)}%`;
+			}
+		};
+		/**
+		 * @param {{ state: PlaylistState, track: AudioFileJson | null, trackIndex: number | null, duration: number | null,
+		 * 	crossfadeFrom: number | null }} state
+		 */
+		const showState = ({ state, track, trackIndex, duration, crossfadeFrom }) => {
 			if (trackIndex !== this.#trackIndex) {
 				this.#position = 0;
 			}
@@ -127,6 +145,7 @@ export class PlayerBar extends Component {
 			playPause.title = paused ? 'Resume' : 'Pause';
 			playPause.setAttribute('aria-label', playPause.title);
 			showProgress(this.#position);
+			showCrossfade(crossfadeFrom);
 		};
 
 		const snapshot = soundboard.getPlaylistSnapshot(id);
@@ -141,6 +160,7 @@ export class PlayerBar extends Component {
 			if (event.playlistId === id) {
 				this.#duration = event.duration;
 				showProgress(event.position);
+				showCrossfade(event.crossfadeFrom);
 			}
 		}));
 		return root;

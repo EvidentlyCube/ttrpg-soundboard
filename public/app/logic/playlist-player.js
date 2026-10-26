@@ -16,8 +16,9 @@ import { resolveTransition } from './transitions.js';
 
 /**
  * @typedef {{ type: 'playlist.stateChanged', playlistId: string, state: PlaylistState, trackIndex: number | null,
- * 	track: AudioFileJson | null, duration: number | null }} PlaylistStateChangedEvent
- * @typedef {{ type: 'playlist.progress', playlistId: string, position: number, duration: number | null }} PlaylistProgressEvent
+ * 	track: AudioFileJson | null, duration: number | null, crossfadeFrom: number | null }} PlaylistStateChangedEvent
+ * @typedef {{ type: 'playlist.progress', playlistId: string, position: number, duration: number | null,
+ * 	crossfadeFrom: number | null }} PlaylistProgressEvent
  * @typedef {{ type: 'playlist.error', playlistId: string, trackId: string, message: string }} PlaylistErrorEvent
  * @typedef {PlaylistStateChangedEvent | PlaylistProgressEvent | PlaylistErrorEvent} PlaylistEvent
  */
@@ -30,6 +31,7 @@ import { resolveTransition } from './transitions.js';
  * @property {AudioFileJson | null} track
  * @property {number} position
  * @property {number | null} duration
+ * @property {number | null} crossfadeFrom the position where the crossfade into the next track will start, if it will
  */
 
 /**
@@ -113,6 +115,7 @@ export class PlaylistPlayer {
 			track: current ? this.#playlist.tracks[current.trackIndex] : null,
 			position: current?.voice.position ?? 0,
 			duration: current ? knownOrNull(current.voice.duration) : null,
+			crossfadeFrom: current ? this.#crossfadePoint(current) : null,
 		};
 	}
 
@@ -255,6 +258,8 @@ export class PlaylistPlayer {
 	setRules(rules) {
 		this.#rules = rules;
 		this.#planCrossfade();
+		// Progress events carry the crossfade point; send one now so the display follows even while paused.
+		this.#emitProgress();
 	}
 
 	/**
@@ -283,6 +288,19 @@ export class PlaylistPlayer {
 		const fromDuration = Number.isFinite(duration) ? duration : this.#playlist.tracks[current.trackIndex].duration;
 		const toDuration = this.#playlist.tracks[toIndex].duration;
 		return Math.min(this.#rules.crossfade, (fromDuration ?? Infinity) / 2, (toDuration ?? Infinity) / 2);
+	}
+
+	/**
+	 * Where in the current track the crossfade into the next one will start, for display; null when there won't be one.
+	 * @param {CurrentVoice} current
+	 */
+	#crossfadePoint(current) {
+		const { duration } = current.voice;
+		const next = this.#order.next(current.trackIndex);
+		if (this.#rules.crossfade <= 0 || !Number.isFinite(duration) || next === null) {
+			return null;
+		}
+		return Math.max(0, duration - this.#overlap(current, next));
 	}
 
 	/** @param {CurrentVoice} current */
@@ -500,6 +518,7 @@ export class PlaylistPlayer {
 				playlistId: this.#playlist.id,
 				position: current.voice.position,
 				duration: knownOrNull(current.voice.duration),
+				crossfadeFrom: this.#crossfadePoint(current),
 			});
 		}
 	}
@@ -511,8 +530,8 @@ export class PlaylistPlayer {
 	}
 
 	#emitState() {
-		const { playlistId, state, trackIndex, track, duration } = this.snapshot();
-		this.#emit({ type: 'playlist.stateChanged', playlistId, state, trackIndex, track, duration });
+		const { playlistId, state, trackIndex, track, duration, crossfadeFrom } = this.snapshot();
+		this.#emit({ type: 'playlist.stateChanged', playlistId, state, trackIndex, track, duration, crossfadeFrom });
 	}
 }
 

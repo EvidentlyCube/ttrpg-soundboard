@@ -89,6 +89,7 @@ describe('PlaylistPlayer', () => {
 				trackIndex: 0,
 				track: playlistOf(3).tracks[0],
 				duration: null,
+				crossfadeFrom: null,
 			});
 			assert.equal(playing.type === 'playlist.stateChanged' && playing.duration, 10);
 			assert.deepEqual(JSON.parse(JSON.stringify(loading)), loading);
@@ -306,7 +307,7 @@ describe('PlaylistPlayer', () => {
 			advance(0.1 + 1);
 			const progress = eventsOf('playlist.progress');
 			assert.equal(progress.length, 4);
-			assert.deepEqual(progress[0], { type: 'playlist.progress', playlistId: 'Combat', position: 0.25, duration: 10 });
+			assert.deepEqual(progress[0], { type: 'playlist.progress', playlistId: 'Combat', position: 0.25, duration: 10, crossfadeFrom: null });
 			player.pause();
 			advance(1);
 			assert.equal(eventsOf('playlist.progress').length, 4);
@@ -317,7 +318,7 @@ describe('PlaylistPlayer', () => {
 			player.play();
 			advance(0.1);
 			player.seek(5);
-			assert.deepEqual(eventsOf('playlist.progress').at(-1), { type: 'playlist.progress', playlistId: 'Combat', position: 5, duration: 10 });
+			assert.deepEqual(eventsOf('playlist.progress').at(-1), { type: 'playlist.progress', playlistId: 'Combat', position: 5, duration: 10, crossfadeFrom: null });
 		});
 	});
 
@@ -453,6 +454,40 @@ describe('PlaylistPlayer', () => {
 			context.advance(0.1);
 			return context;
 		}
+
+		it('reports where the crossfade will start, in snapshots, state and progress events', () => {
+			const { player, advance, events } = playing();
+			assert.equal(player.snapshot().crossfadeFrom, 8);
+			const playingEvent = events.findLast((event) => event.type === 'playlist.stateChanged');
+			assert.equal(playingEvent?.type === 'playlist.stateChanged' && playingEvent.crossfadeFrom, 8);
+			advance(0.25);
+			const progress = events.findLast((event) => event.type === 'playlist.progress');
+			assert.equal(progress?.type === 'playlist.progress' && progress.crossfadeFrom, 8);
+		});
+
+		it('reports no crossfade point without a crossfade or before the duration is known', () => {
+			const { player } = setup({ rules: { crossfade: 2 } });
+			player.play();
+			assert.equal(player.snapshot().crossfadeFrom, null, 'still loading');
+			const plain = playing({ rules: { crossfade: 0 } });
+			assert.equal(plain.player.snapshot().crossfadeFrom, null);
+		});
+
+		it('reports the shortened overlap of a short track', () => {
+			const context = setup({ rules: { crossfade: 2 } });
+			context.engine.script('/t0', { duration: 3 });
+			context.player.play();
+			context.advance(0.1);
+			assert.equal(context.player.snapshot().crossfadeFrom, 1.5);
+		});
+
+		it('reports a new crossfade point at once when the setting changes, even while paused', () => {
+			const { player, events } = playing();
+			player.pause();
+			player.setRules({ ...DEFAULT_PLAYBACK_RULES, crossfade: 4 });
+			const progress = events.at(-1);
+			assert.equal(progress?.type === 'playlist.progress' && progress.crossfadeFrom, 6);
+		});
 
 		it('starts the next track before the current one ends, fading across over the crossfade', () => {
 			const { engine, advance, player } = playing();

@@ -96,6 +96,7 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] The first start of a new library prints "Measuring the duration of N audio files…"; the next start doesn't. Touching a file (`touch`) only re-hashes it; replacing it with another recording updates its `duration`.
 - [ ] The Crossfade slider stops at 10 s or half the shortest track, whichever is less; typing a longer value is clamped to the limit shown in the note.
 - [ ] With a crossfade set, the next track starts that long before the current one ends, and the two overlap smoothly: the new track starts silent and rises while the old one falls. Seeking near the end starts it at once.
+- [ ] The footer's progress bar shows the crossfade section at its end in a lighter blue, and the next track takes over where it starts. It changes right away when the crossfade setting changes (even while paused), and disappears with the crossfade off.
 - [ ] Next, Previous and picking a track crossfade; the "(Instant)" menu items cut over.
 - [ ] Stop during a crossfade silences both tracks; Pause silences the old one, and Resume continues only the new one.
 - [ ] A playlist with a single track crossfades into its own start.
