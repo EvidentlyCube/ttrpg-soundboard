@@ -104,6 +104,7 @@ A fade-in used only when the playlist starts, and a fade-out used only when it s
 - **Seam:** `PlaybackRules.fadeIn` / `fadeOut` (DESIGN.md §8.2).
 - **Decided:**
   - Stopping during a crossfade: the track that was fading out carries on fading out; the track that was fading in stops its fade-in and fades out from its current level over the normal fade-out duration.
+  - Pausing during a crossfade no longer cuts the track that is fading out (until then it does, per feature 3).
   - There is **no `stopping` state.** A stop marks the playlist idle at once; the fading voices just finish in the background (the retiring set). Playing it again while they fade starts a new, separate playback and leaves those fades alone.
 - **Notes:** "(Instant)" commands still cut retiring voices, as today (§6.1). Open: does resuming after a pause fade in? Likely not.
 
