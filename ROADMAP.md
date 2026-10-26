@@ -33,6 +33,19 @@ None yet.
 
 ---
 
+## Known issues
+
+Fix these before starting the next feature.
+
+### Long titles without spaces overflow their tile
+
+A playlist title with no spaces runs out of its tile instead of wrapping. It should break onto several lines even mid-word, and end with an ellipsis once it runs out of lines (the tiles clamp titles to 3 lines, DESIGN.md §9.1).
+
+- **Likely cause:** `line-clamp-3` only limits lines that already wrap; a single long word needs `break-words` / `overflow-wrap: anywhere` as well.
+- **Check everywhere else too:** sound tiles, the player bar's playlist and track titles, the track list popover, the dialog title, the Tracks tab's rows, and the title hints (`File: …`, `Folder: …`). Test with a long title without spaces, at a narrow and a wide window. Add a check to `TESTING.md` for it.
+
+---
+
 ## Backlog
 
 ### Planned, in the owner's order
