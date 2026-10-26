@@ -22,6 +22,23 @@ let server;
 let musicRoot;
 /** @type {unknown[]} */
 const loggedErrors = [];
+/** @type {string[]} */
+const loggedRequests = [];
+
+/**
+ * Responses are logged when the server finishes them, which can be just after the client has the body.
+ * @param {RegExp} pattern
+ */
+async function waitForLoggedRequest(pattern) {
+	for (let attempt = 0; attempt < 50; attempt++) {
+		const line = loggedRequests.find((entry) => pattern.test(entry));
+		if (line) {
+			return line;
+		}
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+	assert.fail(`No logged request matches ${pattern}; got:\n${loggedRequests.join('\n')}`);
+}
 
 before(async () => {
 	tree = await createTmpTree({
@@ -48,6 +65,7 @@ before(async () => {
 		port: 0,
 		publicDir: join(tree.root, 'public'),
 		logError: (error) => loggedErrors.push(error),
+		logRequest: (line) => loggedRequests.push(line),
 	});
 });
 after(async () => {
@@ -238,6 +256,11 @@ describe('server', () => {
 			assert.deepEqual(Buffer.from(await suffix.arrayBuffer()), AUDIO.subarray(995));
 		});
 
+		it('logs each request with its range when asked to', async () => {
+			await (await get('/media/Boom.mp3?logged', { headers: { Range: 'bytes=0-9' } })).arrayBuffer();
+			assert.match(await waitForLoggedRequest(/\?logged/), /^GET \/media\/Boom\.mp3\?logged 206 bytes=0-9 \d+ms$/);
+		});
+
 		it('answers an unsatisfiable range with 416', async () => {
 			const response = await get('/media/Boom.mp3', { headers: { Range: 'bytes=5000-' } });
 			assert.equal(response.status, 416);
@@ -298,6 +321,7 @@ describe('server', () => {
 			await new Promise((resolve) => setTimeout(resolve, 50));
 			assert.equal((await get('/media/Boom.mp3', { headers: { Range: 'bytes=0-0' } })).status, 206);
 			assert.deepEqual(loggedErrors, []);
+			assert.match(await waitForLoggedRequest(/^GET \/media\/Long\.ogg /), /^GET \/media\/Long\.ogg 200 \d+ms \(aborted\)$/);
 		});
 	});
 });

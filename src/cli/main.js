@@ -60,6 +60,7 @@ export async function main(argv, { input, output, errorOutput, env, waitForShutd
 			settings: outcome.settings,
 			port: args.port,
 			logError: (error) => errorOutput.write(`${error instanceof Error ? error.stack : String(error)}\n`),
+			logRequest: args.verbose ? (line) => output.write(`${line}\n`) : undefined,
 		});
 	} catch (error) {
 		const message = listenErrorMessage(/** @type {NodeJS.ErrnoException} */ (error), args.port);

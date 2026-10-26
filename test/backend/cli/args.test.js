@@ -3,14 +3,18 @@ import assert from 'node:assert/strict';
 import { DEFAULT_PORT, parseArguments, UsageError } from '../../../src/cli/args.js';
 
 describe('parseArguments', () => {
-	it('takes the directory and the default port', () => {
-		assert.deepEqual(parseArguments(['/music']), { directory: '/music', port: DEFAULT_PORT });
+	it('takes the directory, the default port and quiet output', () => {
+		assert.deepEqual(parseArguments(['/music']), { directory: '/music', port: DEFAULT_PORT, verbose: false });
 		assert.equal(DEFAULT_PORT, 3000);
 	});
 
 	it('accepts --port in both forms', () => {
-		assert.deepEqual(parseArguments(['/music', '--port', '8080']), { directory: '/music', port: 8080 });
-		assert.deepEqual(parseArguments(['--port=8081', '/music']), { directory: '/music', port: 8081 });
+		assert.deepEqual(parseArguments(['/music', '--port', '8080']), { directory: '/music', port: 8080, verbose: false });
+		assert.deepEqual(parseArguments(['--port=8081', '/music']), { directory: '/music', port: 8081, verbose: false });
+	});
+
+	it('accepts --verbose', () => {
+		assert.deepEqual(parseArguments(['/music', '--verbose']), { directory: '/music', port: DEFAULT_PORT, verbose: true });
 	});
 
 	it('requires exactly one directory', () => {

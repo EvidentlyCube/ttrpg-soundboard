@@ -76,6 +76,20 @@ describe('main', () => {
 		await assert.rejects(fetch(`http://127.0.0.1:${port}/`));
 	});
 
+	it('logs requests only with --verbose', async () => {
+		const root = await tree({ 'a.mp3': '' });
+		for (const verbose of [false, true]) {
+			const port = await findFreePort();
+			const result = await run([root, '--port', String(port), ...(verbose ? ['--verbose'] : [])], {
+				whileRunning: async () => {
+					await (await fetch(`http://127.0.0.1:${port}/api/library`)).json();
+					await new Promise((resolve) => setTimeout(resolve, 50));
+				},
+			});
+			assert.equal(/GET \/api\/library 200 \d+ms/.test(result.output), verbose, `verbose: ${verbose}`);
+		}
+	});
+
 	it('fails with a clear message when the port is in use', async () => {
 		const root = await tree({ 'a.mp3': '' });
 		const blocker = createServer();
