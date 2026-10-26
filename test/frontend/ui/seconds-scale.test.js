@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { crossfadeLimits, formatSeconds, parseSeconds } from '../../../public/app/ui/crossfade-scale.js';
+import { crossfadeLimits, formatSeconds, parseSeconds, SECONDS_LIMITS } from '../../../public/app/ui/seconds-scale.js';
 
 /** @param {(number | null)[]} durations */
 const tracks = (durations) => durations.map((duration) => ({ duration }));
@@ -22,6 +22,12 @@ describe('crossfadeLimits', () => {
 
 	it('rounds the limit down to the slider step', () => {
 		assert.deepEqual(crossfadeLimits(tracks([9.9])), { slider: 4.5, field: 4.95 });
+	});
+});
+
+describe('SECONDS_LIMITS', () => {
+	it('are the limits for fades: 10 s on the slider, 30 s typed', () => {
+		assert.deepEqual(SECONDS_LIMITS, { slider: 10, field: 30 });
 	});
 });
 

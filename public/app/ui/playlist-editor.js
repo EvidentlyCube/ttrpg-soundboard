@@ -1,11 +1,15 @@
+import { MAX_CROSSFADE } from '../logic/playback-rules.js';
 import { Component } from './component.js';
-import { CrossfadeControl } from './crossfade-control.js';
 import { playToggle, saveStatus, sectionLabel, titleField } from './customize-parts.js';
 import { h } from './dom.js';
 import { GainControl } from './gain-control.js';
+import { SecondsControl } from './seconds-control.js';
+import { crossfadeLimits, formatSeconds, SECONDS_LIMITS } from './seconds-scale.js';
 
 /** @typedef {import('../logic/ports.js').PlaylistJson} PlaylistJson */
 /** @typedef {import('../logic/soundboard.js').Soundboard} Soundboard */
+/** @typedef {import('./seconds-scale.js').SecondsLimits} SecondsLimits */
+/** @typedef {'crossfade' | 'fadeIn' | 'fadeOut'} TimingKey */
 
 /**
  * The body of a playlist's Customize dialog (DESIGN.md §9.7). It works like the sound dialog; later playlist settings
@@ -52,17 +56,42 @@ export class PlaylistEditor extends Component {
 		gain.mount(gainSlot);
 		this.own(() => gain.destroy());
 
-		const crossfade = new CrossfadeControl({
-			value: this.#playlist.crossfade,
-			tracks: this.#playlist.tracks,
-			onChange: (value) => {
-				status.show('saving');
-				soundboard.customizePlaylist(id, { crossfade: value });
-			},
-		});
-		const crossfadeSlot = h('div');
-		crossfade.mount(crossfadeSlot);
-		this.own(() => crossfade.destroy());
+		const limits = crossfadeLimits(this.#playlist.tracks);
+		/** @param {number} value */
+		const describeCrossfade = (value) => {
+			if (value > limits.field) {
+				return 'Some tracks are shorter than twice this; they use at most half their length.';
+			}
+			return limits.field < MAX_CROSSFADE ? `Up to ${formatSeconds(limits.field)}, half the shortest track.` : null;
+		};
+		/**
+		 * @param {TimingKey} key
+		 * @param {string} label
+		 * @param {SecondsLimits} sectionLimits
+		 * @param {(value: number) => string | null} [describe]
+		 */
+		const timing = (key, label, sectionLimits, describe) => {
+			const control = new SecondsControl({
+				value: this.#playlist[key],
+				name: key,
+				label,
+				limits: sectionLimits,
+				describe,
+				onChange: (value) => {
+					status.show('saving');
+					soundboard.customizePlaylist(id, { [key]: value });
+				},
+			});
+			const slot = h('div');
+			control.mount(slot);
+			this.own(() => control.destroy());
+			return { control, element: h('div', { class: 'space-y-1.5' }, sectionLabel(label), slot) };
+		};
+		const timings = {
+			fadeIn: timing('fadeIn', 'Fade in', SECONDS_LIMITS),
+			crossfade: timing('crossfade', 'Crossfade', limits, describeCrossfade),
+			fadeOut: timing('fadeOut', 'Fade out', SECONDS_LIMITS),
+		};
 
 		const play = playToggle(() => soundboard.togglePlaylist(id));
 		play.show(soundboard.getPlaylistSnapshot(id).state !== 'idle');
@@ -75,7 +104,9 @@ export class PlaylistEditor extends Component {
 		this.own(soundboard.on('playlist.changed', (event) => {
 			if (event.playlist.id === id) {
 				gain.update(event.playlist.gain);
-				crossfade.update(event.playlist.crossfade);
+				for (const key of /** @type {TimingKey[]} */ (Object.keys(timings))) {
+					timings[key].control.update(event.playlist[key]);
+				}
 			}
 		}));
 		this.own(soundboard.on('playlist.saved', (event) => {
@@ -92,7 +123,9 @@ export class PlaylistEditor extends Component {
 		return h('div', { class: 'space-y-5' },
 			title.element,
 			h('div', { class: 'space-y-1.5' }, sectionLabel('Volume'), gainSlot),
-			h('div', { class: 'space-y-1.5' }, sectionLabel('Crossfade'), crossfadeSlot),
+			timings.fadeIn.element,
+			timings.crossfade.element,
+			timings.fadeOut.element,
 			h('div', { class: 'flex items-center justify-between gap-4' }, play.element, status.element));
 	}
 

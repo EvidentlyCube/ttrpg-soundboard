@@ -1,8 +1,13 @@
 import { MAX_CROSSFADE } from '../logic/playback-rules.js';
 
-/** The slider covers the crossfades nearly everyone uses; longer ones are typed. */
+/** The slider covers the fades and crossfades nearly everyone uses; longer ones are typed. */
 const SLIDER_MAX = 10;
 export const SLIDER_STEP = 0.5;
+
+/** @typedef {{ slider: number, field: number }} SecondsLimits the highest value of the slider and of the typed field */
+
+/** Fades are not limited by track lengths. @type {Readonly<SecondsLimits>} */
+export const SECONDS_LIMITS = Object.freeze({ slider: SLIDER_MAX, field: MAX_CROSSFADE });
 
 const SECONDS_PATTERN = /^\s*(\d+(?:[.,]\d+)?)\s*s?\s*$/iu;
 
@@ -10,7 +15,7 @@ const SECONDS_PATTERN = /^\s*(\d+(?:[.,]\d+)?)\s*s?\s*$/iu;
  * The longest crossfade the dialog offers: at most half of the playlist's shortest track whose duration is known
  * (DESIGN.md §9.7). The slider stops at its own maximum and on a whole step; the typed value only at the limit.
  * @param {{ duration: number | null }[]} tracks
- * @returns {{ slider: number, field: number }}
+ * @returns {SecondsLimits}
  */
 export function crossfadeLimits(tracks) {
 	const halves = tracks.flatMap(({ duration }) => (duration === null ? [] : [duration / 2]));

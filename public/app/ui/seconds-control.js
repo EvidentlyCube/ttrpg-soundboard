@@ -1,15 +1,19 @@
-import { MAX_CROSSFADE } from '../logic/playback-rules.js';
 import { Component } from './component.js';
-import { crossfadeLimits, formatSeconds, parseSeconds, SLIDER_STEP } from './crossfade-scale.js';
 import { h, on } from './dom.js';
+import { formatSeconds, parseSeconds, SLIDER_STEP } from './seconds-scale.js';
+
+/** @typedef {import('./seconds-scale.js').SecondsLimits} SecondsLimits */
 
 /**
- * A playlist's crossfade (DESIGN.md §9.7): a slider in half-second steps and a readout that turns into a text field for
- * exact values. Both stop at half of the playlist's shortest track; the player clamps each track anyway.
+ * A duration in seconds for a playlist's crossfade or fades (DESIGN.md §9.7): a slider in half-second steps and a
+ * readout that turns into a text field for exact values, both stopping at the given limits.
  */
-export class CrossfadeControl extends Component {
+export class SecondsControl extends Component {
 	#value;
-	#tracks;
+	#name;
+	#label;
+	#limits;
+	#describe;
 	#onChange;
 	/** @type {((value: number) => void) | null} */
 	#show = null;
@@ -17,13 +21,19 @@ export class CrossfadeControl extends Component {
 	/**
 	 * @param {object} options
 	 * @param {number} options.value seconds
-	 * @param {{ duration: number | null }[]} options.tracks the playlist's tracks, for the limit
+	 * @param {string} options.name identifies the control in the page, such as `crossfade`
+	 * @param {string} options.label names the control for screen readers
+	 * @param {SecondsLimits} options.limits
+	 * @param {(value: number) => string | null} [options.describe] a note shown below, such as what limits the value
 	 * @param {(value: number) => void} options.onChange called for every change the user makes
 	 */
-	constructor({ value, tracks, onChange }) {
+	constructor({ value, name, label, limits, describe = () => null, onChange }) {
 		super();
 		this.#value = value;
-		this.#tracks = tracks;
+		this.#name = name;
+		this.#label = label;
+		this.#limits = limits;
+		this.#describe = describe;
 		this.#onChange = onChange;
 	}
 
@@ -40,27 +50,27 @@ export class CrossfadeControl extends Component {
 
 	/** @override */
 	render() {
-		const limits = crossfadeLimits(this.#tracks);
+		const limits = this.#limits;
 		const slider = h('input', {
 			'type': 'range',
 			'min': '0',
 			'max': String(limits.slider),
 			'step': String(SLIDER_STEP),
-			'aria-label': 'Crossfade',
-			'data-crossfade-slider': true,
+			'aria-label': this.#label,
+			'data-seconds-slider': true,
 			'class': 'w-60 shrink-0 cursor-pointer accent-music',
 		});
 		const readout = h('button', {
 			'type': 'button',
 			'class': 'w-24 shrink-0 cursor-text rounded-md px-2 py-1 text-right font-medium tabular-nums hover:bg-raised-hover',
-			'title': 'Click to type a crossfade in seconds',
-			'data-crossfade-readout': true,
+			'title': 'Click to type a value in seconds',
+			'data-seconds-readout': true,
 		});
 		const field = h('input', {
 			'type': 'text',
 			'inputmode': 'decimal',
 			'hidden': true,
-			'aria-label': 'Crossfade in seconds',
+			'aria-label': `${this.#label} in seconds`,
 			'class': 'w-24 shrink-0 rounded-md border border-line bg-surface px-2 py-1 text-right tabular-nums outline-none focus:border-music data-[invalid=true]:border-danger',
 		});
 		const note = h('p', { class: 'text-xs text-muted' });
@@ -68,11 +78,9 @@ export class CrossfadeControl extends Component {
 		const show = (/** @type {number} */ value) => {
 			slider.value = String(Math.min(value, limits.slider));
 			readout.textContent = formatSeconds(value);
-			note.textContent = value > limits.field
-				? 'Some tracks are shorter than twice this; they use at most half their length.'
-				: `Up to ${formatSeconds(limits.field)}, half the shortest track.`;
-			// The note only matters when some track limits the crossfade.
-			note.hidden = limits.field >= MAX_CROSSFADE && value <= limits.field;
+			const description = this.#describe(value);
+			note.textContent = description ?? '';
+			note.hidden = description === null;
 		};
 		const change = (/** @type {number} */ value) => {
 			if (value !== this.#value) {
@@ -132,7 +140,7 @@ export class CrossfadeControl extends Component {
 			}
 		}));
 
-		return h('div', { 'class': 'space-y-1', 'data-crossfade-control': true },
+		return h('div', { 'class': 'space-y-1', 'data-seconds-control': this.#name },
 			h('div', { class: 'flex items-center gap-2' }, slider, readout, field),
 			note);
 	}

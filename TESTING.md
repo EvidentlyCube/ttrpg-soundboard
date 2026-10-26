@@ -102,6 +102,14 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] A playlist with a single track crossfades into its own start.
 - [ ] Crossfades keep happening with the window in the background.
 
+**Fade in and fade out**
+- [ ] With a fade-in, a tile click, Play, and picking a track while stopped all start silent and rise; "Play (Instant)" starts at full volume.
+- [ ] With a fade-out, a tile click, the footer's Stop and Stop all fade out, and the bar and the tile's "Playing" disappear at once. "Stop (Instant)" cuts.
+- [ ] Stopping during a fade-in turns it around smoothly, without a jump.
+- [ ] Stopping during a crossfade lets the old track finish its fade while the new one fades out.
+- [ ] Starting again during a fade-out plays the new start over the fading old one.
+- [ ] Pause and Resume are immediate; pausing during a fade-in resumes at full volume, and pausing during a crossfade stops the old track.
+
 **Playlists**
 - [ ] Several playlists at once; next, previous, jump, seek, pause and stop on each.
 - [ ] Tracks advance on their own, including while the window is in the background.
