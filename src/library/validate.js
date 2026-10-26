@@ -5,7 +5,7 @@
 
 /** @typedef {{ size: number, modified: string, sha1: string }} MeasuredFrom what a stored duration was measured from */
 /** @typedef {{ title?: string, gain?: number, duration?: number | null, measuredFrom?: MeasuredFrom }} AudioOptions */
-/** @typedef {{ title?: string, gain?: number, includedSubdirectories?: string[] }} PlaylistOptions */
+/** @typedef {{ title?: string, gain?: number, crossfade?: number, includedSubdirectories?: string[] }} PlaylistOptions */
 /** @typedef {{ master: number, music: number, sfx: number }} Volumes */
 /** @typedef {{ version: number, volumes?: Partial<Volumes> }} SettingsFile */
 
@@ -16,6 +16,9 @@ export const VOLUME_BUSES = ['master', 'music', 'sfx'];
 
 /** The loudest boost a sound, track or playlist may have: just over +12 dB. */
 export const MAX_GAIN = 4;
+
+/** The longest crossfade a playlist may have, in seconds. */
+export const MAX_CROSSFADE = 30;
 
 const NOT_AN_OBJECT = 'must be a JSON object';
 
@@ -39,6 +42,10 @@ export function validatePlaylistOptions(value) {
 		return [NOT_AN_OBJECT];
 	}
 	const problems = [...checkTitle(value), ...checkGain(value)];
+	const { crossfade } = value;
+	if ('crossfade' in value && !(typeof crossfade === 'number' && crossfade >= 0 && crossfade <= MAX_CROSSFADE)) {
+		problems.push(`"crossfade" must be a number of seconds from 0 to ${MAX_CROSSFADE}`);
+	}
 	if (
 		'includedSubdirectories' in value
 		&& !(Array.isArray(value.includedSubdirectories) && value.includedSubdirectories.every((entry) => typeof entry === 'string'))

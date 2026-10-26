@@ -1,4 +1,5 @@
 import { InvalidCommandError } from './errors.js';
+import { MAX_CROSSFADE } from './playback-rules.js';
 import { sortBy } from './sort.js';
 import { MAX_GAIN } from './volume.js';
 
@@ -86,7 +87,12 @@ export class LibraryModel {
 	 * @returns {PlaylistJson} the changed playlist
 	 */
 	updatePlaylist(id, changes) {
-		const playlist = applyChanges(this.playlist(id), changes);
+		const { crossfade } = changes;
+		if (crossfade !== undefined && !(crossfade >= 0 && crossfade <= MAX_CROSSFADE)) {
+			throw new InvalidCommandError(`Crossfade must be a number of seconds from 0 to ${MAX_CROSSFADE}, got ${crossfade}`);
+		}
+		const changed = applyChanges(this.playlist(id), changes);
+		const playlist = { ...changed, crossfade: crossfade ?? changed.crossfade };
 		this.#playlists.set(id, playlist);
 		this.#json = {
 			...this.#json,

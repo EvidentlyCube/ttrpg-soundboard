@@ -96,8 +96,8 @@ function toLibraryJson(library) {
 }
 
 /** @param {import('../library/library.js').Playlist} playlist */
-function toPlaylistJson({ id, title, gain, tracks }) {
-	return { id, title, gain, tracks: tracks.map(toFileJson) };
+function toPlaylistJson({ id, title, gain, crossfade, tracks }) {
+	return { id, title, gain, crossfade, tracks: tracks.map(toFileJson) };
 }
 
 /** @param {import('../library/library.js').AudioFile} file */

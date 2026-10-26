@@ -2,16 +2,19 @@ import { join } from 'node:path';
 import { ValidationError } from './errors.js';
 import { updateJsonFile } from './options-store.js';
 import { sortBy } from './sort.js';
-import { isPlainObject, validateAudioOptions } from './validate.js';
+import { isPlainObject, validateAudioOptions, validatePlaylistOptions } from './validate.js';
 
 /** @typedef {import('./library.js').Library} Library */
 /** @typedef {import('./library.js').AudioFile} AudioFile */
 /** @typedef {import('./library.js').Playlist} Playlist */
 /** @typedef {import('./settings-store.js').FileUpdater} FileUpdater */
-/** @typedef {{ title?: string, gain?: number }} OptionChanges */
+/** @typedef {{ title?: string, gain?: number, crossfade?: number }} OptionChanges */
 
-/** The only options the app itself changes; anything else in a request is rejected. */
-const EDITABLE_KEYS = ['title', 'gain'];
+/** The only options the app itself changes, per kind of item; anything else in a request is rejected. */
+const EDITABLE = {
+	sound: { keys: ['title', 'gain'], validate: validateAudioOptions },
+	playlist: { keys: ['title', 'gain', 'crossfade'], validate: validatePlaylistOptions },
+};
 
 /** The id does not belong to a sound in the library. */
 export class UnknownSoundError extends Error {
@@ -61,7 +64,7 @@ export class LibraryEditor {
 		if (!sound) {
 			throw new UnknownSoundError(soundId);
 		}
-		const normalized = normalizeChanges(changes);
+		const normalized = normalizeChanges(changes, EDITABLE.sound);
 		// Sound options files sit next to their audio file with ".json" appended (DESIGN.md §2.1).
 		await this.#queueWrite(`${sound.absolutePath}.json`, (current) => ({ ...current, ...normalized }));
 		Object.assign(sound, normalized);
@@ -82,7 +85,7 @@ export class LibraryEditor {
 		if (!playlist) {
 			throw new UnknownPlaylistError(playlistId);
 		}
-		const normalized = normalizeChanges(changes);
+		const normalized = normalizeChanges(changes, EDITABLE.playlist);
 		// A playlist's options file is "<directory>.json" in the root (DESIGN.md §2.1).
 		await this.#queueWrite(join(this.#library.root, `${playlist.id}.json`), (current) => ({ ...current, ...normalized }));
 		Object.assign(playlist, normalized);
@@ -112,17 +115,17 @@ export class LibraryEditor {
 }
 
 /**
- * Checks a title and gain change with the options file rules (both kinds of options file share them for these keys),
- * then trims the title and rounds the gain.
+ * Checks a change with the rules of that kind of options file, then trims the title and rounds the numbers.
  * @param {unknown} changes
+ * @param {{ keys: string[], validate: (value: unknown) => string[] }} editable
  * @returns {OptionChanges}
  */
-function normalizeChanges(changes) {
+function normalizeChanges(changes, { keys, validate }) {
 	if (!isPlainObject(changes)) {
 		throw new ValidationError(null, ['must be a JSON object']);
 	}
-	const unknown = Object.keys(changes).filter((key) => !EDITABLE_KEYS.includes(key));
-	const problems = [...unknown.map((key) => `Unknown option "${key}"`), ...validateAudioOptions(changes)];
+	const unknown = Object.keys(changes).filter((key) => !keys.includes(key));
+	const problems = [...unknown.map((key) => `Unknown option "${key}"`), ...validate(changes)];
 	if (problems.length > 0) {
 		throw new ValidationError(null, problems);
 	}
@@ -133,6 +136,9 @@ function normalizeChanges(changes) {
 	}
 	if (typeof changes.gain === 'number') {
 		normalized.gain = Math.round(changes.gain * 10_000) / 10_000;
+	}
+	if (typeof changes.crossfade === 'number') {
+		normalized.crossfade = Math.round(changes.crossfade * 100) / 100;
 	}
 	return normalized;
 }

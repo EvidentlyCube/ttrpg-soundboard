@@ -84,6 +84,14 @@ describe('LibraryModel', () => {
 			assert.deepEqual(before, exampleLibrary());
 		});
 
+		it('sets the crossfade, from 0 to 30 seconds', () => {
+			const model = fresh();
+			assert.equal(model.updatePlaylist('Combat', { crossfade: 4 }).crossfade, 4);
+			for (const crossfade of [-1, 31, Number.NaN]) {
+				assert.throws(() => model.updatePlaylist('Combat', { crossfade }), new InvalidCommandError(`Crossfade must be a number of seconds from 0 to 30, got ${crossfade}`));
+			}
+		});
+
 		it('rejects an empty title, a gain out of range, and unknown playlists', () => {
 			const model = fresh();
 			assert.throws(() => model.updatePlaylist('Combat', { title: '' }), new InvalidCommandError('A title cannot be empty'));

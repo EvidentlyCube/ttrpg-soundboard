@@ -18,7 +18,7 @@
  * @property {string} url
  */
 
-/** @typedef {{ id: string, title: string, gain: number, tracks: AudioFileJson[] }} PlaylistJson */
+/** @typedef {{ id: string, title: string, gain: number, crossfade: number, tracks: AudioFileJson[] }} PlaylistJson */
 /** @typedef {{ version: number, playlists: PlaylistJson[], sounds: AudioFileJson[] }} LibraryJson */
 
 /**
@@ -78,7 +78,10 @@
  * @property {(playlistId: string, options: ItemOptions, request: { keepalive: boolean }) => Promise<void>} savePlaylistOptions
  */
 
-/** The options a Customize dialog changes, for a sound or a playlist. @typedef {{ title?: string, gain?: number }} ItemOptions */
+/**
+ * The options a Customize dialog changes. `crossfade` (seconds) is for playlists only.
+ * @typedef {{ title?: string, gain?: number, crossfade?: number }} ItemOptions
+ */
 
 /**
  * @typedef {object} Logger

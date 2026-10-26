@@ -196,6 +196,20 @@ describe('LibraryEditor.updatePlaylist', () => {
 		assert.deepEqual(lib.playlists.map((entry) => entry.id), ['Combat', 'Ambient']);
 	});
 
+	it('saves a crossfade, rounded to 2 decimals', async () => {
+		const lib = library();
+		const editor = new LibraryEditor(lib);
+		const updated = await editor.updatePlaylist('Combat', { crossfade: 2.4999 });
+		assert.equal(updated.crossfade, 2.5);
+		assert.equal((await readOptions('Combat')).crossfade, 2.5);
+	});
+
+	it('rejects a crossfade out of range, and a crossfade for a sound', async () => {
+		const editor = new LibraryEditor(library());
+		await assert.rejects(editor.updatePlaylist('Combat', { crossfade: 31 }), /"crossfade" must be a number of seconds from 0 to 30/);
+		await assert.rejects(editor.updateSound('Alpha.mp3', /** @type {any} */ ({ crossfade: 2 })), /Unknown option "crossfade"/);
+	});
+
 	it('rejects invalid changes and unknown playlists without writing anything', async () => {
 		const editor = new LibraryEditor(library());
 		await assert.rejects(editor.updatePlaylist('Combat', /** @type {any} */ ({ includedSubdirectories: [] })), /Unknown option "includedSubdirectories"/);

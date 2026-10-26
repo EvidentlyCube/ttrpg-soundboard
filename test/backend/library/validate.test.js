@@ -92,6 +92,15 @@ describe('validatePlaylistOptions', () => {
 		assert.deepEqual(validatePlaylistOptions({ gain: '1' }), ['"gain" must be a number from 0 to 4']);
 	});
 
+	it('accepts a crossfade from 0 to 30 seconds and rejects others', () => {
+		for (const crossfade of [0, 2.5, 30]) {
+			assert.deepEqual(validatePlaylistOptions({ crossfade }), [], String(crossfade));
+		}
+		for (const crossfade of [-1, 30.5, '2', null]) {
+			assert.deepEqual(validatePlaylistOptions({ crossfade }), ['"crossfade" must be a number of seconds from 0 to 30'], String(crossfade));
+		}
+	});
+
 	it('rejects a subdirectory list that is not an array', () => {
 		assert.deepEqual(validatePlaylistOptions({ includedSubdirectories: 'Boss' }), ['"includedSubdirectories" must be an array of strings']);
 	});

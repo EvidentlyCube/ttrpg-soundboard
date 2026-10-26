@@ -4,6 +4,7 @@ import { InvalidCommandError, NotReadyError } from './errors.js';
 import { EventEmitter } from './event-emitter.js';
 import { LibraryModel } from './library-model.js';
 import { OptionsSync } from './options-sync.js';
+import { resolvePlaybackRules } from './playback-rules.js';
 import { PlaylistPlayer } from './playlist-player.js';
 import { SettingsSync } from './settings-sync.js';
 import { SoundPlayer } from './sound-player.js';
@@ -218,11 +219,15 @@ export class Soundboard {
 				player.resume();
 				return;
 			case 'playlist.customize': {
-				const playlist = loaded.library.updatePlaylist(player.id, { title: command.title, gain: command.gain });
-				if (command.gain !== undefined) {
+				const { title, gain, crossfade } = command;
+				const playlist = loaded.library.updatePlaylist(player.id, { title, gain, crossfade });
+				if (gain !== undefined) {
 					player.setGain(playlist.gain);
 				}
-				this.#optionsSync.schedule({ kind: 'playlist', id: playlist.id }, { title: playlist.title, gain: playlist.gain });
+				if (crossfade !== undefined) {
+					player.setRules(resolvePlaybackRules(playlist));
+				}
+				this.#optionsSync.schedule({ kind: 'playlist', id: playlist.id }, { title: playlist.title, gain: playlist.gain, crossfade: playlist.crossfade });
 				this.#events.emit({ type: 'playlist.changed', playlist });
 				return;
 			}
@@ -322,13 +327,13 @@ export class Soundboard {
 	}
 
 	/**
-	 * Like `customizeSound`, for a playlist: a new gain reaches its playing and fading tracks at once. Saving is reported
-	 * with `playlist.saved` or `playlist.saveFailed`.
+	 * Like `customizeSound`, for a playlist: a new gain reaches its playing and fading tracks at once, and a new
+	 * crossfade is used from the next change of track. Saving is reported with `playlist.saved` or `playlist.saveFailed`.
 	 * @param {string} playlistId
-	 * @param {ItemOptions} changes
+	 * @param {ItemOptions} changes `crossfade` in seconds, from 0 to MAX_CROSSFADE
 	 */
-	customizePlaylist(playlistId, { title, gain }) {
-		this.dispatch({ type: 'playlist.customize', playlistId, title, gain });
+	customizePlaylist(playlistId, { title, gain, crossfade }) {
+		this.dispatch({ type: 'playlist.customize', playlistId, title, gain, crossfade });
 	}
 
 	/** @returns {LibraryJson | null} null until started */

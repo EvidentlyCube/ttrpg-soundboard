@@ -282,11 +282,24 @@ describe('Soundboard', () => {
 			assert.deepEqual(soundboard.getLibrary()?.playlists.map((playlist) => playlist.title), ['Tavern', 'Zulu']);
 		});
 
+		it('uses a new crossfade for the next change of track, and saves it', async () => {
+			const { soundboard, engine, api, advance } = await started();
+			soundboard.togglePlaylist('Combat');
+			await advance(1);
+			soundboard.customizePlaylist('Combat', { crossfade: 2 });
+			soundboard.nextTrack('Combat');
+			const [old, fresh] = engine.voices;
+			assert.deepEqual(old.gainRamps, [[0, 2]]);
+			assert.deepEqual(fresh.gainRamps, [[0, 0], [1, 2]]);
+			await advance(0.5);
+			assert.equal(api.playlistSaves.at(-1)?.options.crossfade, 2);
+		});
+
 		it('saves debounced and reports it saved, or failed', async () => {
 			const { soundboard, api, clock, settle, eventsOf } = await started();
 			soundboard.customizePlaylist('Tavern', { gain: 2 });
 			clock.advance(500);
-			assert.deepEqual(api.playlistSaves, [{ playlistId: 'Tavern', options: { title: 'Tavern', gain: 2 }, keepalive: false }]);
+			assert.deepEqual(api.playlistSaves, [{ playlistId: 'Tavern', options: { title: 'Tavern', gain: 2, crossfade: 0 }, keepalive: false }]);
 			await settle();
 			assert.deepEqual(eventsOf('playlist.saved'), [{ type: 'playlist.saved', playlistId: 'Tavern' }]);
 

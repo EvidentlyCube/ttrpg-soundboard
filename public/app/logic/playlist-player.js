@@ -239,6 +239,14 @@ export class PlaylistPlayer {
 	}
 
 	/**
+	 * Replaces the rules, for example after the crossfade was customized. They apply from the next change of track.
+	 * @param {Readonly<PlaybackRules>} rules
+	 */
+	setRules(rules) {
+		this.#rules = rules;
+	}
+
+	/**
 	 * @param {number} index
 	 * @param {TransitionTiming} timing
 	 */

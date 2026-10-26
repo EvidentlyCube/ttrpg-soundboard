@@ -19,6 +19,7 @@ function playlistOf(count, { gain = 1, trackGains = [] } = {}) {
 		id: 'Combat',
 		title: 'Combat',
 		gain,
+		crossfade: 0,
 		tracks: Array.from({ length: count }, (_, i) => ({ id: `Combat/${i}.mp3`, title: `Track ${i}`, format: 'mp3', size: 1000, gain: trackGains[i] ?? 1, duration: 10, url: `/t${i}` })),
 	};
 }
@@ -442,6 +443,15 @@ describe('PlaylistPlayer', () => {
 	});
 
 	describe('fades (future rules)', () => {
+		it('uses new rules from the next change of track', () => {
+			const { player, engine, advance } = setup();
+			player.play();
+			advance(1);
+			player.setRules({ ...DEFAULT_PLAYBACK_RULES, crossfade: 3 });
+			player.next();
+			assert.deepEqual(engine.voices[0].gainRamps, [[0, 3]]);
+		});
+
 		it('fades the old track out and the new one in on a default change', () => {
 			const { player, engine, advance } = setup({ rules: { crossfade: 2 } });
 			player.play();

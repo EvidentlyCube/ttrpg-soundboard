@@ -160,6 +160,7 @@ describe('server', () => {
 					id: 'Combat',
 					title: 'Combat',
 					gain: 1,
+					crossfade: 0,
 					tracks: [{
 						id: 'Combat/Zażółć ♪ #1.ogg',
 						title: 'Zażółć ♪ #1.ogg',
@@ -259,6 +260,7 @@ describe('server', () => {
 				[{ title: '' }, /"title" must be a non-empty string/],
 				[{ gain: -1 }, /"gain" must be a number from 0 to 4/],
 				[{ volume: 1 }, /Unknown option "volume"/],
+				[{ crossfade: 1 }, /Unknown option "crossfade"/],
 			];
 			for (const [body, message] of cases) {
 				const response = await patchSound('Boom.mp3', body);
@@ -291,11 +293,11 @@ describe('server', () => {
 		}
 
 		it('saves a change to the playlist options file and returns the playlist with its tracks', async () => {
-			const response = await patchPlaylist('Combat', { title: 'Fight', gain: 1.5 });
+			const response = await patchPlaylist('Combat', { title: 'Fight', gain: 1.5, crossfade: 3 });
 			assert.equal(response.status, 200);
 			const playlist = await json(response);
-			assert.deepEqual({ ...playlist, tracks: playlist.tracks.length }, { id: 'Combat', title: 'Fight', gain: 1.5, tracks: 1 });
-			assert.deepEqual(JSON.parse(await readFile(join(musicRoot, 'Combat.json'), 'utf8')), { title: 'Fight', includedSubdirectories: [], gain: 1.5 });
+			assert.deepEqual({ ...playlist, tracks: playlist.tracks.length }, { id: 'Combat', title: 'Fight', gain: 1.5, crossfade: 3, tracks: 1 });
+			assert.deepEqual(JSON.parse(await readFile(join(musicRoot, 'Combat.json'), 'utf8')), { title: 'Fight', includedSubdirectories: [], gain: 1.5, crossfade: 3 });
 			assert.equal((await json(await get('/api/library'))).playlists[0].title, 'Fight');
 		});
 
