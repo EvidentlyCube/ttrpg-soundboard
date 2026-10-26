@@ -105,16 +105,18 @@ Sound or track options (`Explosion.mp3.json`)
 { "title": "Big Explosion", "gain": 0.5957 }
 ```
 - `title` is optional; without it the default title is used (§2.4).
-- `gain` is optional and defaults to `1`. It is the item's own volume as the linear multiplier a Web Audio `GainNode` takes: `1` plays the file as recorded, `2` doubles the amplitude (about +6 dB), `0` is silent. The UI shows it in decibels (§6.4). It is deliberately not called `volume`, because the volumes in `.soundboard` are slider positions, a different thing. Sounds use it; tracks accept it, but playlists don't apply it yet ([roadmap](ROADMAP.md)).
+- `gain` is optional and defaults to `1`. It is the item's own volume as the linear multiplier a Web Audio `GainNode` takes: `1` plays the file as recorded, `2` doubles the amplitude (about +6 dB), `0` is silent. The UI shows it in decibels (§6.4). It is deliberately not called `volume`, because the volumes in `.soundboard` are slider positions, a different thing. A track's `gain` is applied together with its playlist's (§6.4); there is no UI for it yet ([roadmap](ROADMAP.md)).
 - The app writes `gain` rounded to 4 decimal places.
 
 Playlist options (`Combat.json`)
 ```json
 {
 	"title": "Combat",
+	"gain": 0.8,
 	"includedSubdirectories": ["Boss", "Boss/Phase 2"]
 }
 ```
+- `gain` means the same as for sounds and tracks, and applies to the whole playlist.
 - `includedSubdirectories` lists paths relative to the playlist directory, using `/`. Every depth is listed explicitly.
 - Listed directories that no longer exist are ignored. They are not removed.
 
@@ -203,7 +205,7 @@ Bootstrap reports how many options files it created or updated and how many play
 
 ```js
 Library   { root, playlists: Playlist[], sounds: AudioFile[], files: Map<id, AudioFile> }
-Playlist  { id, title, tracks: AudioFile[], includedSubdirectories: string[] }
+Playlist  { id, title, gain, tracks: AudioFile[], includedSubdirectories: string[] }
 AudioFile { id /* root-relative POSIX path */, title, format: 'mp3'|'ogg', size, gain, absolutePath }
 Settings  { volumes: { master, music, sfx } }   // held by SettingsStore, saved to .soundboard
 ```
@@ -211,6 +213,7 @@ Settings  { volumes: { master, music, sfx } }   // held by SettingsStore, saved 
 - `playlists` contains only non-empty playlists, sorted by title; `sounds` are sorted by title; tracks keep path order (§2.2).
 - `files` indexes every sound and track by id. It is the only list of files the server may stream.
 - `LibraryEditor` changes the library while the app runs. `updateSound(id, { title?, gain? })` validates the change with the options file rules (§2.3), rejects unknown keys, trims the title, and rounds the gain. It then merges the change into the sound's options file (read, merge, atomic write, unknown keys kept), and only once that succeeded updates the `AudioFile` in place and sorts `sounds` again. Writes to one options file run one after another in the order they were requested, so the file always ends with the newest values; a failed write doesn't block later ones. An id that isn't a sound (including a track id) is an `UnknownSoundError`.
+- `updatePlaylist(id, { title?, gain? })` does the same for a playlist's options file (`<directory>.json` in the root), leaving its `includedSubdirectories` alone, and sorts `playlists` again after a rename. An unknown id is an `UnknownPlaylistError`.
 - `SettingsStore` keeps the settings in memory and writes them back to `.soundboard` with the same read-merge-write and atomic rename as the options files (§2.3). Writes are **serialized**: one in flight at a time, and changes made meanwhile are written together by one follow-up write, so the file always ends with the newest values.
 
 ### 5.2 HTTP API (`src/http/`, built on `node:http`)
@@ -224,6 +227,7 @@ The server knows nothing about playback state.
 | GET | `/api/settings` | `{ "volumes": { "master": 1, "music": 0.8, "sfx": 1 } }` |
 | PUT | `/api/settings/volumes` | Body `{ master?, music?, sfx? }` (numbers in `0..1`). Merged into the settings and saved; returns the full settings. `400` for invalid JSON, a non-object, an out-of-range value or an unknown key. `413` for bodies over 16 KB. |
 | PATCH | `/api/sounds/<encoded id>` | Body `{ title?, gain? }`. Saved through `LibraryEditor` (§5.1); returns the updated sound in the `/api/library` format. `400` for invalid JSON, a non-object, an unknown key, an empty title or an out-of-range gain. `404` when the id isn't a sound. `413` for bodies over 16 KB. |
+| PATCH | `/api/playlists/<encoded id>` | The same for a playlist (`LibraryEditor.updatePlaylist`); returns the playlist with its tracks in the `/api/library` format. |
 | GET, HEAD | `/media/<encoded id>` | The audio file, streamed |
 
 - API responses are JSON with `Cache-Control: no-store`. Errors are `{ "error": "message" }`.
@@ -234,7 +238,7 @@ The server knows nothing about playback state.
 {
 	"version": 1,
 	"playlists": [
-		{ "id": "Combat", "title": "Combat", "tracks": [
+		{ "id": "Combat", "title": "Combat", "gain": 0.8, "tracks": [
 			{ "id": "Combat/01 Battle.mp3", "title": "Battle", "format": "mp3", "size": 4194304, "gain": 1, "url": "/media/Combat/01%20Battle.mp3" }
 		] }
 	],
@@ -276,7 +280,7 @@ UI layer (DOM)  ──commands──▶  Soundboard (logic facade)  ──▶  A
 - `public/app/logic/**` **never touches** `window`, `document`, audio APIs or Node APIs. Everything it needs is injected through ports, whose types live in `public/app/logic/ports.js`:
   - the `AudioEngine` (§6.3);
   - a `Clock` (`setTimeout`, `clearTimeout`, `setInterval`, `clearInterval`);
-  - a `BackendApi` (`fetchLibrary()`, `fetchSettings()`, `saveVolumes(volumes, { keepalive })`, `saveSoundOptions(soundId, { title, gain }, { keepalive })`);
+  - a `BackendApi` (`fetchLibrary()`, `fetchSettings()`, `saveVolumes(volumes, { keepalive })`, `saveSoundOptions(soundId, { title, gain }, { keepalive })`, `savePlaylistOptions(playlistId, { title, gain }, { keepalive })`);
   - a `Logger` (`warn`, `error`).
 
   Node imports and tests this code directly; the type-checker and ESLint enforce the boundary (§10.1).
@@ -291,7 +295,7 @@ UI layer (DOM)  ──commands──▶  Soundboard (logic facade)  ──▶  A
 start() → Promise<void>                   // from the splash click (§9.0): unlock audio synchronously, then fetch
                                           // library + settings once, apply volumes, emit 'app.ready' or 'app.startFailed'
 unlockAudio()                             // resume audio if the browser suspended it; must run inside a user gesture
-flushSettings()                           // save pending volume and sound changes now, with keepalive (called on 'pagehide')
+flushSettings()                           // save pending volume, sound and playlist changes now, with keepalive (on 'pagehide')
 
 // sounds (no transitions; sounds have no rules)
 playSound(soundId)
@@ -309,6 +313,8 @@ jumpToTrack(playlistId, trackIndex, { transition })
 seek(playlistId, seconds)
 pausePlaylist(playlistId)
 resumePlaylist(playlistId)
+customizePlaylist(playlistId, { title?, gain? })  // applies at once, also to playing and fading tracks; saves 500 ms later
+flushPlaylistOptions(playlistId)          // save that playlist's pending change now (its dialog closed)
 
 // volume (value is the slider position, 0..1, clamped)
 setVolume(bus, value)                     // bus: 'master' | 'music' | 'sfx'
@@ -341,6 +347,9 @@ on(type, handler) → unsubscribe, off(type, handler)
 | `sound.changed` | `{ sound }`, the sound with its new title or gain, right after `customizeSound` |
 | `sound.saved` | `{ soundId }`, once every change to that sound has been saved |
 | `sound.saveFailed` | `{ soundId, message }`; the change stays in effect and is saved again with the next one |
+| `playlist.changed` | `{ playlist }`, the playlist (with its tracks) with its new title or gain, right after `customizePlaylist` |
+| `playlist.saved` | `{ playlistId }`, once every change to that playlist has been saved |
+| `playlist.saveFailed` | `{ playlistId, message }`, as for sounds |
 | `playlist.stateChanged` | `{ playlistId, state, trackIndex, track, duration }` |
 | `playlist.progress` | `{ playlistId, position, duration }`, every 250 ms while playing and right after a seek |
 | `playlist.error` | `{ playlistId, trackId, message }` |
@@ -390,12 +399,14 @@ Volumes are saved in `.soundboard` (§2.3), so they survive reloads and restarts
 - `flushSettings()` sends a pending change straight away with `keepalive: true`, so closing the tab mid-drag still saves it.
 - A failed save logs a warning; the next change saves the full set again. Volume itself keeps working.
 
-**Sound volume.** Each sound has its own `gain` (§2.3), set in its Customize dialog (§9.7).
+**Item volume.** Each sound, playlist and track has its own `gain` (§2.3). Sounds and playlists set it in their Customize dialogs (§9.7).
 - **Range and display.** Gain runs from `0` (silent) to `MAX_GAIN = 4` (+12.04 dB); the server enforces the same limit. People see decibels: `dB = 20 · log10(gain)`, `gain = 10^(dB / 20)`, and gain 0 is shown as `−∞ dB`. Above gain 1 a loud file can clip; that is allowed, and the widget shows it in orange.
-- **Applying.** `customizeSound` changes the browser's library at once (`LibraryModel.updateSound`, which keeps sounds sorted with the same order as the server, §2.2) and `SoundPlayer.setGain` applies the gain to every playing instance and to later ones. An empty title or a gain out of range is an `InvalidCommandError`.
-- **Saving.** `OptionsSync` saves per sound like the volume save: 500 ms after the last change, one request per sound in flight, always the full `{ title, gain }`, so a failed save is repaired by the next one. `flushSoundOptions` sends one sound's pending change now (after any save of it in flight); `flushSettings` sends everything pending with `keepalive`.
+- **Sounds.** Every instance plays at the sound's gain.
+- **Playlists.** Every playlist voice plays at `playlist gain × track gain`, through the voice's own gain stage (§6.3), so no extra node per playlist is needed.
+- **Applying.** `customizeSound` and `customizePlaylist` change the browser's library at once (`LibraryModel.updateSound` / `updatePlaylist`, which keep the items sorted with the same order as the server, §2.2). `SoundPlayer.setGain` applies a sound's gain to every playing instance and to later ones; `PlaylistPlayer.setGain` applies a playlist's gain to its current voice, to voices still fading out, and to later ones. An empty title or a gain out of range is an `InvalidCommandError`.
+- **Saving.** `OptionsSync` saves per item like the volume save: 500 ms after the last change, one request per item in flight, always the full `{ title, gain }`, so a failed save is repaired by the next one. Its queues are keyed by kind and id, so a sound and a playlist with the same id never share one. `flushSoundOptions` / `flushPlaylistOptions` send one item's pending change now (after any save of it in flight); `flushSettings` sends everything pending with `keepalive`.
 
-**Extension point:** per-playlist and per-track volume would multiply into each playlist voice's own gain ([roadmap](ROADMAP.md)).
+**Extension point:** a per-track volume control only needs UI, since the track's `gain` is already applied ([roadmap](ROADMAP.md)).
 
 ---
 
@@ -446,6 +457,7 @@ This is where the race-condition risk sits. The design rules:
 - Track ends naturally: advance to the next track. With the default `loop: true` it wraps to the first track. If the strategy returns no next track, the playlist stops.
 - Track error (404, decode failure, rejected `play()`), or a track in a format this browser cannot play: send `playlist.error` and skip to the next track. Unplayable tracks get no voice at all. After `tracks.length` errors in a row (reset whenever a track loads), the playlist stops instead of looping over broken files.
 - Starting a playlist always begins at the strategy's first track.
+- Volume: each voice starts at `playlist gain × track gain`. `setGain(gain)` applies a new playlist gain to the current voice and to the retiring ones, each with its own track's gain. Fades use a separate gain stage (§6.3), so this never disturbs one.
 
 ### 8.2 Extension points
 
@@ -527,7 +539,7 @@ Browsers only allow audio to start inside a user gesture, so the app starts behi
 - A **sound with live instances** is highlighted and shows a small ■ stop button in its top-right corner. That button is a sibling of the tile, not inside it, so pressing it calls `stopSound` and never also plays the sound.
 - Tiles that can't play (an unsupported format, or a playlist with no playable track) are disabled, with a tooltip explaining why.
 - A playlist or sound error flashes a red ring on its tile for 2 seconds.
-- A sound tile shows a new title as soon as `sound.changed` arrives, but tiles are only moved into the new sorted order when the Customize dialog closes, so a tile never jumps around while it is being renamed.
+- Sound and playlist tiles show a new title as soon as `sound.changed` or `playlist.changed` arrives, but tiles are only moved into the new sorted order when the Customize dialog closes, so a tile never jumps around while it is being renamed. Player bars show a new playlist title at once, too, and keep their start order.
 - The footer shows **playlists only**. Sound effects never create a player bar.
 - The footer is **always visible**, so the layout doesn't shift when music starts or stops. It is at least one row of player bars tall; while no playlist is active, that row shows a muted "No playlist playing". Player bars sit in a three-column grid, in the order the playlists were started. The footer grows to at most two rows of bars; beyond that it scrolls vertically.
 - Color tokens are defined once, in Tailwind's `@theme` (§9.6).
@@ -568,7 +580,7 @@ One shared `Overlay` shows the context menus and the track list popover; opening
 | Next (Instant) | `nextTrack('instant')`; enabled only while active |
 | Stop | `stopPlaylist('default')`; enabled only while active |
 | Stop (Instant) | `stopPlaylist('instant')`; enabled only while active |
-| Customize | disabled (stub) |
+| Customize | opens the playlist's Customize dialog (§9.7) |
 
 "Active" means `loading`, `playing` or `paused`. With the current all-zero rules, each plain item behaves exactly like its "(Instant)" twin. Separators divide the groups.
 
@@ -604,13 +616,17 @@ UI components extend `Component` (`ui/component.js`): `render()` builds the elem
 **Dialog** (`ui/dialog.js`) is a centered modal shared by the Customize dialogs.
 - It has a title, a body and a × button. Every change inside applies at once, so nothing can be lost by closing: the × button, Esc, and a click that both starts and ends on the backdrop all close it. Esc is left to a popup when one is open on top.
 - It sits above the board and the footer, but below popups (§9.3) and the splash (§9.0).
-- When the sound dialog closes, the board saves that sound's pending change at once (`flushSoundOptions`) and moves the sound tiles into their sorted order.
+- When a Customize dialog closes, the board saves that item's pending change at once (`flushSoundOptions` / `flushPlaylistOptions`) and moves that kind of tile into sorted order.
 
-**The sound dialog** (`ui/sound-editor.js`), opened from the sound menu:
-- **Title.** A text field, focused on open, with the file name below it. Every edit is sent with `customizeSound`. While the field is empty or only spaces, it is marked invalid, nothing is sent, the hint explains that the last title is kept, and the tile keeps it.
+**Shared parts** (`ui/customize-parts.js`), from which both dialogs are built:
+- **Title.** A text field, focused on open, with a hint below it. Every edit is sent at once. While the field is empty or only spaces, it is marked invalid, nothing is sent, the hint explains that the last title is kept, and the tile keeps it.
 - **Volume.** The gain widget on `ITEM_SCALE`.
-- **Play / Stop.** Plays the sound with `playSound`, or stops all of its instances. It follows `sound.activeChanged`, so it also reflects presses on the tile.
-- **Status.** In the corner, without text: a spinner after a change, a checkmark on `sound.saved`. A failure is shown as a red message, on `sound.saveFailed`.
+- **Play / Stop.** A button showing whether the item is playing.
+- **Status.** In the corner, without text: a spinner after a change, a checkmark once saved. A failure is shown as a red message.
+
+**The sound dialog** (`ui/sound-editor.js`), opened from the sound menu: the title (hint: the file name), the volume, Play / Stop (`playSound`, or stopping all instances; it follows `sound.activeChanged`, so it also reflects presses on the tile) and the status (`sound.saved`, `sound.saveFailed`).
+
+**The playlist dialog** (`ui/playlist-editor.js`), opened from the playlist menu: the title (hint: `Folder: <directory>`), the volume, Play / Stop (`togglePlaylist`, like a tile click; it follows `playlist.stateChanged`) and the status (`playlist.saved`, `playlist.saveFailed`). Later playlist settings add their sections here.
 
 **Gain widget** (`ui/gain-control.js`), used in the dialogs and for the header volumes. It looks like the volume control of many media players, `h-8` tall:
 ```
@@ -658,7 +674,7 @@ public/
 		ui/         app.js  component.js  dom.js  icons.js  format.js  menus.js  position.js
 		            splash.js  overlay.js  context-menu.js  track-list.js  tile-grid.js
 		            playlist-tile.js  sound-tile.js  player-dock.js  player-bar.js  volume-controls.js
-		            dialog.js  sound-editor.js  gain-control.js  gain-scale.js
+		            dialog.js  customize-parts.js  sound-editor.js  playlist-editor.js  gain-control.js  gain-scale.js
 test/
 	backend/    cli/  http/  library/  metadata/
 	frontend/   logic tests, backend-api.test.js, ui/ (pure UI helpers)

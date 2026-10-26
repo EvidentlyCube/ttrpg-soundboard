@@ -29,41 +29,7 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## Proposals
 
-### 2. Customize dialog for playlists
-
-**Goal.** "Customize" in a playlist's context menu opens the same kind of dialog as for sounds: rename the playlist and set its own volume with the gain widget, boost included. As with sounds, every change applies at once, also to a playlist that is playing, and is saved 500 ms later. The dialog is built so the later playlist features (crossfade, fades, order, the track list) can add sections to it.
-
-**Design changes.**
-
-- **§2.3 File formats.** Playlist options (`Combat.json`) gain the optional `gain`, with the same meaning, default (`1`), range (`0` to `4`), rounding and validation as for sounds. `includedSubdirectories` is untouched by the dialog.
-- **§5.1 Domain model.** `Playlist` gains `gain`. `LibraryEditor` gets `updatePlaylist(id, { title?, gain? })`, sharing validation, normalization and the per-file write queue with `updateSound`; it re-sorts `playlists` after a rename. An unknown id is an `UnknownPlaylistError`.
-- **§5.2 HTTP API.** `/api/library` includes `gain` for each playlist. New: `PATCH /api/playlists/<encoded id>`, the same contract as `PATCH /api/sounds/<id>`, returning the playlist (with its tracks) in the `/api/library` format.
-- **§6.1 Facade API.**
-  - `customizePlaylist(playlistId, { title?, gain? })`: applies at once and saves debounced. `flushPlaylistOptions(playlistId)` saves now. `flushSettings()` also flushes playlists.
-  - `BackendApi` gains `savePlaylistOptions(playlistId, options, { keepalive })`.
-  - `OptionsSync` keys its queue by kind and id (`sound` or `playlist`), so a sound and a playlist never share a queue.
-- **§6.2 Events.** `playlist.changed` `{ playlist }`, `playlist.saved` `{ playlistId }`, `playlist.saveFailed` `{ playlistId, message }`, mirroring the sound events.
-- **§6.4 Volume.** Playlist volume: each playlist voice plays at `playlist gain × track gain` through its own gain stage (§6.3). No extra node per playlist is needed. A change is applied to the current voice and to any voices still fading out, smoothed like every gain change; it never interrupts a fade.
-- **§8 PlaylistPlayer.** New voices start at that gain; `setGain(gain)` applies a new playlist gain to every voice the playlist owns.
-- **§9.1, §9.2.** Playlist tiles and player bars show a new title at once. The playlist grid re-sorts when the dialog closes, like the sound grid. The footer keeps its start order, so a rename never moves a bar.
-- **§9.3.** "Customize" in the playlist menu opens the dialog.
-- **§9.7.** The sound dialog's parts (title field with its empty-title rule, gain widget, play/stop button, save status) become shared pieces, used by both dialogs:
-  - **Playlist dialog:** title (with "Folder: Combat" below it), volume, a play/stop button that toggles the playlist like a tile click, and the save status.
-
-**Open questions.**
-
-1. **Apply the track `gain` now as well?** Track options files already accept `gain` (§2.3), but playlists ignore it. *Recommended: yes.* Multiplying it in is one line here. Feature 12 (track volume) then only adds the UI.
-2. **Play/stop button in the playlist dialog?** *Recommended: yes, toggling like a tile click* (the `'default'` transition), so the volume can be tuned while listening. The track list with per-track buttons comes in features 5 and 10.
-3. **Separate playlist events rather than shared generic ones** (`item.changed` and so on)? *Recommended: separate*, matching the existing per-kind events, so a handler never has to check what kind of item it got.
-
-**Plan.**
-
-1. **Options file and library format.** `gain` in playlist validation, in the server's `Playlist` and in `/api/library`. *Tests:* validation, bootstrap rejecting a bad value, the library JSON.
-2. **Write API.** `LibraryEditor.updatePlaylist` (sharing the sound code), keeping `includedSubdirectories` and unknown keys, re-sorting, and `PATCH /api/playlists/<id>` with its status codes. *Tests:* editor and real server, including a playlist id with spaces and non-ASCII characters.
-3. **Playlist gain in playback.** `PlaylistPlayer` starts voices at `playlist gain × track gain` and `setGain` reaches the current and the retiring voices. *Tests:* new voices, a gain change during a crossfade-style handover with non-zero rules, track gains, and the randomized invariant still holding.
-4. **Facade and saving.** `customizePlaylist`, `LibraryModel.updatePlaylist` (sorted), `OptionsSync` keyed by kind, `savePlaylistOptions` in the port, `HttpBackendApi` and the fake, the three events, `flushPlaylistOptions`. *Tests:* as for sounds, plus a sound and a playlist with the same id saving independently.
-5. **UI.** Shared dialog pieces, the playlist dialog, the enabled menu item, titles updating in tiles and bars, and the playlist grid re-sorting on close. *Tests:* manual checklist in `TESTING.md`, and a headless Chromium run.
-6. **Design update.** `DESIGN.md` in its own commit; then this proposal and its backlog entry are removed.
+None yet.
 
 ---
 
@@ -74,13 +40,6 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 These are the next features, in roughly the order they will be built. Each will get its own proposal when its turn comes. **Decided** lists the owner's answers already given; the notes list what else is known and the questions still to settle.
 
 **Decided for all of them.** Customization changes apply immediately and are saved with a 500 ms debounce, as the sound Customize dialog does (DESIGN.md §6.4, §9.7). Re-sorting on screen waits until the dialog closes. Playback state is never remembered across a page reload, so F5 always gives a clean start.
-
-#### 2. Customize dialog for playlists
-
-Rename the playlist and set its volume, using the dialog and gain widget of the sound dialog.
-
-- **Seam:** the shared `Dialog` and gain widget (DESIGN.md §9.7), the `PATCH` pattern of `LibraryEditor` (`PATCH /api/playlists/<id>`, written to `<dir>.json`), `OptionsSync`, and each voice's own gain (§6.3).
-- **Notes:** the playlist gain can simply be multiplied into each voice's gain (`playlist gain × track gain`), with no extra gain node per playlist. Changing it while playing updates the current voice and any voices fading out. Tracks are sorted by path, not title (§2.2), so renaming a track never moves it.
 
 #### 3. Playlist crossfade
 
@@ -106,7 +65,8 @@ A fade-in used only when the playlist starts, and a fade-out used only when it s
 
 Every track as an accordion, with one open at a time. The only setting for now is the track's title.
 
-- **Seam:** `PATCH /api/tracks/<id>`; track ids contain `/`, so the whole rest of the path is the id, encoded per segment as the media URLs already are.
+- **Seam:** the playlist dialog (DESIGN.md §9.7) and `PATCH /api/tracks/<id>`; track ids contain `/`, so the whole rest of the path is the id, encoded per segment as the media URLs already are.
+- **Notes:** tracks are sorted by path, not title (§2.2), so renaming a track never moves it.
 
 #### 6. Sound start and end points
 
@@ -168,7 +128,7 @@ As for sounds (feature 6), per track, shown on or below the track's progress bar
 
 Per-track volume in the track's accordion.
 
-- **Seam:** each voice's own gain (DESIGN.md §6.3) and the `gain` that track options files already accept (§2.3), multiplied by the playlist gain from feature 2.
+- **Seam:** only UI is needed: a track's `gain` from its options file is already applied, multiplied by the playlist's (DESIGN.md §6.4). Saving it needs the track write API from feature 5.
 
 #### 13. Waveform
 
