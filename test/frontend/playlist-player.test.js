@@ -504,19 +504,44 @@ describe('PlaylistPlayer', () => {
 			assert.equal(old.stopped, true);
 		});
 
-		it('plans again after a seek, and crossfades at once from within the last seconds', () => {
+		it('plans again after a seek', () => {
 			const { engine, advance, player } = playing();
 			player.seek(5);
 			advance(2.99);
 			assert.equal(engine.voices.length, 1);
 			advance(0.01);
 			assert.equal(engine.voices.length, 2);
+		});
 
+		it('seeks past the crossfade point only to the point itself, which starts the whole crossfade at once', () => {
+			const { engine, player, events } = playing();
+			player.seek(9.5);
+			const [old, fresh] = engine.voices;
+			assert.equal(old.position, 8);
+			assert.deepEqual(old.gainRamps, [[0, 2]], 'the full overlap, not the half second that was asked for');
+			assert.deepEqual(fresh.gainRamps, [[0, 0], [1, 2]]);
+			const progress = events.filter((event) => event.type === 'playlist.progress');
+			assert.ok(progress.some((event) => event.type === 'playlist.progress' && event.position === 8), 'reports where it landed');
+		});
+
+		it('clamps a seek made while loading once the track has loaded', () => {
+			const { engine, player, advance } = setup({ rules: { crossfade: 2 } });
+			player.play();
+			player.seek(9.5);
 			advance(0.1);
-			player.seek(9);
-			assert.equal(engine.voices.length, 3);
-			assert.deepEqual(engine.voices[1].gainRamps.at(-1), [0, 1], 'the fade-out fits in the 1 s left');
-			assert.deepEqual(engine.voices[2].gainRamps.at(-1), [1, 2]);
+			assert.equal(engine.voices[0].position, 8);
+			assert.equal(engine.voices.length, 2, 'the crossfade starts from there');
+		});
+
+		it('lets a seek before the crossfade point through, and does not clamp without a crossfade', () => {
+			const before = playing();
+			before.player.seek(7.5);
+			assert.equal(before.engine.voices[0].position, 7.5);
+			assert.equal(before.engine.voices.length, 1);
+
+			const plain = playing({ rules: { crossfade: 0 } });
+			plain.player.seek(9.5);
+			assert.equal(plain.engine.voices[0].position, 9.5);
 		});
 
 		it('waits while paused and plans again on resume', () => {

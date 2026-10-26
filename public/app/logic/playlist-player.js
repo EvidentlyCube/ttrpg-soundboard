@@ -200,7 +200,7 @@ export class PlaylistPlayer {
 			return;
 		}
 		if (current.loaded) {
-			current.voice.seek(Math.min(Math.max(0, seconds), current.voice.duration));
+			current.voice.seek(this.#seekTarget(current, seconds));
 		} else {
 			current.pendingSeek = Math.max(0, seconds);
 		}
@@ -303,6 +303,17 @@ export class PlaylistPlayer {
 		return Math.max(0, duration - this.#overlap(current, next));
 	}
 
+	/**
+	 * Where a seek in a loaded track lands: within the track, and never past the crossfade point, so seeking towards the
+	 * end starts the whole crossfade instead of a squeezed one (DESIGN.md §8.4).
+	 * @param {CurrentVoice} current
+	 * @param {number} seconds
+	 */
+	#seekTarget(current, seconds) {
+		const limit = this.#crossfadePoint(current) ?? current.voice.duration;
+		return Math.min(Math.max(0, seconds), limit);
+	}
+
 	/** @param {CurrentVoice} current */
 	#timeLeft(current) {
 		const { duration, position } = current.voice;
@@ -392,7 +403,7 @@ export class PlaylistPlayer {
 		current.loaded = true;
 		this.#consecutiveErrors = 0;
 		if (current.pendingSeek !== null) {
-			current.voice.seek(Math.min(current.pendingSeek, current.voice.duration));
+			current.voice.seek(this.#seekTarget(current, current.pendingSeek));
 			current.pendingSeek = null;
 		}
 		if (this.#state === 'loading') {
