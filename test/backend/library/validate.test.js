@@ -92,6 +92,14 @@ describe('validatePlaylistOptions', () => {
 		assert.deepEqual(validatePlaylistOptions({ gain: '1' }), ['"gain" must be a number from 0 to 4']);
 	});
 
+	it('accepts a fade-in and fade-out from 0 to 30 seconds and rejects others', () => {
+		assert.deepEqual(validatePlaylistOptions({ fadeIn: 0, fadeOut: 30 }), []);
+		assert.deepEqual(validatePlaylistOptions({ fadeIn: -1, fadeOut: '2' }), [
+			'"fadeIn" must be a number of seconds from 0 to 30',
+			'"fadeOut" must be a number of seconds from 0 to 30',
+		]);
+	});
+
 	it('accepts a crossfade from 0 to 30 seconds and rejects others', () => {
 		for (const crossfade of [0, 2.5, 30]) {
 			assert.deepEqual(validatePlaylistOptions({ crossfade }), [], String(crossfade));

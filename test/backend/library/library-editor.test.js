@@ -204,6 +204,15 @@ describe('LibraryEditor.updatePlaylist', () => {
 		assert.equal((await readOptions('Combat')).crossfade, 2.5);
 	});
 
+	it('saves fades, rounded to 2 decimals, and only for playlists', async () => {
+		const editor = new LibraryEditor(library());
+		const updated = await editor.updatePlaylist('Combat', { fadeIn: 1.234, fadeOut: 5 });
+		assert.deepEqual([updated.fadeIn, updated.fadeOut], [1.23, 5]);
+		const saved = await readOptions('Combat');
+		assert.deepEqual([saved.fadeIn, saved.fadeOut], [1.23, 5]);
+		await assert.rejects(editor.updateSound('Alpha.mp3', /** @type {any} */ ({ fadeIn: 2 })), /Unknown option "fadeIn"/);
+	});
+
 	it('rejects a crossfade out of range, and a crossfade for a sound', async () => {
 		const editor = new LibraryEditor(library());
 		await assert.rejects(editor.updatePlaylist('Combat', { crossfade: 31 }), /"crossfade" must be a number of seconds from 0 to 30/);

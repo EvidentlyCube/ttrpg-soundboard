@@ -87,12 +87,17 @@ export class LibraryModel {
 	 * @returns {PlaylistJson} the changed playlist
 	 */
 	updatePlaylist(id, changes) {
-		const { crossfade } = changes;
-		if (crossfade !== undefined && !(crossfade >= 0 && crossfade <= MAX_CROSSFADE)) {
-			throw new InvalidCommandError(`Crossfade must be a number of seconds from 0 to ${MAX_CROSSFADE}, got ${crossfade}`);
+		const timings = { crossfade: 'Crossfade', fadeIn: 'Fade-in', fadeOut: 'Fade-out' };
+		const playlist = applyChanges(this.playlist(id), changes);
+		for (const [key, name] of /** @type {[keyof typeof timings, string][]} */ (Object.entries(timings))) {
+			const seconds = changes[key];
+			if (seconds !== undefined) {
+				if (!(seconds >= 0 && seconds <= MAX_CROSSFADE)) {
+					throw new InvalidCommandError(`${name} must be a number of seconds from 0 to ${MAX_CROSSFADE}, got ${seconds}`);
+				}
+				playlist[key] = seconds;
+			}
 		}
-		const changed = applyChanges(this.playlist(id), changes);
-		const playlist = { ...changed, crossfade: crossfade ?? changed.crossfade };
 		this.#playlists.set(id, playlist);
 		this.#json = {
 			...this.#json,

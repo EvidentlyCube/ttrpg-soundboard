@@ -20,7 +20,7 @@ export const DEFAULT_PLAYBACK_RULES = Object.freeze({
 	crossfade: 0,
 });
 
-/** The longest crossfade a playlist may have, in seconds; the server enforces the same limit. */
+/** The longest crossfade, fade-in or fade-out a playlist may have, in seconds; the server enforces the same limit. */
 export const MAX_CROSSFADE = 30;
 
 /**
@@ -30,7 +30,8 @@ export const MAX_CROSSFADE = 30;
  * @returns {Readonly<PlaybackRules>}
  */
 export function resolvePlaybackRules(playlist) {
-	return { ...DEFAULT_PLAYBACK_RULES, crossfade: playlist.crossfade };
+	const { crossfade, fadeIn, fadeOut } = playlist;
+	return { ...DEFAULT_PLAYBACK_RULES, crossfade, fadeIn, fadeOut };
 }
 
 /**

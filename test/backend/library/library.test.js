@@ -118,6 +118,12 @@ describe('buildLibrary', () => {
 		assert.deepEqual(library.playlists.map((entry) => entry.crossfade), [2.5, 0]);
 	});
 
+	it('takes the playlist fades from options, defaulting to 0', () => {
+		const scan = scanOf({ playlists: [playlist('A', [audio('A/1.mp3')], true), playlist('B', [audio('B/1.mp3')])] });
+		const library = buildLibrary(scan, new Map([['/music/A.json', { fadeIn: 1.5, fadeOut: 3 }]]));
+		assert.deepEqual(library.playlists.map((entry) => [entry.fadeIn, entry.fadeOut]), [[1.5, 3], [0, 0]]);
+	});
+
 	it('reads included subdirectories from playlist options', () => {
 		const scan = scanOf({ playlists: [playlist('A', [audio('A/1.mp3')], true), playlist('B', [audio('B/1.mp3')])] });
 		const library = buildLibrary(scan, new Map([['/music/A.json', { includedSubdirectories: ['Boss'] }]]));

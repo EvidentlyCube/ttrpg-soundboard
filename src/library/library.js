@@ -22,6 +22,8 @@ import { sortBy } from './sort.js';
  * @property {string} title
  * @property {number} gain linear multiplier for the whole playlist's volume
  * @property {number} crossfade seconds; 0 is off
+ * @property {number} fadeIn seconds, when the playlist starts; 0 is off
+ * @property {number} fadeOut seconds, when it stops; 0 is off
  * @property {AudioFile[]} tracks in path order
  * @property {string[]} includedSubdirectories
  */
@@ -66,6 +68,8 @@ export function buildLibrary(scan, optionsByPath) {
 					title: options?.title ?? playlist.id,
 					gain: options?.gain ?? 1,
 					crossfade: options?.crossfade ?? 0,
+					fadeIn: options?.fadeIn ?? 0,
+					fadeOut: options?.fadeOut ?? 0,
 					tracks: playlist.tracks.map(toAudioFile),
 					includedSubdirectories: options?.includedSubdirectories ?? [],
 				};

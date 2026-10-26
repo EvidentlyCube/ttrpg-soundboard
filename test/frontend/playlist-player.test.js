@@ -20,6 +20,8 @@ function playlistOf(count, { gain = 1, trackGains = [] } = {}) {
 		title: 'Combat',
 		gain,
 		crossfade: 0,
+		fadeIn: 0,
+		fadeOut: 0,
 		tracks: Array.from({ length: count }, (_, i) => ({ id: `Combat/${i}.mp3`, title: `Track ${i}`, format: 'mp3', size: 1000, gain: trackGains[i] ?? 1, duration: 10, url: `/t${i}` })),
 	};
 }

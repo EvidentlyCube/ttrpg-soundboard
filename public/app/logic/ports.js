@@ -18,7 +18,11 @@
  * @property {string} url
  */
 
-/** @typedef {{ id: string, title: string, gain: number, crossfade: number, tracks: AudioFileJson[] }} PlaylistJson */
+/**
+ * Timings are in seconds; 0 is off.
+ * @typedef {{ id: string, title: string, gain: number, crossfade: number, fadeIn: number, fadeOut: number,
+ * 	tracks: AudioFileJson[] }} PlaylistJson
+ */
 /** @typedef {{ version: number, playlists: PlaylistJson[], sounds: AudioFileJson[] }} LibraryJson */
 
 /**
@@ -79,8 +83,8 @@
  */
 
 /**
- * The options a Customize dialog changes. `crossfade` (seconds) is for playlists only.
- * @typedef {{ title?: string, gain?: number, crossfade?: number }} ItemOptions
+ * The options a Customize dialog changes. The timings (seconds) are for playlists only.
+ * @typedef {{ title?: string, gain?: number, crossfade?: number, fadeIn?: number, fadeOut?: number }} ItemOptions
  */
 
 /**

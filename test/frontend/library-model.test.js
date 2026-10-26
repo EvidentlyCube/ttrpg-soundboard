@@ -84,6 +84,14 @@ describe('LibraryModel', () => {
 			assert.deepEqual(before, exampleLibrary());
 		});
 
+		it('sets the fades, from 0 to 30 seconds', () => {
+			const model = fresh();
+			const playlist = model.updatePlaylist('Combat', { fadeIn: 1, fadeOut: 2 });
+			assert.deepEqual([playlist.fadeIn, playlist.fadeOut], [1, 2]);
+			assert.throws(() => model.updatePlaylist('Combat', { fadeOut: 31 }), new InvalidCommandError('Fade-out must be a number of seconds from 0 to 30, got 31'));
+			assert.throws(() => model.updatePlaylist('Combat', { fadeIn: -1 }), new InvalidCommandError('Fade-in must be a number of seconds from 0 to 30, got -1'));
+		});
+
 		it('sets the crossfade, from 0 to 30 seconds', () => {
 			const model = fresh();
 			assert.equal(model.updatePlaylist('Combat', { crossfade: 4 }).crossfade, 4);

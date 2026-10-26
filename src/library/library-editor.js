@@ -8,12 +8,15 @@ import { isPlainObject, validateAudioOptions, validatePlaylistOptions } from './
 /** @typedef {import('./library.js').AudioFile} AudioFile */
 /** @typedef {import('./library.js').Playlist} Playlist */
 /** @typedef {import('./settings-store.js').FileUpdater} FileUpdater */
-/** @typedef {{ title?: string, gain?: number, crossfade?: number }} OptionChanges */
+/** @typedef {{ title?: string, gain?: number, crossfade?: number, fadeIn?: number, fadeOut?: number }} OptionChanges */
+
+/** @type {readonly ('crossfade' | 'fadeIn' | 'fadeOut')[]} */
+const SECONDS_KEYS = ['crossfade', 'fadeIn', 'fadeOut'];
 
 /** The only options the app itself changes, per kind of item; anything else in a request is rejected. */
 const EDITABLE = {
 	sound: { keys: ['title', 'gain'], validate: validateAudioOptions },
-	playlist: { keys: ['title', 'gain', 'crossfade'], validate: validatePlaylistOptions },
+	playlist: { keys: ['title', 'gain', ...SECONDS_KEYS], validate: validatePlaylistOptions },
 };
 
 /** The id does not belong to a sound in the library. */
@@ -137,8 +140,11 @@ function normalizeChanges(changes, { keys, validate }) {
 	if (typeof changes.gain === 'number') {
 		normalized.gain = Math.round(changes.gain * 10_000) / 10_000;
 	}
-	if (typeof changes.crossfade === 'number') {
-		normalized.crossfade = Math.round(changes.crossfade * 100) / 100;
+	for (const key of SECONDS_KEYS) {
+		const seconds = changes[key];
+		if (typeof seconds === 'number') {
+			normalized[key] = Math.round(seconds * 100) / 100;
+		}
 	}
 	return normalized;
 }
