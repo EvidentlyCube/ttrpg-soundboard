@@ -482,7 +482,7 @@ Browsers only allow an `AudioContext` to start inside a user gesture, so the app
 - A **sound with live instances** shows a small ■ stop button in its top-right corner. That button is a separate element; clicking it calls `stopSound` and does not also trigger a play.
 - Tiles for unplayable formats (for example `.ogg` in an older Safari) are disabled, with a tooltip explaining why.
 - The footer shows **playlists only**. Sound effects never create a player bar.
-- The footer is hidden when no playlist is active. Player bars sit in a CSS grid of `repeat(3, 1fr)`, in the order the playlists were started. The footer's max height is two rows of bars; beyond that it scrolls vertically.
+- The footer is **always visible**, so the layout doesn't shift when music starts or stops. It is at least one row of player bars tall; while no playlist is active, that row shows a muted "No playlist playing". Player bars sit in a CSS grid of `repeat(3, 1fr)`, in the order the playlists were started. The footer grows to at most two rows of bars; beyond that it scrolls vertically.
 - Color tokens are defined once, in Tailwind's `@theme` (§9.6), which exposes them as CSS custom properties on `:root`.
 
 ### 9.2 Player bar
