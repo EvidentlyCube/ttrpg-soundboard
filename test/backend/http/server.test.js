@@ -159,6 +159,7 @@ describe('server', () => {
 				playlists: [{
 					id: 'Combat',
 					title: 'Combat',
+					gain: 1,
 					tracks: [{
 						id: 'Combat/Zażółć ♪ #1.ogg',
 						title: 'Zażółć ♪ #1.ogg',

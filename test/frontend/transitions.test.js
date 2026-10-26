@@ -8,7 +8,7 @@ const FADING_RULES = { ...DEFAULT_PLAYBACK_RULES, fadeIn: 2, fadeOut: 3, crossfa
 describe('playback rules', () => {
 	it('defaults to sequential, looping and no fades', () => {
 		assert.deepEqual(DEFAULT_PLAYBACK_RULES, { order: 'sequential', loop: true, fadeIn: 0, fadeOut: 0, crossfade: 0 });
-		assert.equal(resolvePlaybackRules({ id: 'Combat', title: 'Combat', tracks: [] }), DEFAULT_PLAYBACK_RULES);
+		assert.equal(resolvePlaybackRules({ id: 'Combat', title: 'Combat', gain: 1, tracks: [] }), DEFAULT_PLAYBACK_RULES);
 	});
 
 	it('plans every track to play from start to end', () => {

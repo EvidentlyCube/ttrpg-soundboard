@@ -83,9 +83,14 @@ async function route(request, response, { library, settings, editor, publicDir }
 function toLibraryJson(library) {
 	return {
 		version: LIBRARY_FORMAT_VERSION,
-		playlists: library.playlists.map(({ id, title, tracks }) => ({ id, title, tracks: tracks.map(toFileJson) })),
+		playlists: library.playlists.map(toPlaylistJson),
 		sounds: library.sounds.map(toFileJson),
 	};
+}
+
+/** @param {import('../library/library.js').Playlist} playlist */
+function toPlaylistJson({ id, title, gain, tracks }) {
+	return { id, title, gain, tracks: tracks.map(toFileJson) };
 }
 
 /** @param {import('../library/library.js').AudioFile} file */

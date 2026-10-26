@@ -17,7 +17,7 @@
  * @property {string} url
  */
 
-/** @typedef {{ id: string, title: string, tracks: AudioFileJson[] }} PlaylistJson */
+/** @typedef {{ id: string, title: string, gain: number, tracks: AudioFileJson[] }} PlaylistJson */
 /** @typedef {{ version: number, playlists: PlaylistJson[], sounds: AudioFileJson[] }} LibraryJson */
 
 /**

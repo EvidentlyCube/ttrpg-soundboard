@@ -98,6 +98,12 @@ describe('buildLibrary', () => {
 		assert.deepEqual(library.playlists[0].tracks.map((track) => track.title), ['Zzz Last Alphabetically', '2.mp3']);
 	});
 
+	it('takes the playlist gain from options, defaulting to 1', () => {
+		const scan = scanOf({ playlists: [playlist('A', [audio('A/1.mp3')], true), playlist('B', [audio('B/1.mp3')])] });
+		const library = buildLibrary(scan, new Map([['/music/A.json', { gain: 2 }]]));
+		assert.deepEqual(library.playlists.map((entry) => entry.gain), [2, 1]);
+	});
+
 	it('reads included subdirectories from playlist options', () => {
 		const scan = scanOf({ playlists: [playlist('A', [audio('A/1.mp3')], true), playlist('B', [audio('B/1.mp3')])] });
 		const library = buildLibrary(scan, new Map([['/music/A.json', { includedSubdirectories: ['Boss'] }]]));

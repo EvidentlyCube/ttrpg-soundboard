@@ -245,6 +245,8 @@ describe('BootstrapService', () => {
 				'Loud.mp3.json': '{ "gain": 5 }',
 				'Combat.json': '{ "includedSubdirectories": "Boss" }',
 				'Combat': { '1.mp3': '', '1.mp3.json': '[]', 'Boss': { '2.mp3': '' } },
+				'Calm.json': '{ "gain": -1 }',
+				'Calm': { '1.mp3': '' },
 			});
 			const before = await listFiles(root);
 			const { outcome, prompter, reporter } = await bootstrap(root);
@@ -259,6 +261,7 @@ describe('BootstrapService', () => {
 				join(root, 'Loud.mp3.json'),
 				join(root, 'Combat', '1.mp3.json'),
 				join(root, 'Combat.json'),
+				join(root, 'Calm.json'),
 			].toSorted());
 			assert.deepEqual(await listFiles(root), before);
 		});

@@ -11,6 +11,7 @@ export function exampleLibrary() {
 			{
 				id: 'Combat',
 				title: 'Combat',
+				gain: 1,
 				tracks: [
 					{ id: 'Combat/1.mp3', title: 'Battle', format: 'mp3', size: 3_000_000, gain: 1, url: '/media/Combat/1.mp3' },
 					{ id: 'Combat/2.ogg', title: 'Boss', format: 'ogg', size: 3_000_000, gain: 1, url: '/media/Combat/2.ogg' },
@@ -19,6 +20,7 @@ export function exampleLibrary() {
 			{
 				id: 'Tavern',
 				title: 'Tavern',
+				gain: 1,
 				tracks: [{ id: 'Tavern/1.mp3', title: 'Song', format: 'mp3', size: 3_000_000, gain: 1, url: '/media/Tavern/1.mp3' }],
 			},
 		],

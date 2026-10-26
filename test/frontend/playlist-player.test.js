@@ -17,6 +17,7 @@ function playlistOf(count) {
 	return {
 		id: 'Combat',
 		title: 'Combat',
+		gain: 1,
 		tracks: Array.from({ length: count }, (_, i) => ({ id: `Combat/${i}.mp3`, title: `Track ${i}`, format: 'mp3', size: 1000, gain: 1, url: `/t${i}` })),
 	};
 }

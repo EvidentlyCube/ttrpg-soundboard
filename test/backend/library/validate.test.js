@@ -61,6 +61,13 @@ describe('validatePlaylistOptions', () => {
 		]);
 	});
 
+	it('accepts a gain from 0 to 4 and rejects others', () => {
+		assert.deepEqual(validatePlaylistOptions({ gain: 0 }), []);
+		assert.deepEqual(validatePlaylistOptions({ gain: 4 }), []);
+		assert.deepEqual(validatePlaylistOptions({ gain: 4.5 }), ['"gain" must be a number from 0 to 4']);
+		assert.deepEqual(validatePlaylistOptions({ gain: '1' }), ['"gain" must be a number from 0 to 4']);
+	});
+
 	it('rejects a subdirectory list that is not an array', () => {
 		assert.deepEqual(validatePlaylistOptions({ includedSubdirectories: 'Boss' }), ['"includedSubdirectories" must be an array of strings']);
 	});

@@ -4,7 +4,7 @@
  */
 
 /** @typedef {{ title?: string, gain?: number }} AudioOptions */
-/** @typedef {{ title?: string, includedSubdirectories?: string[] }} PlaylistOptions */
+/** @typedef {{ title?: string, gain?: number, includedSubdirectories?: string[] }} PlaylistOptions */
 /** @typedef {{ master: number, music: number, sfx: number }} Volumes */
 /** @typedef {{ version: number, volumes?: Partial<Volumes> }} SettingsFile */
 
@@ -13,7 +13,7 @@ export const SETTINGS_VERSION = 1;
 /** @type {readonly (keyof Volumes)[]} */
 export const VOLUME_BUSES = ['master', 'music', 'sfx'];
 
-/** The loudest boost a sound or track may have: just over +12 dB. */
+/** The loudest boost a sound, track or playlist may have: just over +12 dB. */
 export const MAX_GAIN = 4;
 
 const NOT_AN_OBJECT = 'must be a JSON object';
@@ -26,11 +26,7 @@ export function validateAudioOptions(value) {
 	if (!isPlainObject(value)) {
 		return [NOT_AN_OBJECT];
 	}
-	const problems = checkTitle(value);
-	if ('gain' in value && !isGain(value.gain)) {
-		problems.push(`"gain" must be a number from 0 to ${MAX_GAIN}`);
-	}
-	return problems;
+	return [...checkTitle(value), ...checkGain(value)];
 }
 
 /**
@@ -41,7 +37,7 @@ export function validatePlaylistOptions(value) {
 	if (!isPlainObject(value)) {
 		return [NOT_AN_OBJECT];
 	}
-	const problems = checkTitle(value);
+	const problems = [...checkTitle(value), ...checkGain(value)];
 	if (
 		'includedSubdirectories' in value
 		&& !(Array.isArray(value.includedSubdirectories) && value.includedSubdirectories.every((entry) => typeof entry === 'string'))
@@ -104,9 +100,13 @@ function checkTitle(value) {
 	return [];
 }
 
-/** @param {unknown} value */
-function isGain(value) {
-	return typeof value === 'number' && value >= 0 && value <= MAX_GAIN;
+/** @param {Record<string, unknown>} value */
+function checkGain(value) {
+	const { gain } = value;
+	if ('gain' in value && !(typeof gain === 'number' && gain >= 0 && gain <= MAX_GAIN)) {
+		return [`"gain" must be a number from 0 to ${MAX_GAIN}`];
+	}
+	return [];
 }
 
 /** @param {unknown} value */
