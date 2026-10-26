@@ -1,4 +1,5 @@
 import { Component } from './component.js';
+import { CrossfadeControl } from './crossfade-control.js';
 import { playToggle, saveStatus, sectionLabel, titleField } from './customize-parts.js';
 import { h } from './dom.js';
 import { GainControl } from './gain-control.js';
@@ -51,6 +52,18 @@ export class PlaylistEditor extends Component {
 		gain.mount(gainSlot);
 		this.own(() => gain.destroy());
 
+		const crossfade = new CrossfadeControl({
+			value: this.#playlist.crossfade,
+			tracks: this.#playlist.tracks,
+			onChange: (value) => {
+				status.show('saving');
+				soundboard.customizePlaylist(id, { crossfade: value });
+			},
+		});
+		const crossfadeSlot = h('div');
+		crossfade.mount(crossfadeSlot);
+		this.own(() => crossfade.destroy());
+
 		const play = playToggle(() => soundboard.togglePlaylist(id));
 		play.show(soundboard.getPlaylistSnapshot(id).state !== 'idle');
 
@@ -62,6 +75,7 @@ export class PlaylistEditor extends Component {
 		this.own(soundboard.on('playlist.changed', (event) => {
 			if (event.playlist.id === id) {
 				gain.update(event.playlist.gain);
+				crossfade.update(event.playlist.crossfade);
 			}
 		}));
 		this.own(soundboard.on('playlist.saved', (event) => {
@@ -78,6 +92,7 @@ export class PlaylistEditor extends Component {
 		return h('div', { class: 'space-y-5' },
 			title.element,
 			h('div', { class: 'space-y-1.5' }, sectionLabel('Volume'), gainSlot),
+			h('div', { class: 'space-y-1.5' }, sectionLabel('Crossfade'), crossfadeSlot),
 			h('div', { class: 'flex items-center justify-between gap-4' }, play.element, status.element));
 	}
 

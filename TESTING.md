@@ -91,6 +91,15 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] Renaming updates the tile and the player bar while typing; the tile moves into sorted order only when the dialog closes, and the footer order never changes.
 - [ ] The playlist's `.json` file keeps its `includedSubdirectories` after saving.
 
+**Crossfade**
+- [ ] The first start of a new library prints "Measuring the duration of N audio files…"; the next start doesn't. Touching a file (`touch`) only re-hashes it; replacing it with another recording updates its `duration`.
+- [ ] The Crossfade slider stops at 10 s or half the shortest track, whichever is less; typing a longer value is clamped to the limit shown in the note.
+- [ ] With a crossfade set, the next track starts that long before the current one ends, and the two overlap smoothly. Seeking near the end starts it at once.
+- [ ] Next, Previous and picking a track crossfade; the "(Instant)" menu items cut over.
+- [ ] Stop during a crossfade silences both tracks; Pause silences the old one, and Resume continues only the new one.
+- [ ] A playlist with a single track crossfades into its own start.
+- [ ] Crossfades keep happening with the window in the background.
+
 **Playlists**
 - [ ] Several playlists at once; next, previous, jump, seek, pause and stop on each.
 - [ ] Tracks advance on their own, including while the window is in the background.
