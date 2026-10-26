@@ -7,7 +7,7 @@ const BAR_COUNT = 10;
 const LOWEST_BAR_PERCENT = 20;
 
 /**
- * A media-player style volume control for one item's gain (ROADMAP.md, feature 1): bars that grow taller from gain 0
+ * A media-player style volume control for one item's gain (DESIGN.md §9.7): bars that grow taller from gain 0
  * to 1, one wide rectangle for the boost above 1 that lights up yellow, a line underneath, and a dB readout that turns
  * into a text field when clicked. The lit part is a copy of the shapes clipped with an inline style, so dragging never
  * changes classes (DESIGN.md §9.6).

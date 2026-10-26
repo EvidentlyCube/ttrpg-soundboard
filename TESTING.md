@@ -74,7 +74,7 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] Sounds never create a player bar.
 
 **Customize a sound**
-- [ ] Right-click a sound → Customize: the dialog opens with the title selected for typing; the menu is gone.
+- [ ] Right-click a sound → Customize: the dialog opens with the title field focused; the menu is gone.
 - [ ] While a sound plays (use the dialog's Play button on a long sound), moving the volume changes its loudness at once, without clicks; new presses play at the new volume.
 - [ ] The gain widget: bars light up in proportion, the boost block turns yellow above 0 dB with the warning, a press near the 100 % mark lands on exactly `0.0 dB`, dragging works, double-click resets.
 - [ ] The dB readout: click it, type `-6` and Enter; `-inf` silences; nonsense stays in the field marked red; Esc cancels only the edit.
