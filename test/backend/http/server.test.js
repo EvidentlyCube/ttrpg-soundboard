@@ -227,6 +227,57 @@ describe('server', () => {
 		});
 	});
 
+	describe('sound options', () => {
+		/**
+		 * @param {string} encodedId
+		 * @param {unknown} body
+		 */
+		function patchSound(encodedId, body) {
+			return get(`/api/sounds/${encodedId}`, { method: 'PATCH', body: typeof body === 'string' ? body : JSON.stringify(body) });
+		}
+
+		it('saves a change to the options file and returns the updated sound', async () => {
+			const response = await patchSound('Long.ogg', { title: ' Aaa Long ', gain: 2 });
+			assert.equal(response.status, 200);
+			assert.deepEqual(await response.json(), { id: 'Long.ogg', title: 'Aaa Long', format: 'ogg', size: LARGE_AUDIO.length, gain: 2, url: '/media/Long.ogg' });
+			assert.deepEqual(JSON.parse(await readFile(join(musicRoot, 'Long.ogg.json'), 'utf8')), { title: 'Aaa Long', gain: 2 });
+		});
+
+		it('serves the changed and re-sorted library afterwards', async () => {
+			const { sounds } = await json(await get('/api/library'));
+			assert.deepEqual(sounds.map((/** @type {{ title: string }} */ sound) => sound.title), ['Aaa Long', 'Big Boom']);
+		});
+
+		it('rejects invalid changes with 400', async () => {
+			/** @type {[unknown, RegExp][]} */
+			const cases = [
+				['{ nope', /not valid JSON/],
+				[[1], /must be a JSON object/],
+				[{ title: '' }, /"title" must be a non-empty string/],
+				[{ gain: -1 }, /"gain" must be a number from 0 to 4/],
+				[{ volume: 1 }, /Unknown option "volume"/],
+			];
+			for (const [body, message] of cases) {
+				const response = await patchSound('Boom.mp3', body);
+				assert.equal(response.status, 400, JSON.stringify(body));
+				assert.match((await json(response)).error, message);
+			}
+		});
+
+		it('returns 404 for anything that is not a sound', async () => {
+			for (const id of ['Nope.mp3', 'Combat%2FZa%C5%BC%C3%B3%C5%82%C4%87%20%E2%99%AA%20%231.ogg', 'Combat/x', '%E0%A4%A']) {
+				const response = await patchSound(id, { gain: 1 });
+				assert.equal(response.status, 404, id);
+			}
+		});
+
+		it('only allows PATCH', async () => {
+			const response = await get('/api/sounds/Boom.mp3');
+			assert.equal(response.status, 405);
+			assert.equal(response.headers.get('allow'), 'PATCH');
+		});
+	});
+
 	describe('media', () => {
 		it('streams a whole file with caching and range headers', async () => {
 			const response = await get('/media/Boom.mp3');

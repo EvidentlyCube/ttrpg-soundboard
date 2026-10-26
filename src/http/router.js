@@ -1,4 +1,5 @@
 import { ValidationError } from '../library/errors.js';
+import { UnknownSoundError } from '../library/library-editor.js';
 import { isPlainObject, VOLUME_BUSES } from '../library/validate.js';
 import { findMediaFile, isMediaPath, mediaUrl, serveMedia } from './media.js';
 import { allowMethods, HttpError, sendJson } from './responses.js';
@@ -8,17 +9,20 @@ import { serveStaticFile } from './static-files.js';
 /** @typedef {import('node:http').ServerResponse} Response */
 /** @typedef {import('../library/library.js').Library} Library */
 /** @typedef {import('../library/settings-store.js').SettingsStore} SettingsStore */
+/** @typedef {import('../library/library-editor.js').LibraryEditor} LibraryEditor */
 
 /**
  * @typedef {object} RouterContext
  * @property {Library} library
  * @property {SettingsStore} settings
+ * @property {LibraryEditor} editor
  * @property {string} publicDir
  * @property {(error: unknown) => void} logError called for unexpected failures, never for client mistakes
  */
 
 const LIBRARY_FORMAT_VERSION = 1;
 const MAX_BODY_BYTES = 16 * 1024;
+const SOUNDS_PREFIX = '/api/sounds/';
 
 /**
  * @param {RouterContext} context
@@ -48,7 +52,7 @@ export function createRequestHandler(context) {
  * @param {Response} response
  * @param {RouterContext} context
  */
-async function route(request, response, { library, settings, publicDir }) {
+async function route(request, response, { library, settings, editor, publicDir }) {
 	// The raw path is used on purpose: URL parsing would resolve `..` before the static file guard could see it.
 	const pathname = (request.url ?? '/').split('?')[0];
 
@@ -61,6 +65,9 @@ async function route(request, response, { library, settings, publicDir }) {
 	} else if (pathname === '/api/settings/volumes') {
 		allowMethods(request, ['PUT']);
 		sendJson(response, 200, await updateVolumes(settings, await readJsonBody(request)));
+	} else if (pathname.startsWith(SOUNDS_PREFIX)) {
+		allowMethods(request, ['PATCH']);
+		sendJson(response, 200, toFileJson(await updateSound(editor, pathname, await readJsonBody(request))));
 	} else if (pathname.startsWith('/api/')) {
 		throw new HttpError(404, 'Not found');
 	} else if (isMediaPath(pathname)) {
@@ -74,13 +81,41 @@ async function route(request, response, { library, settings, publicDir }) {
 
 /** @param {Library} library */
 function toLibraryJson(library) {
-	/** @param {import('../library/library.js').AudioFile} file */
-	const toFileJson = ({ id, title, format, size, gain }) => ({ id, title, format, size, gain, url: mediaUrl(id) });
 	return {
 		version: LIBRARY_FORMAT_VERSION,
 		playlists: library.playlists.map(({ id, title, tracks }) => ({ id, title, tracks: tracks.map(toFileJson) })),
 		sounds: library.sounds.map(toFileJson),
 	};
+}
+
+/** @param {import('../library/library.js').AudioFile} file */
+function toFileJson({ id, title, format, size, gain }) {
+	return { id, title, format, size, gain, url: mediaUrl(id) };
+}
+
+/**
+ * @param {LibraryEditor} editor
+ * @param {string} pathname
+ * @param {unknown} body
+ */
+async function updateSound(editor, pathname, body) {
+	let soundId;
+	try {
+		soundId = decodeURIComponent(pathname.slice(SOUNDS_PREFIX.length));
+	} catch {
+		throw new HttpError(404, 'Not found');
+	}
+	try {
+		return await editor.updateSound(soundId, /** @type {import('../library/library-editor.js').SoundChanges} */ (body));
+	} catch (error) {
+		if (error instanceof UnknownSoundError) {
+			throw new HttpError(404, error.message);
+		}
+		if (error instanceof ValidationError) {
+			throw new HttpError(400, error.message);
+		}
+		throw error;
+	}
 }
 
 /**

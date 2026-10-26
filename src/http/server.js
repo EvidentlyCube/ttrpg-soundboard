@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
 import { join } from 'node:path';
+import { LibraryEditor } from '../library/library-editor.js';
 import { logWhenDone } from './request-log.js';
 import { createRequestHandler } from './router.js';
 
@@ -22,7 +23,7 @@ const HOST = '127.0.0.1';
  * @returns {Promise<{ url: string, close: () => Promise<void> }>}
  */
 export async function startServer({ library, settings, port, publicDir = PUBLIC_DIR, logError, logRequest }) {
-	const handle = createRequestHandler({ library, settings, publicDir, logError });
+	const handle = createRequestHandler({ library, settings, editor: new LibraryEditor(library), publicDir, logError });
 	const server = createServer((request, response) => {
 		if (logRequest) {
 			logWhenDone(request, response, logRequest);
