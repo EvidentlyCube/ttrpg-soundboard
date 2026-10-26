@@ -1,3 +1,5 @@
+import { FULL, rampTo } from './fade-ramp.js';
+
 /** @typedef {import('../logic/ports.js').AudioEngine} AudioEngine */
 /** @typedef {import('../logic/ports.js').AudioFormat} AudioFormat */
 /** @typedef {import('../logic/ports.js').BufferHandle} BufferHandle */
@@ -5,6 +7,7 @@
 /** @typedef {import('../logic/ports.js').Voice} Voice */
 /** @typedef {import('../logic/ports.js').VoiceError} VoiceError */
 /** @typedef {import('../logic/ports.js').VoiceOptions} VoiceOptions */
+/** @typedef {import('./fade-ramp.js').FadeRamp} FadeRamp */
 
 /** @type {Record<AudioFormat, string>} */
 const MIME_TYPES = { mp3: 'audio/mpeg', ogg: 'audio/ogg' };
@@ -213,6 +216,8 @@ class VoiceOutput {
 	#context;
 	#volume;
 	#fade;
+	/** @type {FadeRamp} */
+	#ramp = FULL;
 
 	/**
 	 * @param {AudioContext} context
@@ -248,12 +253,11 @@ class VoiceOutput {
 	rampFade(target, seconds) {
 		const { gain } = this.#fade;
 		const now = this.#context.currentTime;
+		this.#ramp = rampTo(this.#ramp, target, seconds, now);
 		gain.cancelScheduledValues(now);
-		gain.setValueAtTime(gain.value, now);
-		if (seconds <= 0) {
-			gain.setValueAtTime(target, now);
-		} else {
-			gain.linearRampToValueAtTime(target, now + seconds);
+		gain.setValueAtTime(this.#ramp.from, now);
+		if (seconds > 0) {
+			gain.linearRampToValueAtTime(target, this.#ramp.end);
 		}
 	}
 

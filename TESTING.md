@@ -58,6 +58,7 @@ The real page has been driven in headless Chromium over the DevTools protocol, w
 - Mouse events need the `buttons` bitmask (1 left, 2 right, 0 on release). Without it Chromium believes a button is still held after a right-click and drops the next click.
 - To test "clicking outside a popup", first check with `elementFromPoint` that the backdrop really is under the point, since a menu can sit on top of tiles.
 - Disabled buttons receive pointer events but no `click`.
+- The fake engine only records `rampGain` calls, so how the real `WebAudioEngine` turns them into `AudioParam` automation must be checked in a browser. Wrapping `AudioContext.prototype.createGain` in a test page gives access to every gain node; sample `gain.value` over a few seconds. Reading `gain.value` right after scheduling a change still returns the old value, because the audio thread hasn't run yet. That is how a fade-in once started from full volume.
 
 ## Manual checklist
 
@@ -94,7 +95,7 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 **Crossfade**
 - [ ] The first start of a new library prints "Measuring the duration of N audio files…"; the next start doesn't. Touching a file (`touch`) only re-hashes it; replacing it with another recording updates its `duration`.
 - [ ] The Crossfade slider stops at 10 s or half the shortest track, whichever is less; typing a longer value is clamped to the limit shown in the note.
-- [ ] With a crossfade set, the next track starts that long before the current one ends, and the two overlap smoothly. Seeking near the end starts it at once.
+- [ ] With a crossfade set, the next track starts that long before the current one ends, and the two overlap smoothly: the new track starts silent and rises while the old one falls. Seeking near the end starts it at once.
 - [ ] Next, Previous and picking a track crossfade; the "(Instant)" menu items cut over.
 - [ ] Stop during a crossfade silences both tracks; Pause silences the old one, and Resume continues only the new one.
 - [ ] A playlist with a single track crossfades into its own start.
