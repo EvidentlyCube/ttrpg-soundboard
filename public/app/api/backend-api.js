@@ -52,6 +52,15 @@ export class HttpBackendApi {
 	}
 
 	/**
+	 * @param {string} trackId
+	 * @param {ItemOptions} options
+	 * @param {{ keepalive: boolean }} request
+	 */
+	async saveTrackOptions(trackId, options, { keepalive }) {
+		await this.#request('PATCH', `/api/tracks/${encodeURIComponent(trackId)}`, { body: options, keepalive });
+	}
+
+	/**
 	 * @param {'GET' | 'PUT' | 'PATCH'} method
 	 * @param {string} path
 	 * @param {{ body?: unknown, keepalive?: boolean }} [options]

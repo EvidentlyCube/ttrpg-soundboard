@@ -80,6 +80,7 @@
  * @property {(volumes: Volumes, options: { keepalive: boolean }) => Promise<void>} saveVolumes
  * @property {(soundId: string, options: ItemOptions, request: { keepalive: boolean }) => Promise<void>} saveSoundOptions
  * @property {(playlistId: string, options: ItemOptions, request: { keepalive: boolean }) => Promise<void>} savePlaylistOptions
+ * @property {(trackId: string, options: ItemOptions, request: { keepalive: boolean }) => Promise<void>} saveTrackOptions
  */
 
 /**

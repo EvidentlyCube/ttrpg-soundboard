@@ -37,11 +37,14 @@ import { VolumeControl } from './volume.js';
  * 	| { type: 'sound.saveFailed', soundId: string, message: string }
  * 	| { type: 'playlist.changed', playlist: PlaylistJson }
  * 	| { type: 'playlist.saved', playlistId: string }
- * 	| { type: 'playlist.saveFailed', playlistId: string, message: string }} CustomizeEvent
+ * 	| { type: 'playlist.saveFailed', playlistId: string, message: string }
+ * 	| { type: 'track.saved', trackId: string }
+ * 	| { type: 'track.saveFailed', trackId: string, message: string }} CustomizeEvent
  * @typedef {AppEvent | SoundEvent | PlaylistEvent | VolumeChangedEvent | CustomizeEvent} SoundboardEvent
  */
 
 /** @typedef {{ transition?: Transition }} TransitionOptions */
+/** @typedef {import('./options-sync.js').ItemRef['kind']} ItemKind */
 
 /**
  * The application API the UI talks to (DESIGN.md §6.1): commands in, events out. Every method is a thin wrapper that
@@ -80,16 +83,31 @@ export class Soundboard {
 		const emit = (/** @type {SoundboardEvent} */ event) => this.#events.emit(event);
 		this.#volume = new VolumeControl({ setBusGain: (bus, gain) => engine.setBusGain(bus, gain), emit });
 		this.#settingsSync = new SettingsSync({ saveVolumes: (volumes, options) => api.saveVolumes(volumes, options), clock, logger });
+		/** @type {Record<ItemKind, (id: string, options: ItemOptions, request: { keepalive: boolean }) => Promise<void>>} */
+		const savers = {
+			sound: (id, options, request) => api.saveSoundOptions(id, options, request),
+			playlist: (id, options, request) => api.savePlaylistOptions(id, options, request),
+			track: (id, options, request) => api.saveTrackOptions(id, options, request),
+		};
+		/** @type {Record<ItemKind, (id: string) => CustomizeEvent>} */
+		const savedEvents = {
+			sound: (id) => ({ type: 'sound.saved', soundId: id }),
+			playlist: (id) => ({ type: 'playlist.saved', playlistId: id }),
+			track: (id) => ({ type: 'track.saved', trackId: id }),
+		};
+		/** @type {Record<ItemKind, (id: string, message: string) => CustomizeEvent>} */
+		const failedEvents = {
+			sound: (id, message) => ({ type: 'sound.saveFailed', soundId: id, message }),
+			playlist: (id, message) => ({ type: 'playlist.saveFailed', playlistId: id, message }),
+			track: (id, message) => ({ type: 'track.saveFailed', trackId: id, message }),
+		};
 		this.#optionsSync = new OptionsSync({
-			save: ({ kind, id }, options, request) => (kind === 'sound'
-				? api.saveSoundOptions(id, options, request)
-				: api.savePlaylistOptions(id, options, request)),
+			save: ({ kind, id }, options, request) => savers[kind](id, options, request),
 			clock,
-			onSaved: ({ kind, id }) => emit(kind === 'sound' ? { type: 'sound.saved', soundId: id } : { type: 'playlist.saved', playlistId: id }),
+			onSaved: ({ kind, id }) => emit(savedEvents[kind](id)),
 			onFailed: ({ kind, id }, error) => {
 				logger.warn(`Could not save the options of the ${kind} ${id}; they will be saved with the next change.`, error);
-				const { message } = error;
-				emit(kind === 'sound' ? { type: 'sound.saveFailed', soundId: id, message } : { type: 'playlist.saveFailed', playlistId: id, message });
+				emit(failedEvents[kind](id, error.message));
 			},
 		});
 		engine.on('suspended', () => emit({ type: 'audio.suspended' }));
@@ -156,6 +174,14 @@ export class Soundboard {
 		this.#optionsSync.flush({ kind: 'playlist', id: playlistId });
 	}
 
+	/**
+	 * Saves a track's pending changes now instead of after the debounce, e.g. when its playlist's dialog closes.
+	 * @param {string} trackId
+	 */
+	flushTrackOptions(trackId) {
+		this.#optionsSync.flush({ kind: 'track', id: trackId });
+	}
+
 	/** @param {unknown} input a command, validated before it runs */
 	dispatch(input) {
 		const command = validateCommand(input);
@@ -174,6 +200,13 @@ export class Soundboard {
 				this.#volume.setVolume(command.bus, command.value);
 				this.#settingsSync.schedule(this.#volume.volumes);
 				return;
+			case 'track.customize': {
+				const { playlist, track } = loaded.library.updateTrack(command.trackId, { title: command.title });
+				loaded.playlists.get(playlist.id)?.setPlaylist(playlist);
+				this.#optionsSync.schedule({ kind: 'track', id: track.id }, { title: track.title });
+				this.#events.emit({ type: 'playlist.changed', playlist });
+				return;
+			}
 			case 'sound.customize': {
 				const sound = loaded.library.updateSound(command.soundId, { title: command.title, gain: command.gain });
 				if (command.gain !== undefined) {
@@ -341,6 +374,16 @@ export class Soundboard {
 	 */
 	customizePlaylist(playlistId, { title, gain, crossfade, fadeIn, fadeOut }) {
 		this.dispatch({ type: 'playlist.customize', playlistId, title, gain, crossfade, fadeIn, fadeOut });
+	}
+
+	/**
+	 * Renames a track. It is announced as `playlist.changed` with its playlist, so every view of the playlist follows;
+	 * saving is reported with `track.saved` or `track.saveFailed`.
+	 * @param {string} trackId
+	 * @param {{ title: string }} changes the title must not be empty
+	 */
+	customizeTrack(trackId, { title }) {
+		this.dispatch({ type: 'track.customize', trackId, title });
 	}
 
 	/** @returns {LibraryJson | null} null until started */

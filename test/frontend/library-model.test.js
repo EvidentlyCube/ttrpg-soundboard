@@ -66,6 +66,28 @@ describe('LibraryModel', () => {
 		});
 	});
 
+	describe('updateTrack', () => {
+		const fresh = () => new LibraryModel(exampleLibrary(), () => true);
+
+		it('returns the playlist holding the renamed track, in the same track order', () => {
+			const model = fresh();
+			const { playlist, track } = model.updateTrack('Combat/2.ogg', { title: ' Final Boss ' });
+			assert.equal(track.title, 'Final Boss');
+			assert.deepEqual(playlist.tracks.map((entry) => entry.title), ['Battle', 'Final Boss']);
+			assert.equal(model.playlist('Combat'), playlist);
+			assert.equal(model.json.playlists.find((entry) => entry.id === 'Combat'), playlist);
+		});
+
+		it('leaves earlier snapshots untouched and rejects empty titles and unknown tracks', () => {
+			const model = fresh();
+			const before = model.json;
+			model.updateTrack('Combat/1.mp3', { title: 'X' });
+			assert.deepEqual(before, exampleLibrary());
+			assert.throws(() => model.updateTrack('Combat/1.mp3', { title: '' }), new InvalidCommandError('A title cannot be empty'));
+			assert.throws(() => model.updateTrack('Boom.mp3', { title: 'X' }), new InvalidCommandError('Unknown track "Boom.mp3"'));
+		});
+	});
+
 	describe('updatePlaylist', () => {
 		const fresh = () => new LibraryModel(exampleLibrary(), () => true);
 

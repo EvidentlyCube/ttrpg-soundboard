@@ -56,6 +56,8 @@ export class FakeBackendApi {
 	soundSaves = [];
 	/** @type {{ playlistId: string, options: ItemOptions, keepalive: boolean }[]} */
 	playlistSaves = [];
+	/** @type {{ trackId: string, options: ItemOptions, keepalive: boolean }[]} */
+	trackSaves = [];
 
 	async fetchLibrary() {
 		this.libraryRequests++;
@@ -99,6 +101,18 @@ export class FakeBackendApi {
 	 */
 	async savePlaylistOptions(playlistId, options, { keepalive }) {
 		this.playlistSaves.push({ playlistId, options, keepalive });
+		if (this.saveError) {
+			throw this.saveError;
+		}
+	}
+
+	/**
+	 * @param {string} trackId
+	 * @param {ItemOptions} options
+	 * @param {{ keepalive: boolean }} keepalive
+	 */
+	async saveTrackOptions(trackId, options, { keepalive }) {
+		this.trackSaves.push({ trackId, options, keepalive });
 		if (this.saveError) {
 			throw this.saveError;
 		}

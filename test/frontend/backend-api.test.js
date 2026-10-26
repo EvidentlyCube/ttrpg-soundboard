@@ -67,6 +67,12 @@ describe('HttpBackendApi against the real server', () => {
 		assert.equal((await api.fetchLibrary()).playlists[0].gain, 0.5);
 	});
 
+	it('saves track options for an id with a slash', async () => {
+		await api.saveTrackOptions('Zażółć #1/1.mp3', { title: 'First' }, { keepalive: false });
+		const saved = JSON.parse(await readFile(join(tree.root, 'Zażółć #1', '1.mp3.json'), 'utf8'));
+		assert.equal(saved.title, 'First');
+	});
+
 	it('encodes sound ids in the path', async () => {
 		await assert.rejects(api.saveSoundOptions('No such/sound #1.mp3', { gain: 1 }, { keepalive: false }), /PATCH \/api\/sounds\/No%20such%2Fsound%20%231.mp3 failed: Unknown sound "No such\/sound #1.mp3"/);
 	});

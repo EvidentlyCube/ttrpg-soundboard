@@ -258,6 +258,18 @@ export class PlaylistPlayer {
 	}
 
 	/**
+	 * Takes a changed copy of the playlist, with the same tracks in the same order (a renamed track, say), and announces
+	 * the current track again so its new title shows.
+	 * @param {PlaylistJson} playlist
+	 */
+	setPlaylist(playlist) {
+		this.#playlist = playlist;
+		if (this.#state !== 'idle') {
+			this.#emitState();
+		}
+	}
+
+	/**
 	 * Replaces the rules, for example after the crossfade was customized. They apply from the next change of track,
 	 * including the end of the track playing now.
 	 * @param {Readonly<PlaybackRules>} rules

@@ -2,8 +2,8 @@
 /** @typedef {import('./ports.js').ItemOptions} ItemOptions */
 
 /**
- * Which item's options are saved. Sounds and playlists have separate ids, so an id alone is not enough.
- * @typedef {{ kind: 'sound' | 'playlist', id: string }} ItemRef
+ * Which item's options are saved. Sounds, playlists and tracks have separate ids, so an id alone is not enough.
+ * @typedef {{ kind: 'sound' | 'playlist' | 'track', id: string }} ItemRef
  */
 
 const SAVE_DELAY_MS = 500;

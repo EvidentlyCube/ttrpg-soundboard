@@ -81,6 +81,26 @@ export class LibraryModel {
 	}
 
 	/**
+	 * Renames a track. Its playlist is replaced by a copy holding the changed track, in the same order, so everything
+	 * that shows the playlist can take the new copy.
+	 * @param {string} trackId
+	 * @param {ItemOptions} changes only `title` is used
+	 * @returns {{ playlist: PlaylistJson, track: AudioFileJson }}
+	 */
+	updateTrack(trackId, { title }) {
+		const current = this.#json.playlists.find((entry) => entry.tracks.some((track) => track.id === trackId));
+		if (!current) {
+			throw new InvalidCommandError(`Unknown track "${trackId}"`);
+		}
+		const index = current.tracks.findIndex((track) => track.id === trackId);
+		const track = applyChanges(current.tracks[index], { title });
+		const playlist = { ...current, tracks: current.tracks.with(index, track) };
+		this.#playlists.set(playlist.id, playlist);
+		this.#json = { ...this.#json, playlists: this.#json.playlists.map((entry) => (entry.id === playlist.id ? playlist : entry)) };
+		return { playlist, track };
+	}
+
+	/**
 	 * Like `updateSound`, for a playlist; its tracks are unchanged.
 	 * @param {string} id
 	 * @param {ItemOptions} changes

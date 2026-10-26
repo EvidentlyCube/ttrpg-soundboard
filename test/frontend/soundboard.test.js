@@ -15,6 +15,7 @@ const EVENT_TYPES = /** @type {const} */ ([
 	'volume.changed',
 	'sound.changed', 'sound.saved', 'sound.saveFailed',
 	'playlist.changed', 'playlist.saved', 'playlist.saveFailed',
+	'track.saved', 'track.saveFailed',
 ]);
 
 /** @param {{ canPlay?: (format: 'mp3' | 'ogg') => boolean }} [options] */
@@ -335,6 +336,39 @@ describe('Soundboard', () => {
 			assert.throws(() => soundboard.customizePlaylist('Nope', { gain: 1 }), InvalidCommandError);
 			clock.advance(1000);
 			assert.deepEqual(api.playlistSaves, []);
+			assert.deepEqual(events, []);
+		});
+	});
+
+	describe('customizing tracks', () => {
+		it('announces the playlist with the renamed track, and the footer gets the new title', async () => {
+			const { soundboard, eventsOf } = await started();
+			soundboard.togglePlaylist('Combat');
+			soundboard.customizeTrack('Combat/1.mp3', { title: 'Opening' });
+			const [changed] = eventsOf('playlist.changed');
+			assert.deepEqual(changed.type === 'playlist.changed' && changed.playlist.tracks.map((track) => track.title), ['Opening', 'Boss']);
+			assert.equal(soundboard.getPlaylistSnapshot('Combat').track?.title, 'Opening');
+		});
+
+		it('saves the title debounced and reports it per track', async () => {
+			const { soundboard, api, clock, settle, eventsOf } = await started();
+			soundboard.customizeTrack('Combat/2.ogg', { title: 'Final' });
+			clock.advance(500);
+			assert.deepEqual(api.trackSaves, [{ trackId: 'Combat/2.ogg', options: { title: 'Final' }, keepalive: false }]);
+			await settle();
+			assert.deepEqual(eventsOf('track.saved'), [{ type: 'track.saved', trackId: 'Combat/2.ogg' }]);
+
+			api.saveError = new Error('read-only');
+			soundboard.customizeTrack('Combat/2.ogg', { title: 'Finale' });
+			soundboard.flushTrackOptions('Combat/2.ogg');
+			await settle();
+			assert.deepEqual(eventsOf('track.saveFailed'), [{ type: 'track.saveFailed', trackId: 'Combat/2.ogg', message: 'read-only' }]);
+		});
+
+		it('rejects empty titles and unknown tracks', async () => {
+			const { soundboard, events } = await started();
+			assert.throws(() => soundboard.customizeTrack('Combat/1.mp3', { title: ' ' }), InvalidCommandError);
+			assert.throws(() => soundboard.customizeTrack('Nope.mp3', { title: 'X' }), InvalidCommandError);
 			assert.deepEqual(events, []);
 		});
 	});

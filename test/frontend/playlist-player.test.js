@@ -409,6 +409,26 @@ describe('PlaylistPlayer', () => {
 		});
 	});
 
+	describe('renamed tracks', () => {
+		it('takes a changed playlist and announces the current track with its new title', () => {
+			const { player, advance, eventsOf } = setup();
+			player.play();
+			advance(0.1);
+			const renamed = playlistOf(3);
+			renamed.tracks[0] = { ...renamed.tracks[0], title: 'Battle' };
+			player.setPlaylist(renamed);
+			const last = eventsOf('playlist.stateChanged').at(-1);
+			assert.equal(last?.type === 'playlist.stateChanged' && last.track?.title, 'Battle');
+			assert.equal(player.snapshot().track?.title, 'Battle');
+		});
+
+		it('says nothing while idle', () => {
+			const { player, eventsOf } = setup();
+			player.setPlaylist(playlistOf(3));
+			assert.deepEqual(eventsOf('playlist.stateChanged'), []);
+		});
+	});
+
 	describe('gain', () => {
 		it('plays each track at the playlist gain times the track gain', () => {
 			const { player, engine } = setup({ gains: { gain: 0.5, trackGains: [1, 2] } });
