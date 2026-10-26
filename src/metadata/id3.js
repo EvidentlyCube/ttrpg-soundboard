@@ -9,6 +9,7 @@ const MAX_TITLE_FRAME_LENGTH = 64 * 1024;
 
 const TAG_FLAG_UNSYNCHRONIZED = 0x80;
 const TAG_FLAG_EXTENDED_HEADER = 0x40;
+const TAG_FLAG_FOOTER = 0x10;
 
 /** @type {Record<number, { titleId: string, idLength: number, headerLength: number }>} */
 const FRAME_LAYOUTS = {
@@ -24,6 +25,31 @@ const FRAME_LAYOUTS = {
  */
 export async function readId3Title(reader) {
 	return (await readId3v2Title(reader)) ?? (await readId3v1Title(reader));
+}
+
+/**
+ * Where the audio after a leading ID3v2 tag starts: 0 without a tag. Counts the footer that ID3v2.4 tags may have.
+ * @param {ByteSource} reader
+ */
+export async function readId3v2End(reader) {
+	const header = await reader.read(0, HEADER_LENGTH);
+	if (header.length < HEADER_LENGTH || header.toString('latin1', 0, 3) !== 'ID3') {
+		return 0;
+	}
+	const footer = (header[5] & TAG_FLAG_FOOTER) !== 0 ? HEADER_LENGTH : 0;
+	return HEADER_LENGTH + readSyncsafe(header, 6) + footer;
+}
+
+/**
+ * Whether the file ends in a 128-byte ID3v1 tag.
+ * @param {ByteSource} reader
+ */
+export async function hasId3v1(reader) {
+	if (reader.size < ID3V1_LENGTH) {
+		return false;
+	}
+	const tag = await reader.read(reader.size - ID3V1_LENGTH, 3);
+	return tag.toString('latin1') === 'TAG';
 }
 
 /** @param {ByteSource} reader */

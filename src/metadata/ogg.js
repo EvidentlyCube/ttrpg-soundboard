@@ -3,6 +3,7 @@
 const PAGE_HEADER_LENGTH = 27;
 // Comment packets can embed cover art, so reading stops here and whatever part of the comments arrived is parsed.
 const MAX_BYTES_READ = 1024 * 1024;
+const TAIL_BYTES = 128 * 1024;
 
 const CODECS = [
 	{ identification: Buffer.from('\x01vorbis', 'latin1'), comments: Buffer.from('\x03vorbis', 'latin1') },
@@ -24,11 +25,76 @@ export async function readOggTitle(reader) {
 }
 
 /**
- * Returns the first two packets of the first logical stream. The second one may be truncated by the read limit.
+ * The duration of an Ogg Vorbis or Opus file (DESIGN.md §4.3): the granule position of the first stream's last page,
+ * in samples, divided by the sample rate. Only the start and the last 128 KB are read. Returns null when either part
+ * cannot be found.
  * @param {ByteSource} reader
+ * @returns {Promise<number | null>}
+ */
+export async function readOggDuration(reader) {
+	const firstPage = await reader.read(0, PAGE_HEADER_LENGTH);
+	if (firstPage.length < PAGE_HEADER_LENGTH || firstPage.toString('latin1', 0, 4) !== 'OggS') {
+		return null;
+	}
+	const [identification] = await readHeaderPackets(reader, 1);
+	const clock = sampleClockOf(identification);
+	const granule = clock && (await findLastGranule(reader, firstPage.readUInt32LE(14)));
+	if (!clock || granule === null) {
+		return null;
+	}
+	return Math.max(0, granule - clock.preSkip) / clock.sampleRate;
+}
+
+/**
+ * Opus always counts granules at 48 kHz, starting after the pre-skip; Vorbis counts at its own sample rate.
+ * @param {Buffer | undefined} identification
+ * @returns {{ sampleRate: number, preSkip: number } | null}
+ */
+function sampleClockOf(identification) {
+	if (startsWith(identification, CODECS[0].identification) && identification && identification.length >= 16) {
+		const sampleRate = identification.readUInt32LE(12);
+		return sampleRate > 0 ? { sampleRate, preSkip: 0 } : null;
+	}
+	if (startsWith(identification, CODECS[1].identification) && identification && identification.length >= 12) {
+		return { sampleRate: 48000, preSkip: identification.readUInt16LE(10) };
+	}
+	return null;
+}
+
+/**
+ * The granule position of the last page of the stream that has one. A page is at most about 64 KB, so the final 128 KB
+ * always hold the start of at least one whole page.
+ * @param {ByteSource} reader
+ * @param {number} serial
+ * @returns {Promise<number | null>}
+ */
+async function findLastGranule(reader, serial) {
+	const start = Math.max(0, reader.size - TAIL_BYTES);
+	const tail = await reader.read(start, TAIL_BYTES);
+	for (let i = tail.length - PAGE_HEADER_LENGTH; i >= 0; i--) {
+		if (
+			tail[i] === 0x4f
+			&& tail.toString('latin1', i, i + 4) === 'OggS'
+			&& tail[i + 4] === 0
+			&& tail.readUInt32LE(i + 14) === serial
+		) {
+			// -1 means no packet ends on this page, so it says nothing about the length.
+			const granule = tail.readBigInt64LE(i + 6);
+			if (granule >= 0n) {
+				return Number(granule);
+			}
+		}
+	}
+	return null;
+}
+
+/**
+ * Returns the first packets of the first logical stream. The last one may be truncated by the read limit.
+ * @param {ByteSource} reader
+ * @param {number} [count]
  * @returns {Promise<Buffer[]>}
  */
-async function readHeaderPackets(reader) {
+async function readHeaderPackets(reader, count = 2) {
 	/** @type {Buffer[]} */
 	const packets = [];
 	/** @type {Buffer[]} */
@@ -37,7 +103,7 @@ async function readHeaderPackets(reader) {
 	let streamSerial = null;
 	let position = 0;
 
-	while (packets.length < 2 && position < MAX_BYTES_READ) {
+	while (packets.length < count && position < MAX_BYTES_READ) {
 		const header = await reader.read(position, PAGE_HEADER_LENGTH);
 		if (
 			header.length < PAGE_HEADER_LENGTH
@@ -67,14 +133,14 @@ async function readHeaderPackets(reader) {
 			if (lace < 255) {
 				packets.push(Buffer.concat(pending));
 				pending = [];
-				if (packets.length === 2) {
+				if (packets.length === count) {
 					break;
 				}
 			}
 		}
 	}
 
-	if (packets.length === 1 && pending.length > 0) {
+	if (packets.length === count - 1 && pending.length > 0) {
 		packets.push(Buffer.concat(pending));
 	}
 	return packets;

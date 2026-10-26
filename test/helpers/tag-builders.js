@@ -181,6 +181,126 @@ export function buildOgg(options) {
 	return Buffer.concat(buildOggPages(buildOggHeaderPackets(options), options));
 }
 
+const MP3_VERSIONS = {
+	1: { bits: 0b11, rates: [44100, 48000, 32000], bitrates: [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320], frameFactor: 144 },
+	2: { bits: 0b10, rates: [22050, 24000, 16000], bitrates: [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160], frameFactor: 72 },
+	2.5: { bits: 0b00, rates: [11025, 12000, 8000], bitrates: [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160], frameFactor: 72 },
+};
+
+/**
+ * One MPEG audio Layer III frame: a real header followed by filler, at the length the header implies.
+ * @param {object} [options]
+ * @param {1 | 2 | 2.5} [options.version]
+ * @param {number} [options.bitrate] kbit/s, one the version supports
+ * @param {number} [options.sampleRate]
+ * @param {boolean} [options.mono]
+ * @param {Buffer} [options.payload] written right after the header, such as a Xing header
+ */
+export function buildMp3Frame({ version = 1, bitrate = 128, sampleRate, mono = false, payload = Buffer.alloc(0) } = {}) {
+	const spec = MP3_VERSIONS[version];
+	const rate = sampleRate ?? spec.rates[0];
+	const header = Buffer.from([
+		0xff,
+		0xe0 | (spec.bits << 3) | (0b01 << 1) | 1,
+		(spec.bitrates.indexOf(bitrate) << 4) | (spec.rates.indexOf(rate) << 2),
+		mono ? 0b11000000 : 0,
+	]);
+	const length = Math.floor((spec.frameFactor * bitrate * 1000) / rate);
+	const frame = Buffer.alloc(length, 0x00);
+	header.copy(frame);
+	payload.copy(frame, 4);
+	return frame;
+}
+
+/**
+ * The side information that comes before a Xing or Info header, whose size depends on the version and channels.
+ * @param {1 | 2 | 2.5} version
+ * @param {boolean} mono
+ */
+export function mp3SideInfoLength(version, mono) {
+	if (version === 1) {
+		return mono ? 17 : 32;
+	}
+	return mono ? 9 : 17;
+}
+
+/**
+ * A Xing (VBR) or Info (CBR, as LAME writes it) header with a frame count, placed after the side information.
+ * @param {number} frames
+ * @param {object} [options]
+ * @param {'Xing' | 'Info'} [options.tag]
+ * @param {1 | 2 | 2.5} [options.version]
+ * @param {boolean} [options.mono]
+ */
+export function xingPayload(frames, { tag = 'Xing', version = 1, mono = false } = {}) {
+	const body = Buffer.alloc(12);
+	body.write(tag, 0, 'latin1');
+	body.writeUInt32BE(0x0001, 4);
+	body.writeUInt32BE(frames, 8);
+	return Buffer.concat([Buffer.alloc(mp3SideInfoLength(version, mono)), body]);
+}
+
+/**
+ * A VBRI header (written by Fraunhofer encoders), always 32 bytes after the frame header.
+ * @param {number} frames
+ */
+export function vbriPayload(frames) {
+	const body = Buffer.alloc(18);
+	body.write('VBRI', 0, 'latin1');
+	body.writeUInt16BE(1, 4);
+	body.writeUInt32BE(frames, 14);
+	return Buffer.concat([Buffer.alloc(32), body]);
+}
+
+/**
+ * The identification packet of a Vorbis or Opus stream with a real sample rate (Vorbis) or pre-skip (Opus).
+ * @param {{ codec?: 'vorbis' | 'opus', sampleRate?: number, preSkip?: number }} [options]
+ */
+export function oggIdentificationPacket({ codec = 'vorbis', sampleRate = 44100, preSkip = 312 } = {}) {
+	if (codec === 'opus') {
+		const packet = Buffer.alloc(19);
+		packet.write('OpusHead', 0, 'latin1');
+		packet[8] = 1;
+		packet[9] = 2;
+		packet.writeUInt16LE(preSkip, 10);
+		packet.writeUInt32LE(48000, 12);
+		return packet;
+	}
+	const packet = Buffer.alloc(30);
+	packet.write('\x01vorbis', 0, 'latin1');
+	packet[11] = 2;
+	packet.writeUInt32LE(sampleRate, 12);
+	packet[29] = 1;
+	return packet;
+}
+
+/**
+ * A single Ogg page holding one packet, with the given granule position (-1 for "no packet ends here").
+ * @param {Buffer} packet
+ * @param {object} options
+ * @param {bigint} options.granule
+ * @param {number} [options.serial]
+ * @param {number} [options.sequence]
+ * @param {boolean} [options.last] marks the end of the stream
+ */
+export function buildOggPage(packet, { granule, serial = 1, sequence = 0, last = false }) {
+	const lacing = [];
+	let remaining = packet.length;
+	while (remaining >= 255) {
+		lacing.push(255);
+		remaining -= 255;
+	}
+	lacing.push(remaining);
+	const header = Buffer.alloc(27);
+	header.write('OggS', 0, 'latin1');
+	header[5] = (sequence === 0 ? 0x02 : 0) | (last ? 0x04 : 0);
+	header.writeBigInt64LE(granule, 6);
+	header.writeUInt32LE(serial, 14);
+	header.writeUInt32LE(sequence, 18);
+	header[26] = lacing.length;
+	return Buffer.concat([header, Buffer.from(lacing), packet]);
+}
+
 /** @param {Buffer} bytes */
 function lengthPrefixed(bytes) {
 	return Buffer.concat([uint32le(bytes.length), bytes]);
