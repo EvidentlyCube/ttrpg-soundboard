@@ -43,17 +43,17 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
   - **Fade-in** on a `'default'` play, and on a jump from idle: the first voice ramps from silence over `fadeIn`.
   - **Fade-out** on a `'default'` stop: the current voice, if audible, moves to the retiring set and ramps to silence from its *current* level over `fadeOut`, cut to the time the track has left. Thanks to the fade-ramp fix, an interrupted fade-in continues down from where it had got to. A paused or still-loading voice is stopped at once, as today.
   - **Retiring voices** keep fading after a stop and after a new play. Only `'instant'` cuts them, as today. The rule that a stop without a fade-out cuts them (`killRetiring` when `fadeOut` is 0) stays, so with fade-out off, Stop still means silence.
-  - **Pause** no longer stops voices that are fading out.
+  - **Pause** is immediate and ignores the fade settings. It still stops voices that are fading out from a crossfade at once, and it ends a fade-in in progress by setting the voice to full level, so Resume (also immediate) continues at full volume. Pause and resume never need to know about fades.
   - **Invariant (§8 rule 4):** while idle, no voice is *audible*; voices may still be fading out until their deadline (fade + 1 s). After that, nothing is left.
 - **§9.7.** The playlist dialog gets **Fade in** and **Fade out** sections. They reuse the Crossfade control, generalized into a seconds control: a slider from 0 to 10 s and a typed value up to 30 s, with no limit from track lengths.
 
-**Open questions.**
-
-1. **Resuming after a pause.** *Recommended: no fade-in*; Pause and Resume stay immediate, like a media player's.
-2. **Pausing itself.** *Recommended: immediate, no fade-out.* A fading pause would need a "pausing" state, which the no-`stopping`-state decision avoids.
-3. **Pause during a crossfade, with fade-out off.** The decision says pausing no longer cuts the fading-out track. *Recommended: never cut it, whatever the settings*, so the rule stays simple. The fading track finishes within its crossfade while the new one waits paused.
-4. **Short tracks.** *Recommended: no extra limit on the fade-in*; a crossfade or the track's end simply takes over from wherever the fade-in had got to. The fade-out is cut to the time the track has left, as above.
-5. **Jumping to a track from idle** (the track list while stopped, later the dialog's per-track buttons). *Recommended: fades in*, like Play.
+**Owner's decisions (review round 1).**
+1. Resume after a pause is immediate.
+2. Pause is immediate.
+3. Pause and resume always ignore the fade settings. Tracks retiring from a crossfade are stopped at once on pause. This replaces the earlier backlog note that pausing would no longer cut a crossfade.
+4. No extra limit on the fade-in for short tracks; the fade-out is cut to the time left.
+5. Picking a track while the playlist is stopped acts like starting it: it fades in.
+6. Pausing during a fade-in ends the fade-in. After Resume the track plays at full volume.
 
 **Plan.**
 
