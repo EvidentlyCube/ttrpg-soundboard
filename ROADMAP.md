@@ -33,7 +33,7 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 **Goal.** A playlist can fade in when it starts and fade out when it stops, each with its own duration set in the Customize dialog. The plain "Play" and "Stop" (tile clicks, the footer's stop button, the menu items) use them; "Play (Instant)" and "Stop (Instant)" keep cutting at once.
 
-**Already decided** (backlog): stopping during a crossfade lets the fading-out track carry on and fades the incoming one out from its current level over the full fade-out. There is no `stopping` state: a stop marks the playlist idle at once and the fades finish in the background. Playing again during those fades starts a new playback and leaves them alone. Pausing no longer cuts a crossfade.
+**Already decided** (backlog): stopping during a crossfade lets the fading-out track carry on and fades the incoming one out from its current level over the full fade-out. There is no `stopping` state: a stop marks the playlist idle at once and the fades finish in the background. Playing again during those fades starts a new playback and leaves them alone.
 
 **Design changes.**
 
