@@ -48,8 +48,17 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
     - **MP3:** skip the ID3v2 tag and find the first frame header. With a Xing/Info or VBRI header, `frames × samples per frame ÷ sample rate`. Otherwise, as constant bitrate, `audio bytes × 8 ÷ bitrate` (audio bytes exclude the ID3v2 tag and a trailing ID3v1 tag).
     - **Ogg:** the sample rate comes from the Vorbis identification header (Opus is always 48 kHz, minus its pre-skip). The last page of the first stream, found in the final 64 KB, gives the granule position, so the duration is `granule ÷ sample rate`.
     - Anything unreadable gives `null`.
-  - Sound and track options gain `duration` (seconds, rounded to 2 decimals) and `durationOfSize` (the file size in bytes it was measured at). Both are written by the app, never edited by hand.
-  - **Bootstrap** (both modes, no question asked) measures every audio file whose options have no `duration`, or a `durationOfSize` different from the file's current size. That covers a file replaced under the same name. It writes the result while writing the other options. A file whose duration can't be read gets `"duration": null`, so it isn't measured again on every start.
+  - Sound and track options gain `duration` (seconds, rounded to 2 decimals) and `measuredFrom`, describing the file it was measured from:
+    ```json
+    { "duration": 213.47, "measuredFrom": { "size": 4194304, "modified": "2026-10-24T16:41:00.000Z", "sha1": "…" } }
+    ```
+    Both are written by the app, never edited by hand.
+  - **Bootstrap** (both modes, no question asked) checks every audio file:
+    - no `duration` yet: hash the whole file (SHA-1, `node:crypto`), measure it, and store both;
+    - same size and modification time as `measuredFrom`: nothing is read;
+    - otherwise: hash the whole file. The same hash only refreshes `size` and `modified` (the file was copied or touched). A different hash means the file was replaced, so it is measured again.
+
+    The scanner records modification times along with sizes. The first run therefore reads every file once; later runs read only files that look changed. A file whose duration can't be read gets `"duration": null` with its `measuredFrom`, so it isn't measured again on every start.
   - `AudioFile` and `/api/library` gain `duration: number | null`.
 - **Crossfade setting (§2.3, §5.1, §5.2).** Playlist options gain `crossfade`: seconds, `0` to `30`, default `0` (off). It is validated (fatal at startup) and is part of `Playlist`, `/api/library` and `PATCH /api/playlists/<id>`; `PATCH /api/sounds/<id>` keeps rejecting it.
 - **§6.1, §6.2.** `customizePlaylist(playlistId, { title?, gain?, crossfade? })`; `playlist.changed` carries it. A new value takes effect at once, also for the end of the track playing now.
@@ -63,15 +72,12 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
   - The retiring set, its deadline (fade + 1 s) and its cap of 4 already cover crossfades, as does `'instant'` cutting every fading voice.
 - **§9.7.** The playlist dialog gets a **Crossfade** section: a slider in 0.5 s steps and a number field, shown as `2.5 s`, with `0` reading "Off". The slider's maximum is `min(10 s, half the shortest known track)`, the field's `min(30 s, half the shortest known track)`. Tracks with an unknown duration don't limit it. A value already above the limit (for example, after a shorter track was added) is shown as stored, with a note that short tracks use less.
 
-**Open questions.**
-
-1. **Re-measuring replaced files.** *Recommended: `durationOfSize`, as above.* A replaced file almost always changes size, and the size is already known from scanning, so no extra reading is needed. Comparing modification times would also work, but copying files around can change those without changing the audio.
-2. **Sounds too?** *Recommended: yes, measure sounds as well.* Feature 6 (sound start and end points) needs their durations for its slider, and it costs the same.
+**Owner's decisions (review round 2).** Replaced files are detected by a full SHA-1, computed only when a file's size or modification time changed. Sounds are measured too.
 
 **Plan.**
 
 1. **Reading durations.** `readDuration` for MP3 (Xing, VBRI, constant bitrate) and Ogg (Vorbis, Opus). *Tests:* frames built in code, like the tag builders: each header kind, ID3 tags before and after, truncated and random data never throwing; then the real fixture files against their known lengths.
-2. **Storing and serving them.** Bootstrap measures missing and stale durations and writes them; validation of `duration` and `durationOfSize`; `AudioFile` and `/api/library`. *Tests:* first and later runs, a replaced file re-measured, an unreadable file stored as `null` and not measured again.
+2. **Storing and serving them.** Modification times in the scan; bootstrap measuring and hashing as above and writing the result; validation of `duration` and `measuredFrom`; `AudioFile` and `/api/library`. *Tests:* first and later runs; an untouched file not read; a touched but identical file only refreshed; a replaced file re-measured; an unreadable file stored as `null` and not measured again.
 3. **The crossfade setting.** `crossfade` in playlist validation, `Playlist`, `/api/library`, the playlist `PATCH`, `resolvePlaybackRules`, `PlaylistPlayer.setRules`, `customizePlaylist`, `OptionsSync` and `LibraryModel`. *Tests:* validation, the API, rules resolution, commands and the facade.
 4. **Crossfading in the player.** The effective crossfade, the natural-end timer and its re-planning, manual changes, stop and pause cutting fading voices. *Tests:* each case on the fake clock and engine, stale timers ignored, and the randomized invariant extended with crossfades and natural ends.
 5. **UI.** The Crossfade section with its limit. *Tests:* formatting, parsing and the limit calculation; the manual checklist and a headless Chromium run.
