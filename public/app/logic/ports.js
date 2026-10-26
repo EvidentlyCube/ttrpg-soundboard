@@ -40,7 +40,8 @@
  * @property {(seconds: number) => void} seek
  * @property {number} position seconds
  * @property {number} duration seconds, NaN until `loaded`
- * @property {(target: number, seconds: number) => void} rampGain
+ * @property {(target: number, seconds: number) => void} rampGain fades; independent of the voice's own gain
+ * @property {(gain: number) => void} setGain the voice's own volume, a linear multiplier; changes are smoothed
  * @property {(type: 'loaded' | 'ended', handler: () => void) => void} on
  * @property {(handler: (error: VoiceError) => void) => void} onError
  */
@@ -56,9 +57,15 @@
  * @property {(type: 'suspended' | 'resumed', handler: () => void) => void} on
  * @property {(format: AudioFormat) => boolean} canPlay
  * @property {(bus: Bus, gain: number) => void} setBusGain
- * @property {(options: { url: string, bus: Bus }) => Voice} createStreamVoice
+ * @property {(options: VoiceOptions & { url: string }) => Voice} createStreamVoice
  * @property {(url: string) => Promise<BufferHandle>} loadBuffer
- * @property {(options: { buffer: BufferHandle, bus: Bus }) => Voice} createBufferVoice
+ * @property {(options: VoiceOptions & { buffer: BufferHandle }) => Voice} createBufferVoice
+ */
+
+/**
+ * @typedef {object} VoiceOptions
+ * @property {Bus} bus
+ * @property {number} [gain] the voice's own volume; defaults to 1
  */
 
 /**

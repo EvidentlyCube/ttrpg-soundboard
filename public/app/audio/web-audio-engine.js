@@ -4,6 +4,7 @@
 /** @typedef {import('../logic/ports.js').Bus} Bus */
 /** @typedef {import('../logic/ports.js').Voice} Voice */
 /** @typedef {import('../logic/ports.js').VoiceError} VoiceError */
+/** @typedef {import('../logic/ports.js').VoiceOptions} VoiceOptions */
 
 /** @type {Record<AudioFormat, string>} */
 const MIME_TYPES = { mp3: 'audio/mpeg', ogg: 'audio/ogg' };
@@ -12,7 +13,8 @@ const MIME_TYPES = { mp3: 'audio/mpeg', ogg: 'audio/ogg' };
 const GAIN_SMOOTHING_SECONDS = 0.015;
 
 /**
- * Plays audio through the Web Audio API (DESIGN.md §6.3). The graph is voice gain → bus gain → master gain → speakers.
+ * Plays audio through the Web Audio API (DESIGN.md §6.3). The graph is voice gain → voice fade → bus gain → master gain
+ * → speakers.
  * The context is only created inside `unlock()`, because browsers only allow audio to start from a user gesture.
  * @implements {AudioEngine}
  */
@@ -64,10 +66,10 @@ export class WebAudioEngine {
 		}
 	}
 
-	/** @param {{ url: string, bus: Bus }} options */
-	createStreamVoice({ url, bus }) {
+	/** @param {VoiceOptions & { url: string }} options */
+	createStreamVoice({ url, bus, gain = 1 }) {
 		const { context, buses } = this.#unlocked();
-		return new StreamVoice(context, buses[bus], url);
+		return new StreamVoice(new VoiceOutput(context, buses[bus], gain), url);
 	}
 
 	/**
@@ -84,13 +86,13 @@ export class WebAudioEngine {
 		return new DecodedBuffer(audioBuffer);
 	}
 
-	/** @param {{ buffer: BufferHandle, bus: Bus }} options */
-	createBufferVoice({ buffer, bus }) {
+	/** @param {VoiceOptions & { buffer: BufferHandle }} options */
+	createBufferVoice({ buffer, bus, gain = 1 }) {
 		const { context, buses } = this.#unlocked();
 		if (!(buffer instanceof DecodedBuffer)) {
 			throw new TypeError('createBufferVoice needs a buffer from loadBuffer');
 		}
-		return new BufferVoice(context, buses[bus], buffer.audioBuffer);
+		return new BufferVoice(new VoiceOutput(context, buses[bus], gain), buffer.audioBuffer);
 	}
 
 	#createContext() {
@@ -204,19 +206,60 @@ class VoiceEvents {
 }
 
 /**
- * @param {AudioContext} context
- * @param {GainNode} gain
- * @param {number} target
- * @param {number} seconds
+ * The two gain stages every voice plays through: its own volume, then the fades. Keeping them apart means a fade never
+ * needs to know the volume, and a volume change never disturbs a fade in progress.
  */
-function rampGain(context, gain, target, seconds) {
-	const now = context.currentTime;
-	gain.gain.cancelScheduledValues(now);
-	gain.gain.setValueAtTime(gain.gain.value, now);
-	if (seconds <= 0) {
-		gain.gain.setValueAtTime(target, now);
-	} else {
-		gain.gain.linearRampToValueAtTime(target, now + seconds);
+class VoiceOutput {
+	#context;
+	#volume;
+	#fade;
+
+	/**
+	 * @param {AudioContext} context
+	 * @param {AudioNode} destination
+	 * @param {number} gain
+	 */
+	constructor(context, destination, gain) {
+		this.#context = context;
+		this.#volume = context.createGain();
+		this.#volume.gain.value = gain;
+		this.#fade = context.createGain();
+		this.#volume.connect(this.#fade).connect(destination);
+	}
+
+	get context() {
+		return this.#context;
+	}
+
+	/** Where the voice's source connects. */
+	get input() {
+		return this.#volume;
+	}
+
+	/** @param {number} gain */
+	setGain(gain) {
+		this.#volume.gain.setTargetAtTime(gain, this.#context.currentTime, GAIN_SMOOTHING_SECONDS);
+	}
+
+	/**
+	 * @param {number} target
+	 * @param {number} seconds
+	 */
+	rampFade(target, seconds) {
+		const { gain } = this.#fade;
+		const now = this.#context.currentTime;
+		gain.cancelScheduledValues(now);
+		gain.setValueAtTime(gain.value, now);
+		if (seconds <= 0) {
+			gain.setValueAtTime(target, now);
+		} else {
+			gain.linearRampToValueAtTime(target, now + seconds);
+		}
+	}
+
+	disconnect() {
+		this.#volume.disconnect();
+		this.#fade.disconnect();
 	}
 }
 
@@ -225,25 +268,22 @@ function rampGain(context, gain, target, seconds) {
  * @implements {Voice}
  */
 class StreamVoice {
-	#context;
+	#output;
 	#element;
 	#source;
-	#gain;
 	#events = new VoiceEvents();
 	#listeners = new AbortController();
 
 	/**
-	 * @param {AudioContext} context
-	 * @param {AudioNode} destination
+	 * @param {VoiceOutput} output
 	 * @param {string} url
 	 */
-	constructor(context, destination, url) {
-		this.#context = context;
+	constructor(output, url) {
+		this.#output = output;
 		this.#element = new Audio();
 		this.#element.preload = 'auto';
-		this.#source = context.createMediaElementSource(this.#element);
-		this.#gain = context.createGain();
-		this.#source.connect(this.#gain).connect(destination);
+		this.#source = output.context.createMediaElementSource(this.#element);
+		this.#source.connect(output.input);
 
 		const { signal } = this.#listeners;
 		this.#element.addEventListener('loadedmetadata', () => this.#events.loaded(), { signal });
@@ -287,7 +327,12 @@ class StreamVoice {
 	 * @param {number} seconds
 	 */
 	rampGain(target, seconds) {
-		rampGain(this.#context, this.#gain, target, seconds);
+		this.#output.rampFade(target, seconds);
+	}
+
+	/** @param {number} gain */
+	setGain(gain) {
+		this.#output.setGain(gain);
 	}
 
 	/** @type {Voice['on']} */
@@ -308,7 +353,7 @@ class StreamVoice {
 		this.#listeners.abort();
 		this.#element.pause();
 		this.#source.disconnect();
-		this.#gain.disconnect();
+		this.#output.disconnect();
 		// Clearing the source and reloading is what makes the browser drop its buffers and close the connection.
 		this.#element.removeAttribute('src');
 		this.#element.load();
@@ -320,9 +365,9 @@ class StreamVoice {
  * @implements {Voice}
  */
 class BufferVoice {
+	#output;
 	#context;
 	#buffer;
-	#gain;
 	#events = new VoiceEvents();
 	/** @type {AudioBufferSourceNode | null} */
 	#source = null;
@@ -330,15 +375,13 @@ class BufferVoice {
 	#startedAt = 0;
 
 	/**
-	 * @param {AudioContext} context
-	 * @param {AudioNode} destination
+	 * @param {VoiceOutput} output
 	 * @param {AudioBuffer} buffer
 	 */
-	constructor(context, destination, buffer) {
-		this.#context = context;
+	constructor(output, buffer) {
+		this.#output = output;
+		this.#context = output.context;
 		this.#buffer = buffer;
-		this.#gain = context.createGain();
-		this.#gain.connect(destination);
 		// The duration is known right away; announce it asynchronously, like a media element would.
 		queueMicrotask(() => this.#events.loaded());
 	}
@@ -360,7 +403,7 @@ class BufferVoice {
 		}
 		const source = this.#context.createBufferSource();
 		source.buffer = this.#buffer;
-		source.connect(this.#gain);
+		source.connect(this.#output.input);
 		source.addEventListener('ended', () => {
 			if (this.#source === source) {
 				this.#source = null;
@@ -395,7 +438,12 @@ class BufferVoice {
 	 * @param {number} seconds
 	 */
 	rampGain(target, seconds) {
-		rampGain(this.#context, this.#gain, target, seconds);
+		this.#output.rampFade(target, seconds);
+	}
+
+	/** @param {number} gain */
+	setGain(gain) {
+		this.#output.setGain(gain);
 	}
 
 	/** @type {Voice['on']} */
@@ -414,7 +462,7 @@ class BufferVoice {
 		}
 		this.#events.stopped = true;
 		this.#halt();
-		this.#gain.disconnect();
+		this.#output.disconnect();
 	}
 
 	/** Stops the current source node; clearing `#source` first means its `ended` event is ignored. */

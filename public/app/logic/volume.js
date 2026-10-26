@@ -7,6 +7,23 @@ import { InvalidCommandError } from './errors.js';
 /** @type {readonly Bus[]} */
 export const BUSES = ['master', 'music', 'sfx'];
 
+/** The loudest boost a sound or track may have (just over +12 dB); the server enforces the same limit. */
+export const MAX_GAIN = 4;
+
+/**
+ * Item gains are stored as the linear multiplier the audio API takes, and shown to people as decibels.
+ * @param {number} gain
+ * @returns {number} -Infinity for silence
+ */
+export function gainToDb(gain) {
+	return 20 * Math.log10(gain);
+}
+
+/** @param {number} db */
+export function dbToGain(db) {
+	return 10 ** (db / 20);
+}
+
 /**
  * Squaring the slider position spreads loudness more evenly across the slider than a linear gain does.
  * @param {number} value slider position, 0..1

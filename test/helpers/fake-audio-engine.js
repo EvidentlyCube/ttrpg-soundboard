@@ -96,9 +96,9 @@ export class FakeAudioEngine {
 		this.busGains[bus] = gain;
 	}
 
-	/** @param {{ url: string, bus: Bus }} options */
-	createStreamVoice({ url, bus }) {
-		return this.#addVoice(new FakeVoice(this.#clock, url, bus, 'stream', this.#scriptFor(url)));
+	/** @param {import('../../public/app/logic/ports.js').VoiceOptions & { url: string }} options */
+	createStreamVoice({ url, bus, gain = 1 }) {
+		return this.#addVoice(new FakeVoice(this.#clock, url, bus, 'stream', this.#scriptFor(url), gain));
 	}
 
 	/** @param {string} url */
@@ -116,10 +116,10 @@ export class FakeAudioEngine {
 		});
 	}
 
-	/** @param {{ buffer: import('../../public/app/logic/ports.js').BufferHandle, bus: Bus }} options */
-	createBufferVoice({ buffer, bus }) {
+	/** @param {import('../../public/app/logic/ports.js').VoiceOptions & { buffer: import('../../public/app/logic/ports.js').BufferHandle }} options */
+	createBufferVoice({ buffer, bus, gain = 1 }) {
 		const { url } = /** @type {{ url: string }} */ (/** @type {unknown} */ (buffer));
-		return this.#addVoice(new FakeVoice(this.#clock, url, bus, 'buffer', { ...this.#scriptFor(url), loadDelay: 0 }));
+		return this.#addVoice(new FakeVoice(this.#clock, url, bus, 'buffer', { ...this.#scriptFor(url), loadDelay: 0 }, gain));
 	}
 
 	/** @param {FakeVoice} voice */
@@ -160,12 +160,15 @@ export class FakeVoice {
 	 * @param {Bus} bus
 	 * @param {'stream' | 'buffer'} kind
 	 * @param {VoiceScript} script
+	 * @param {number} gain
 	 */
-	constructor(clock, url, bus, kind, script) {
+	constructor(clock, url, bus, kind, script, gain) {
 		this.#clock = clock;
 		this.url = url;
 		this.bus = bus;
 		this.kind = kind;
+		/** The voice's own volume, as last set. */
+		this.gain = gain;
 		this.#script = script;
 		this.#later(() => (script.loadError ? this.#fail(script.loadError) : this.#load()), script.loadDelay ?? 0);
 	}
@@ -245,6 +248,11 @@ export class FakeVoice {
 	 */
 	rampGain(target, seconds) {
 		this.gainRamps.push([target, seconds]);
+	}
+
+	/** @param {number} gain */
+	setGain(gain) {
+		this.gain = gain;
 	}
 
 	/**

@@ -1,7 +1,32 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { InvalidCommandError } from '../../public/app/logic/errors.js';
-import { sliderToGain, VolumeControl } from '../../public/app/logic/volume.js';
+import { dbToGain, gainToDb, sliderToGain, VolumeControl } from '../../public/app/logic/volume.js';
+
+describe('gainToDb and dbToGain', () => {
+	it('treat gain 1 as 0 dB', () => {
+		assert.equal(gainToDb(1), 0);
+		assert.equal(dbToGain(0), 1);
+	});
+
+	it('convert amplitude gain, where 2× is about +6 dB', () => {
+		assert.ok(Math.abs(gainToDb(2) - 6.0206) < 1e-4);
+		assert.ok(Math.abs(gainToDb(0.5) + 6.0206) < 1e-4);
+		assert.ok(Math.abs(dbToGain(12) - 3.9811) < 1e-4);
+		assert.ok(Math.abs(dbToGain(-20) - 0.1) < 1e-12);
+	});
+
+	it('treat silence as minus infinity', () => {
+		assert.equal(gainToDb(0), -Infinity);
+		assert.equal(dbToGain(-Infinity), 0);
+	});
+
+	it('round-trip', () => {
+		for (const gain of [0.001, 0.25, 1, 3.5]) {
+			assert.ok(Math.abs(dbToGain(gainToDb(gain)) - gain) < 1e-12, String(gain));
+		}
+	});
+});
 
 describe('sliderToGain', () => {
 	it('squares the slider position', () => {
