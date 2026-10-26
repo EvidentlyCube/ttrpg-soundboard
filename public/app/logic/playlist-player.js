@@ -41,7 +41,7 @@ import { resolveTransition } from './transitions.js';
  * @property {number | null} pendingSeek applied once the track has loaded
  */
 
-/** @typedef {{ voice: Voice, timer: number }} RetiringVoice */
+/** @typedef {{ voice: Voice, trackIndex: number, timer: number }} RetiringVoice */
 
 const PROGRESS_INTERVAL_MS = 250;
 const RESTART_THRESHOLD_SECONDS = 3;
@@ -60,6 +60,8 @@ export class PlaylistPlayer {
 	#rules;
 	#order;
 	#isPlayable;
+	/** The playlist's own volume; each voice plays at this times its track's gain (DESIGN.md §6.4). */
+	#gain;
 	/** @type {PlaylistState} */
 	#state = 'idle';
 	#generation = 0;
@@ -87,6 +89,7 @@ export class PlaylistPlayer {
 		this.#emit = emit;
 		this.#rules = rules;
 		this.#isPlayable = isPlayable;
+		this.#gain = playlist.gain;
 		this.#order = createOrderStrategy(rules.order, playlist.tracks.length, { loop: rules.loop });
 	}
 
@@ -221,6 +224,21 @@ export class PlaylistPlayer {
 	}
 
 	/**
+	 * Changes the playlist's own volume for every voice it owns, including voices still fading out; their fades go on
+	 * undisturbed, because fades use a separate gain stage (DESIGN.md §6.3).
+	 * @param {number} gain linear multiplier
+	 */
+	setGain(gain) {
+		this.#gain = gain;
+		if (this.#current) {
+			this.#current.voice.setGain(this.#voiceGain(this.#current.trackIndex));
+		}
+		for (const retiring of this.#retiring) {
+			retiring.voice.setGain(this.#voiceGain(retiring.trackIndex));
+		}
+	}
+
+	/**
 	 * @param {number} index
 	 * @param {TransitionTiming} timing
 	 */
@@ -235,7 +253,7 @@ export class PlaylistPlayer {
 			return;
 		}
 
-		const voice = this.#engine.createStreamVoice({ url: track.url, bus: 'music' });
+		const voice = this.#engine.createStreamVoice({ url: track.url, bus: 'music', gain: this.#voiceGain(index) });
 		const { startAt } = planTrack(track, this.#rules);
 		/** @type {CurrentVoice} */
 		const current = { voice, trackIndex: index, generation, loaded: false, pendingSeek: startAt > 0 ? startAt : null };
@@ -335,7 +353,7 @@ export class PlaylistPlayer {
 
 		current.voice.rampGain(0, timing.fadeOutSeconds);
 		/** @type {RetiringVoice} */
-		const retiring = { voice: current.voice, timer: 0 };
+		const retiring = { voice: current.voice, trackIndex: current.trackIndex, timer: 0 };
 		// The deadline, not the fade, is what guarantees the voice is released, even if the engine never reports anything.
 		retiring.timer = this.#clock.setTimeout(() => this.#finishRetiring(retiring), timing.fadeOutSeconds * 1000 + RETIRING_GRACE_MS);
 		this.#retiring.push(retiring);
@@ -349,6 +367,11 @@ export class PlaylistPlayer {
 		this.#clock.clearTimeout(retiring.timer);
 		retiring.voice.stop();
 		this.#retiring = this.#retiring.filter((entry) => entry !== retiring);
+	}
+
+	/** @param {number} trackIndex */
+	#voiceGain(trackIndex) {
+		return this.#gain * this.#playlist.tracks[trackIndex].gain;
 	}
 
 	/** @param {CurrentVoice} current */

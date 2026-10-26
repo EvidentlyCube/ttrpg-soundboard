@@ -11,14 +11,15 @@ import { FakeClock } from '../helpers/fake-clock.js';
 
 /**
  * @param {number} count
+ * @param {{ gain?: number, trackGains?: number[] }} [gains]
  * @returns {import('../../public/app/logic/ports.js').PlaylistJson}
  */
-function playlistOf(count) {
+function playlistOf(count, { gain = 1, trackGains = [] } = {}) {
 	return {
 		id: 'Combat',
 		title: 'Combat',
-		gain: 1,
-		tracks: Array.from({ length: count }, (_, i) => ({ id: `Combat/${i}.mp3`, title: `Track ${i}`, format: 'mp3', size: 1000, gain: 1, url: `/t${i}` })),
+		gain,
+		tracks: Array.from({ length: count }, (_, i) => ({ id: `Combat/${i}.mp3`, title: `Track ${i}`, format: 'mp3', size: 1000, gain: trackGains[i] ?? 1, url: `/t${i}` })),
 	};
 }
 
@@ -27,14 +28,15 @@ function playlistOf(count) {
  * @param {number} [options.tracks]
  * @param {Partial<PlaybackRules>} [options.rules]
  * @param {(track: import('../../public/app/logic/ports.js').AudioFileJson) => boolean} [options.isPlayable]
+ * @param {{ gain?: number, trackGains?: number[] }} [options.gains]
  */
-function setup({ tracks = 3, rules = {}, isPlayable } = {}) {
+function setup({ tracks = 3, rules = {}, isPlayable, gains } = {}) {
 	const clock = new FakeClock();
 	const engine = new FakeAudioEngine(clock, { defaultScript: { duration: 10, loadDelay: 0.1 } });
 	/** @type {PlaylistEvent[]} */
 	const events = [];
 	const player = new PlaylistPlayer({
-		playlist: playlistOf(tracks),
+		playlist: playlistOf(tracks, gains),
 		engine,
 		clock,
 		emit: (event) => events.push(event),
@@ -400,6 +402,42 @@ describe('PlaylistPlayer', () => {
 			advance(5);
 			assert.equal(events.length, before);
 			assert.equal(player.state, 'idle');
+		});
+	});
+
+	describe('gain', () => {
+		it('plays each track at the playlist gain times the track gain', () => {
+			const { player, engine } = setup({ gains: { gain: 0.5, trackGains: [1, 2] } });
+			player.play();
+			player.next('instant');
+			assert.deepEqual(engine.voices.map((voice) => voice.gain), [0.5, 1]);
+		});
+
+		it('applies a new playlist gain to the current voice and to voices still fading out, with their own track gains', () => {
+			const { player, engine, advance } = setup({ rules: { crossfade: 2 }, gains: { trackGains: [1, 3] } });
+			player.play();
+			advance(1);
+			player.next();
+			player.setGain(0.5);
+			const [old, fresh] = engine.voices;
+			assert.deepEqual([old.gain, fresh.gain], [0.5, 1.5]);
+			assert.equal(old.stopped, false, 'still fading out');
+			assert.deepEqual(old.gainRamps, [[0, 2]], 'the gain change does not touch the fade');
+		});
+
+		it('starts later tracks at the new gain', () => {
+			const { player, engine } = setup();
+			player.setGain(2);
+			player.play();
+			assert.equal(engine.voices[0].gain, 2);
+		});
+
+		it('leaves stopped voices alone', () => {
+			const { player, engine } = setup();
+			player.play();
+			player.stop('instant');
+			player.setGain(0.25);
+			assert.equal(engine.voices[0].gain, 1);
 		});
 	});
 
