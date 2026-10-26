@@ -1,7 +1,7 @@
 /** @typedef {import('../logic/ports.js').BackendApi} BackendApi */
 /** @typedef {import('../logic/ports.js').LibraryJson} LibraryJson */
 /** @typedef {import('../logic/ports.js').Volumes} Volumes */
-/** @typedef {import('../logic/ports.js').SoundOptions} SoundOptions */
+/** @typedef {import('../logic/ports.js').ItemOptions} ItemOptions */
 
 /**
  * Talks to the soundboard server's JSON API (DESIGN.md §5.2).
@@ -35,11 +35,20 @@ export class HttpBackendApi {
 
 	/**
 	 * @param {string} soundId
-	 * @param {SoundOptions} options
+	 * @param {ItemOptions} options
 	 * @param {{ keepalive: boolean }} request
 	 */
 	async saveSoundOptions(soundId, options, { keepalive }) {
 		await this.#request('PATCH', `/api/sounds/${encodeURIComponent(soundId)}`, { body: options, keepalive });
+	}
+
+	/**
+	 * @param {string} playlistId
+	 * @param {ItemOptions} options
+	 * @param {{ keepalive: boolean }} request
+	 */
+	async savePlaylistOptions(playlistId, options, { keepalive }) {
+		await this.#request('PATCH', `/api/playlists/${encodeURIComponent(playlistId)}`, { body: options, keepalive });
 	}
 
 	/**

@@ -17,7 +17,8 @@ import { VolumeControl } from './volume.js';
 /** @typedef {import('./ports.js').Logger} Logger */
 /** @typedef {import('./ports.js').Volumes} Volumes */
 /** @typedef {import('./ports.js').AudioFileJson} AudioFileJson */
-/** @typedef {import('./ports.js').SoundOptions} SoundOptions */
+/** @typedef {import('./ports.js').ItemOptions} ItemOptions */
+/** @typedef {import('./ports.js').PlaylistJson} PlaylistJson */
 /** @typedef {import('./commands.js').Command} Command */
 /** @typedef {import('./playlist-player.js').PlaylistEvent} PlaylistEvent */
 /** @typedef {import('./playlist-player.js').PlaylistSnapshot} PlaylistSnapshot */
@@ -32,7 +33,10 @@ import { VolumeControl } from './volume.js';
  * 	| { type: 'audio.resumed' }} AppEvent
  * @typedef {{ type: 'sound.changed', sound: AudioFileJson }
  * 	| { type: 'sound.saved', soundId: string }
- * 	| { type: 'sound.saveFailed', soundId: string, message: string }} CustomizeEvent
+ * 	| { type: 'sound.saveFailed', soundId: string, message: string }
+ * 	| { type: 'playlist.changed', playlist: PlaylistJson }
+ * 	| { type: 'playlist.saved', playlistId: string }
+ * 	| { type: 'playlist.saveFailed', playlistId: string, message: string }} CustomizeEvent
  * @typedef {AppEvent | SoundEvent | PlaylistEvent | VolumeChangedEvent | CustomizeEvent} SoundboardEvent
  */
 
@@ -76,12 +80,15 @@ export class Soundboard {
 		this.#volume = new VolumeControl({ setBusGain: (bus, gain) => engine.setBusGain(bus, gain), emit });
 		this.#settingsSync = new SettingsSync({ saveVolumes: (volumes, options) => api.saveVolumes(volumes, options), clock, logger });
 		this.#optionsSync = new OptionsSync({
-			save: (soundId, options, request) => api.saveSoundOptions(soundId, options, request),
+			save: ({ kind, id }, options, request) => (kind === 'sound'
+				? api.saveSoundOptions(id, options, request)
+				: api.savePlaylistOptions(id, options, request)),
 			clock,
-			onSaved: (soundId) => emit({ type: 'sound.saved', soundId }),
-			onFailed: (soundId, error) => {
-				logger.warn(`Could not save the options of ${soundId}; they will be saved with the next change.`, error);
-				emit({ type: 'sound.saveFailed', soundId, message: error.message });
+			onSaved: ({ kind, id }) => emit(kind === 'sound' ? { type: 'sound.saved', soundId: id } : { type: 'playlist.saved', playlistId: id }),
+			onFailed: ({ kind, id }, error) => {
+				logger.warn(`Could not save the options of the ${kind} ${id}; they will be saved with the next change.`, error);
+				const { message } = error;
+				emit(kind === 'sound' ? { type: 'sound.saveFailed', soundId: id, message } : { type: 'playlist.saveFailed', playlistId: id, message });
 			},
 		});
 		engine.on('suspended', () => emit({ type: 'audio.suspended' }));
@@ -137,7 +144,15 @@ export class Soundboard {
 	 * @param {string} soundId
 	 */
 	flushSoundOptions(soundId) {
-		this.#optionsSync.flush(soundId);
+		this.#optionsSync.flush({ kind: 'sound', id: soundId });
+	}
+
+	/**
+	 * Saves a playlist's pending changes now instead of after the debounce, e.g. when its dialog closes.
+	 * @param {string} playlistId
+	 */
+	flushPlaylistOptions(playlistId) {
+		this.#optionsSync.flush({ kind: 'playlist', id: playlistId });
 	}
 
 	/** @param {unknown} input a command, validated before it runs */
@@ -163,7 +178,7 @@ export class Soundboard {
 				if (command.gain !== undefined) {
 					loaded.sounds.setGain(sound.id, sound.gain);
 				}
-				this.#optionsSync.schedule(sound.id, { title: sound.title, gain: sound.gain });
+				this.#optionsSync.schedule({ kind: 'sound', id: sound.id }, { title: sound.title, gain: sound.gain });
 				this.#events.emit({ type: 'sound.changed', sound });
 				return;
 			}
@@ -202,6 +217,15 @@ export class Soundboard {
 			case 'playlist.resume':
 				player.resume();
 				return;
+			case 'playlist.customize': {
+				const playlist = loaded.library.updatePlaylist(player.id, { title: command.title, gain: command.gain });
+				if (command.gain !== undefined) {
+					player.setGain(playlist.gain);
+				}
+				this.#optionsSync.schedule({ kind: 'playlist', id: playlist.id }, { title: playlist.title, gain: playlist.gain });
+				this.#events.emit({ type: 'playlist.changed', playlist });
+				return;
+			}
 		}
 	}
 
@@ -291,10 +315,20 @@ export class Soundboard {
 	 * Changes a sound's title or gain. The change takes effect at once, also on instances already playing, and is saved
 	 * to the server shortly after (`sound.saved` or `sound.saveFailed`).
 	 * @param {string} soundId
-	 * @param {SoundOptions} changes a title must not be empty; a gain is linear, from 0 to MAX_GAIN
+	 * @param {ItemOptions} changes a title must not be empty; a gain is linear, from 0 to MAX_GAIN
 	 */
 	customizeSound(soundId, { title, gain }) {
 		this.dispatch({ type: 'sound.customize', soundId, title, gain });
+	}
+
+	/**
+	 * Like `customizeSound`, for a playlist: a new gain reaches its playing and fading tracks at once. Saving is reported
+	 * with `playlist.saved` or `playlist.saveFailed`.
+	 * @param {string} playlistId
+	 * @param {ItemOptions} changes
+	 */
+	customizePlaylist(playlistId, { title, gain }) {
+		this.dispatch({ type: 'playlist.customize', playlistId, title, gain });
 	}
 
 	/** @returns {LibraryJson | null} null until started */

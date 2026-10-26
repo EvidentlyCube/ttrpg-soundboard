@@ -18,7 +18,7 @@ describe('HttpBackendApi against the real server', () => {
 	let api;
 
 	before(async () => {
-		tree = await createTmpTree({ '.soundboard': '{ "version": 1, "volumes": { "music": 0.5 } }', 'Boom.mp3': '' });
+		tree = await createTmpTree({ '.soundboard': '{ "version": 1, "volumes": { "music": 0.5 } }', 'Boom.mp3': '', 'Zażółć #1': { '1.mp3': '' } });
 		const outcome = await new BootstrapService({ prompter: new FakePrompter(), reporter: new FakeReporter() }).run(tree.root);
 		assert.equal(outcome.status, 'ready');
 		server = await startServer({ library: outcome.library, settings: outcome.settings, port: 0, logError: () => {} });
@@ -58,6 +58,13 @@ describe('HttpBackendApi against the real server', () => {
 		const saved = JSON.parse(await readFile(join(tree.root, 'Boom.mp3.json'), 'utf8'));
 		assert.deepEqual(saved, { title: 'Bigger Boom', gain: 2 });
 		assert.equal((await api.fetchLibrary()).sounds[0].title, 'Bigger Boom');
+	});
+
+	it('saves playlist options', async () => {
+		await api.savePlaylistOptions('Zażółć #1', { title: 'Calm', gain: 0.5 }, { keepalive: false });
+		const saved = JSON.parse(await readFile(join(tree.root, 'Zażółć #1.json'), 'utf8'));
+		assert.deepEqual({ title: saved.title, gain: saved.gain }, { title: 'Calm', gain: 0.5 });
+		assert.equal((await api.fetchLibrary()).playlists[0].gain, 0.5);
 	});
 
 	it('encodes sound ids in the path', async () => {

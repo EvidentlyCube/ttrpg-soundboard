@@ -65,4 +65,31 @@ describe('LibraryModel', () => {
 			assert.deepEqual(model.json, exampleLibrary());
 		});
 	});
+
+	describe('updatePlaylist', () => {
+		const fresh = () => new LibraryModel(exampleLibrary(), () => true);
+
+		it('returns the changed playlist, with its tracks, and finds it by id afterwards', () => {
+			const model = fresh();
+			const playlist = model.updatePlaylist('Combat', { title: ' Fight ', gain: 0.5 });
+			assert.deepEqual(playlist, { ...exampleLibrary().playlists[0], title: 'Fight', gain: 0.5 });
+			assert.equal(model.playlist('Combat'), playlist);
+		});
+
+		it('keeps the playlists in the JSON sorted by title, without touching earlier snapshots', () => {
+			const model = fresh();
+			const before = model.json;
+			model.updatePlaylist('Combat', { title: 'Zulu' });
+			assert.deepEqual(model.json.playlists.map((playlist) => playlist.title), ['Tavern', 'Zulu']);
+			assert.deepEqual(before, exampleLibrary());
+		});
+
+		it('rejects an empty title, a gain out of range, and unknown playlists', () => {
+			const model = fresh();
+			assert.throws(() => model.updatePlaylist('Combat', { title: '' }), new InvalidCommandError('A title cannot be empty'));
+			assert.throws(() => model.updatePlaylist('Combat', { gain: 5 }), new InvalidCommandError('Gain must be a number from 0 to 4, got 5'));
+			assert.throws(() => model.updatePlaylist('Nope', { gain: 1 }), new InvalidCommandError('Unknown playlist "Nope"'));
+			assert.deepEqual(model.json, exampleLibrary());
+		});
+	});
 });

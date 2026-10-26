@@ -1,7 +1,7 @@
 /** @typedef {import('../../public/app/logic/ports.js').BackendApi} BackendApi */
 /** @typedef {import('../../public/app/logic/ports.js').LibraryJson} LibraryJson */
 /** @typedef {import('../../public/app/logic/ports.js').Volumes} Volumes */
-/** @typedef {import('../../public/app/logic/ports.js').SoundOptions} SoundOptions */
+/** @typedef {import('../../public/app/logic/ports.js').ItemOptions} ItemOptions */
 
 /** @returns {LibraryJson} */
 export function exampleLibrary() {
@@ -46,8 +46,10 @@ export class FakeBackendApi {
 	libraryRequests = 0;
 	/** @type {{ volumes: Volumes, keepalive: boolean }[]} */
 	saves = [];
-	/** @type {{ soundId: string, options: SoundOptions, keepalive: boolean }[]} */
+	/** @type {{ soundId: string, options: ItemOptions, keepalive: boolean }[]} */
 	soundSaves = [];
+	/** @type {{ playlistId: string, options: ItemOptions, keepalive: boolean }[]} */
+	playlistSaves = [];
 
 	async fetchLibrary() {
 		this.libraryRequests++;
@@ -74,11 +76,23 @@ export class FakeBackendApi {
 
 	/**
 	 * @param {string} soundId
-	 * @param {SoundOptions} options
+	 * @param {ItemOptions} options
 	 * @param {{ keepalive: boolean }} keepalive
 	 */
 	async saveSoundOptions(soundId, options, { keepalive }) {
 		this.soundSaves.push({ soundId, options, keepalive });
+		if (this.saveError) {
+			throw this.saveError;
+		}
+	}
+
+	/**
+	 * @param {string} playlistId
+	 * @param {ItemOptions} options
+	 * @param {{ keepalive: boolean }} keepalive
+	 */
+	async savePlaylistOptions(playlistId, options, { keepalive }) {
+		this.playlistSaves.push({ playlistId, options, keepalive });
 		if (this.saveError) {
 			throw this.saveError;
 		}

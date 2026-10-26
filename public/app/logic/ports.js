@@ -73,10 +73,11 @@
  * @property {() => Promise<LibraryJson>} fetchLibrary
  * @property {() => Promise<{ volumes: Volumes }>} fetchSettings
  * @property {(volumes: Volumes, options: { keepalive: boolean }) => Promise<void>} saveVolumes
- * @property {(soundId: string, options: SoundOptions, request: { keepalive: boolean }) => Promise<void>} saveSoundOptions
+ * @property {(soundId: string, options: ItemOptions, request: { keepalive: boolean }) => Promise<void>} saveSoundOptions
+ * @property {(playlistId: string, options: ItemOptions, request: { keepalive: boolean }) => Promise<void>} savePlaylistOptions
  */
 
-/** @typedef {{ title?: string, gain?: number }} SoundOptions */
+/** The options a Customize dialog changes, for a sound or a playlist. @typedef {{ title?: string, gain?: number }} ItemOptions */
 
 /**
  * @typedef {object} Logger

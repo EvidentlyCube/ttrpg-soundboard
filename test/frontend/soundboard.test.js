@@ -14,6 +14,7 @@ const EVENT_TYPES = /** @type {const} */ ([
 	'playlist.stateChanged', 'playlist.progress', 'playlist.error',
 	'volume.changed',
 	'sound.changed', 'sound.saved', 'sound.saveFailed',
+	'playlist.changed', 'playlist.saved', 'playlist.saveFailed',
 ]);
 
 /** @param {{ canPlay?: (format: 'mp3' | 'ogg') => boolean }} [options] */
@@ -260,6 +261,57 @@ describe('Soundboard', () => {
 			assert.throws(() => soundboard.customizeSound('Nope', { gain: 1 }), InvalidCommandError);
 			clock.advance(1000);
 			assert.deepEqual(api.soundSaves, []);
+			assert.deepEqual(events, []);
+		});
+	});
+
+	describe('customizing playlists', () => {
+		it('applies a gain at once to the playing track and to later ones', async () => {
+			const { soundboard, engine } = await started();
+			soundboard.togglePlaylist('Combat');
+			soundboard.customizePlaylist('Combat', { gain: 0.5 });
+			soundboard.nextTrack('Combat', { transition: 'instant' });
+			assert.deepEqual(engine.voices.map((voice) => voice.gain), [0.5, 0.5]);
+		});
+
+		it('announces the changed playlist and keeps the library sorted', async () => {
+			const { soundboard, eventsOf } = await started();
+			soundboard.customizePlaylist('Combat', { title: 'Zulu' });
+			const [changed] = eventsOf('playlist.changed');
+			assert.equal(changed.type === 'playlist.changed' && changed.playlist.title, 'Zulu');
+			assert.deepEqual(soundboard.getLibrary()?.playlists.map((playlist) => playlist.title), ['Tavern', 'Zulu']);
+		});
+
+		it('saves debounced and reports it saved, or failed', async () => {
+			const { soundboard, api, clock, settle, eventsOf } = await started();
+			soundboard.customizePlaylist('Tavern', { gain: 2 });
+			clock.advance(500);
+			assert.deepEqual(api.playlistSaves, [{ playlistId: 'Tavern', options: { title: 'Tavern', gain: 2 }, keepalive: false }]);
+			await settle();
+			assert.deepEqual(eventsOf('playlist.saved'), [{ type: 'playlist.saved', playlistId: 'Tavern' }]);
+
+			api.saveError = new Error('read-only');
+			soundboard.customizePlaylist('Tavern', { gain: 3 });
+			clock.advance(500);
+			await settle();
+			assert.deepEqual(eventsOf('playlist.saveFailed'), [{ type: 'playlist.saveFailed', playlistId: 'Tavern', message: 'read-only' }]);
+		});
+
+		it('saves at once when flushed, and with keepalive when the page closes', async () => {
+			const { soundboard, api } = await started();
+			soundboard.customizePlaylist('Combat', { gain: 0.5 });
+			soundboard.flushPlaylistOptions('Combat');
+			soundboard.customizePlaylist('Tavern', { gain: 2 });
+			soundboard.flushSettings();
+			assert.deepEqual(api.playlistSaves.map(({ playlistId, keepalive }) => [playlistId, keepalive]), [['Combat', false], ['Tavern', true]]);
+		});
+
+		it('rejects bad changes without changing or saving anything', async () => {
+			const { soundboard, api, clock, events } = await started();
+			assert.throws(() => soundboard.customizePlaylist('Combat', { title: ' ' }), InvalidCommandError);
+			assert.throws(() => soundboard.customizePlaylist('Nope', { gain: 1 }), InvalidCommandError);
+			clock.advance(1000);
+			assert.deepEqual(api.playlistSaves, []);
 			assert.deepEqual(events, []);
 		});
 	});

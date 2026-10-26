@@ -22,6 +22,8 @@ describe('validateCommand', () => {
 			{ type: 'sound.customize', soundId: 'a', title: 'Boom' },
 			{ type: 'sound.customize', soundId: 'a', gain: 2 },
 			{ type: 'sound.customize', soundId: 'a', title: 'Boom', gain: 0 },
+			{ type: 'playlist.customize', playlistId: 'p', title: 'Fight' },
+			{ type: 'playlist.customize', playlistId: 'p', gain: 1.5 },
 		];
 		for (const command of commands) {
 			assert.equal(validateCommand(command), command, JSON.stringify(command));
@@ -44,6 +46,8 @@ describe('validateCommand', () => {
 			[{ type: 'sound.customize', soundId: 'a', title: 5 }, /"title" must be a string/],
 			[{ type: 'sound.customize', soundId: 'a', gain: '2' }, /"gain" must be a number/],
 			[{ type: 'sound.customize', soundId: 'a' }, /needs "title" or "gain"/],
+			[{ type: 'playlist.customize', playlistId: 'p', gain: null }, /"gain" must be a number/],
+			[{ type: 'playlist.customize', soundId: 'p', gain: 1 }, /"playlistId" must be a string/],
 		];
 		for (const [command, message] of cases) {
 			assert.throws(() => validateCommand(command), (error) => error instanceof InvalidCommandError && message.test(error.message), JSON.stringify(command));
