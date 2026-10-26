@@ -17,7 +17,7 @@ export function soundMenuItems(isActive) {
 	return [
 		{ id: 'play', label: 'Play', enabled: true, group: 0 },
 		{ id: 'stopAll', label: 'Stop All', enabled: isActive, group: 0 },
-		{ id: 'customize', label: 'Customize', enabled: false, group: 1 },
+		{ id: 'customize', label: 'Customize', enabled: true, group: 1 },
 	];
 }
 

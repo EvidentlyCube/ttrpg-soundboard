@@ -18,6 +18,7 @@ export class SoundTile extends Component {
 	#overlay;
 	#sound;
 	#playable;
+	#onCustomize;
 
 	/**
 	 * @param {object} options
@@ -25,22 +26,26 @@ export class SoundTile extends Component {
 	 * @param {Overlay} options.overlay
 	 * @param {AudioFileJson} options.sound
 	 * @param {boolean} options.playable
+	 * @param {(soundId: string) => void} options.onCustomize
 	 */
-	constructor({ soundboard, overlay, sound, playable }) {
+	constructor({ soundboard, overlay, sound, playable, onCustomize }) {
 		super();
 		this.#soundboard = soundboard;
 		this.#overlay = overlay;
 		this.#sound = sound;
 		this.#playable = playable;
+		this.#onCustomize = onCustomize;
 	}
 
 	/** @override */
 	render() {
 		const { id, title, format } = this.#sound;
+		const tooltip = (/** @type {string} */ text) => (this.#playable ? text : `${text}: this browser cannot play ${format.toUpperCase()} files`);
+		const label = h('span', { class: 'line-clamp-3 font-medium' }, title);
 		const tile = h('button', {
 			'type': 'button',
 			'class': `${TILE_CLASS} border-l-sfx pr-10 data-[active=true]:border-sfx data-[active=true]:bg-sfx/15`,
-			'title': this.#playable ? title : `${title}: this browser cannot play ${format.toUpperCase()} files`,
+			'title': tooltip(title),
 			'disabled': !this.#playable,
 			'data-sound-id': id,
 			'data-active': 'false',
@@ -52,10 +57,12 @@ export class SoundTile extends Component {
 						this.#soundboard.playSound(id);
 					} else if (item === 'stopAll') {
 						this.#soundboard.stopSound(id);
+					} else if (item === 'customize') {
+						this.#onCustomize(id);
 					}
 				});
 			},
-		}, h('span', { class: 'line-clamp-3 font-medium' }, title));
+		}, label);
 
 		const stop = h('button', {
 			'type': 'button',
@@ -71,6 +78,13 @@ export class SoundTile extends Component {
 			if (event.soundId === id) {
 				tile.dataset.active = String(event.active);
 				stop.hidden = !event.active;
+			}
+		}));
+		this.own(this.#soundboard.on('sound.changed', ({ sound }) => {
+			if (sound.id === id) {
+				label.textContent = sound.title;
+				tile.title = tooltip(sound.title);
+				stop.setAttribute('aria-label', `Stop all ${sound.title}`);
 			}
 		}));
 		this.own(this.#soundboard.on('sound.error', (event) => {

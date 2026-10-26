@@ -73,6 +73,16 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] Overlapping sounds; the stop button appears and disappears; a ninth instance replaces the oldest.
 - [ ] Sounds never create a player bar.
 
+**Customize a sound**
+- [ ] Right-click a sound → Customize: the dialog opens with the title selected for typing; the menu is gone.
+- [ ] While a sound plays (use the dialog's Play button on a long sound), moving the volume changes its loudness at once, without clicks; new presses play at the new volume.
+- [ ] The gain widget: bars light up in proportion, the boost block turns yellow above 0 dB with the warning, a press near the 100 % mark lands on exactly `0.0 dB`, dragging works, double-click resets.
+- [ ] The dB readout: click it, type `-6` and Enter; `-inf` silences; nonsense stays in the field marked red; Esc cancels only the edit.
+- [ ] Keyboard on the widget: arrows step 1 dB, Home silences, End is +12 dB.
+- [ ] Renaming updates the tile while typing but only moves it into sorted order when the dialog closes. An emptied title field keeps the old title.
+- [ ] Changes survive a reload; the `.json` file next to the sound holds `title` and `gain`.
+- [ ] Close the lid while the dialog is open: the resume splash covers it, and the dialog is still there afterwards.
+
 **Playlists**
 - [ ] Several playlists at once; next, previous, jump, seek, pause and stop on each.
 - [ ] Tracks advance on their own, including while the window is in the background.

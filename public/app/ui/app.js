@@ -1,8 +1,10 @@
 import { Component } from './component.js';
+import { Dialog } from './dialog.js';
 import { h, on } from './dom.js';
 import { Overlay } from './overlay.js';
 import { PlayerDock } from './player-dock.js';
 import { PlaylistTile } from './playlist-tile.js';
+import { SoundEditor } from './sound-editor.js';
 import { SoundTile } from './sound-tile.js';
 import { Splash } from './splash.js';
 import { tileGrid } from './tile-grid.js';
@@ -84,6 +86,11 @@ class Board extends Component {
 	#overlay;
 	#library;
 	#unplayable;
+	#dialog = new Dialog();
+	/** @type {Map<string, SoundTile>} */
+	#soundTiles = new Map();
+	/** @type {HTMLElement | null} */
+	#soundGrid = null;
 
 	/**
 	 * @param {object} options
@@ -121,9 +128,13 @@ class Board extends Component {
 		}
 		if (sounds.length > 0) {
 			const { section, grid } = tileGrid('Sound Effects');
+			const onCustomize = (/** @type {string} */ soundId) => this.#customizeSound(soundId);
 			for (const sound of sounds) {
-				this.#adopt(new SoundTile({ soundboard, overlay, sound, playable: isPlayable(sound) }).mount(grid));
+				const tile = new SoundTile({ soundboard, overlay, sound, playable: isPlayable(sound), onCustomize }).mount(grid);
+				this.#soundTiles.set(sound.id, tile);
+				this.#adopt(tile);
 			}
+			this.#soundGrid = grid;
 			main.append(section);
 		}
 		if (playlists.length === 0 && sounds.length === 0) {
@@ -132,11 +143,44 @@ class Board extends Component {
 
 		const root = h('div', { class: 'flex h-full flex-col' }, header, main);
 		this.#adopt(new PlayerDock({ soundboard, overlay, playlists, isPlayable }).mount(root));
+		this.own(() => this.#dialog.close());
 		return root;
 	}
 
 	/** @param {Component} child */
 	#adopt(child) {
 		this.own(() => child.destroy());
+	}
+
+	/** @param {string} soundId */
+	#customizeSound(soundId) {
+		const soundboard = this.#soundboard;
+		const sound = soundboard.getLibrary()?.sounds.find((entry) => entry.id === soundId);
+		if (!sound) {
+			return;
+		}
+		this.#overlay.close();
+		const body = h('div');
+		const editor = new SoundEditor({ soundboard, sound }).mount(body);
+		this.#dialog.open({
+			title: 'Customize sound',
+			body,
+			onClose: () => {
+				editor.destroy();
+				soundboard.flushSoundOptions(soundId);
+				this.#sortSounds();
+			},
+		});
+		editor.focus();
+	}
+
+	/** Moves the sound tiles into the library's order. Done only when editing ends, so a tile never moves while it is renamed. */
+	#sortSounds() {
+		for (const sound of this.#soundboard.getLibrary()?.sounds ?? []) {
+			const tile = this.#soundTiles.get(sound.id);
+			if (tile && this.#soundGrid) {
+				this.#soundGrid.append(tile.element);
+			}
+		}
 	}
 }

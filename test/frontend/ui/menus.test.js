@@ -10,9 +10,9 @@ describe('soundMenuItems', () => {
 		assert.deepEqual(soundMenuItems(false).map((item) => item.label), ['Play', 'Stop All', 'Customize']);
 	});
 
-	it('enables Stop All only while the sound is playing; Customize is a stub', () => {
-		assert.deepEqual(enabledLabels(soundMenuItems(false)), ['Play']);
-		assert.deepEqual(enabledLabels(soundMenuItems(true)), ['Play', 'Stop All']);
+	it('enables Stop All only while the sound is playing, and Customize always', () => {
+		assert.deepEqual(enabledLabels(soundMenuItems(false)), ['Play', 'Customize']);
+		assert.deepEqual(enabledLabels(soundMenuItems(true)), ['Play', 'Stop All', 'Customize']);
 	});
 });
 
