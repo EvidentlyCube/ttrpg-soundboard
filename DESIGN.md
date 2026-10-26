@@ -480,7 +480,7 @@ This is where the race-condition risk sits. The design rules:
 - `play` is ignored unless idle. `jumpTo` works in any state; from idle it starts the playlist at that track.
 - `next`, `previous` and `jumpTo` from `paused` start the new track **playing**. `pause` in `loading` keeps the track paused once it loads; `resume` before loading goes back to `loading`.
 - `pause` means silence: it also stops voices still fading out from a crossfade. A `'default'` stop without a fade-out does the same (`killRetiring`), so Stop means silence too.
-- `seek` works in `loading`, `playing` and `paused`, clamped to the track. While loading it is applied once the track has loaded.
+- `seek` works in `loading`, `playing` and `paused`, clamped to the track, and with a crossfade coming, to the crossfade point (§8.4). While loading it is applied, and clamped, once the track has loaded.
 - `previous`: past **3 s** into the track, or when there is no previous track, it restarts the current track (seek to 0, and resume if paused). Otherwise it goes to the previous track, following the order strategy.
 - `next` past the last track without looping stops the playlist.
 - Track ends naturally: advance to the next track. With the default `loop: true` it wraps to the first track. If the strategy returns no next track, the playlist stops. With a crossfade the next track has usually started already (§8.4); `ended` is the fallback.
@@ -531,7 +531,8 @@ While a playlist is `playing`, a clock interval sends `playlist.progress` every 
 With a non-zero `crossfade` rule, one track gives way to the next by fading out while the next fades in. Both fades start at once when the change happens.
 
 - **Overlap.** A crossfade from track A to track B lasts `min(crossfade, A's duration ÷ 2, B's duration ÷ 2)`. A's duration is the one its voice reports, or the stored one (§3.5) until then; B's is the stored one; unknown durations don't limit it. A's fade-out is cut to the time A has left, so it never ends mid-fade. B fades in over the whole overlap.
-- **At a natural end.** While a track is `playing`, a clock timer fires at `time left − overlap` and starts the next track with that timing. It is planned when the track starts playing (`loaded`, `resume`) and planned again on `seek` and `setRules`. Pause, stop and every change of track cancel it. From within the last `overlap` seconds (after a seek, say), the crossfade starts at once. A track whose duration is unknown has no timer, and `ended` advances as without a crossfade, with the next track fading in.
+- **At a natural end.** While a track is `playing`, a clock timer fires at `time left − overlap` and starts the next track with that timing. It is planned when the track starts playing (`loaded`, `resume`) and planned again on `seek` and `setRules`. Pause, stop and every change of track cancel it. At or past the crossfade point (after a seek to it, or when a longer crossfade is set), the crossfade starts at once. A track whose duration is unknown has no timer, and `ended` advances as without a crossfade, with the next track fading in.
+- **Seeking** never goes past the crossfade point: a seek beyond it lands on it, so the whole crossfade plays (starting at once when playing) instead of being squeezed into the last moment. The player enforces this, whoever asks to seek.
 - **Manual changes.** Next, Previous and jumps with `'default'` use the same overlap, if the old track is audible. `'instant'` cuts over and stops every voice still fading out.
 - **One track, looping.** The track crossfades into a new start of itself.
 - **Stop and pause** silence both tracks (§8.1).
