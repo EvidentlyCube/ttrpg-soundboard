@@ -42,6 +42,15 @@ How the app is tested: the automated suite that runs in Node, and the manual che
 
 When new tests pass on the first run, deliberately break the behavior they are meant to protect and confirm they fail, then restore the code. This has caught several tests that passed for the wrong reason.
 
+`scripts/mutate.js` does this in one command and always puts the file back:
+
+```sh
+node scripts/mutate.js <file> <find> <replace> <test file or quoted glob>...
+node scripts/mutate.js public/app/logic/options-sync.js "if (entry.saving || !options) {" "if (!options) {" test/frontend/options-sync.test.js
+```
+
+`<find>` must occur exactly once in the file. It prints `CAUGHT:` with the failing tests and exits 0, or `SURVIVED:` and exits 1 when the tests still pass.
+
 ## Browser smoke tests
 
 The real page has been driven in headless Chromium over the DevTools protocol, with real mouse input (`Input.dispatchMouseEvent`) and Node's built-in `WebSocket`, against the real server and a copy of the example fixture. That script is not committed yet ([`ROADMAP.md`](ROADMAP.md)). Lessons for whoever writes or commits it:

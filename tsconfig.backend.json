@@ -11,6 +11,7 @@
 	"files": [],
 	"include": [
 		"index.js",
+		"scripts/**/*.js",
 		"src/**/*.js",
 		"test/backend/**/*.js",
 		"test/helpers/**/*.js"
