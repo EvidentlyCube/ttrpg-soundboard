@@ -30,6 +30,8 @@ export class SoundPlayer {
 	#streamed = [];
 	/** Incremented by `stop`, so starts still waiting for a decode can tell they were cancelled. @type {Map<string, number>} */
 	#epochs = new Map();
+	/** Gains changed since the library was loaded; they win over the gain in a sound object. @type {Map<string, number>} */
+	#gains = new Map();
 
 	/**
 	 * @param {object} options
@@ -57,14 +59,14 @@ export class SoundPlayer {
 			return;
 		}
 		if (sound.size > BUFFERED_SIZE_LIMIT) {
-			this.#start(sound, this.#engine.createStreamVoice({ url: sound.url, bus: 'sfx' }), true);
+			this.#start(sound, this.#engine.createStreamVoice({ url: sound.url, bus: 'sfx', gain: this.#gainOf(sound) }), true);
 			return;
 		}
 		const epoch = this.#epochOf(sound.id);
 		this.#cache.get(sound.url).then(
 			(buffer) => {
 				if (this.#epochOf(sound.id) === epoch) {
-					this.#start(sound, this.#engine.createBufferVoice({ buffer, bus: 'sfx' }), false);
+					this.#start(sound, this.#engine.createBufferVoice({ buffer, bus: 'sfx', gain: this.#gainOf(sound) }), false);
 				}
 			},
 			(error) => this.#emit({ type: 'sound.error', soundId: sound.id, message: messageOf(error) }),
@@ -80,6 +82,23 @@ export class SoundPlayer {
 		for (const instance of [...(this.#instances.get(soundId) ?? [])]) {
 			this.#remove(instance);
 		}
+	}
+
+	/**
+	 * Changes the sound's own volume, for the instances playing now and every later one.
+	 * @param {string} soundId
+	 * @param {number} gain linear multiplier
+	 */
+	setGain(soundId, gain) {
+		this.#gains.set(soundId, gain);
+		for (const instance of this.#instances.get(soundId) ?? []) {
+			instance.voice.setGain(gain);
+		}
+	}
+
+	/** @param {AudioFileJson} sound */
+	#gainOf(sound) {
+		return this.#gains.get(sound.id) ?? sound.gain;
 	}
 
 	/**

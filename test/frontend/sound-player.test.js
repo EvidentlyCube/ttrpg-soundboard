@@ -196,4 +196,45 @@ describe('SoundPlayer', () => {
 			assert.deepEqual(events, [{ type: 'sound.error', soundId: 'Rain.mp3', message: 'This browser cannot play mp3 files' }]);
 		});
 	});
+
+	describe('gain', () => {
+		it('starts streamed and buffered instances at the sound\'s gain', async () => {
+			const { player, engine, advance } = setup();
+			player.play({ ...LARGE, gain: 2 });
+			player.play({ ...SMALL, gain: 0.5 });
+			await advance(0.05);
+			assert.deepEqual(engine.voices.map((voice) => [voice.kind, voice.gain]), [['stream', 2], ['buffer', 0.5]]);
+		});
+
+		it('applies a change to every playing instance of that sound only', async () => {
+			const { player, engine, advance } = setup();
+			player.play(LARGE);
+			player.play(LARGE);
+			player.play(SMALL);
+			await advance(0.05);
+			player.setGain(LARGE.id, 3);
+			assert.deepEqual(engine.voices.map((voice) => voice.gain), [3, 3, 1]);
+		});
+
+		it('starts later instances at the changed gain, even for a sound object from before the change', async () => {
+			const { player, engine, advance } = setup();
+			player.setGain(LARGE.id, 0.25);
+			player.play(LARGE);
+			assert.equal(engine.voices[0].gain, 0.25);
+
+			player.play(SMALL);
+			player.setGain(SMALL.id, 1.5);
+			await advance(0.05);
+			assert.equal(engine.voices[1].gain, 1.5, 'a press still waiting for its decode');
+		});
+
+		it('leaves stopped instances alone', async () => {
+			const { player, engine, advance } = setup();
+			player.play(LARGE);
+			await advance(0.05);
+			player.stop(LARGE.id);
+			player.setGain(LARGE.id, 2);
+			assert.equal(engine.voices[0].gain, 1);
+		});
+	});
 });
