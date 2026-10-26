@@ -1,0 +1,83 @@
+# Soundboard — Testing
+
+How the app is tested: the automated suite that runs in Node, and the manual checks in real browsers. [`DESIGN.md`](DESIGN.md) §11 summarizes the approach.
+
+## Running the tests
+
+- `npm test` runs every `*.test.js` with the built-in runner (`node --test`). A single file: `node --test test/backend/http/server.test.js`. Several: pass a glob in quotes, such as `node --test "test/frontend/*.test.js"`. A bare directory path does not work.
+- `npm run check` runs type-checking, lint and the tests. It must pass before every commit.
+
+## Principles
+
+- **Test first** for all domain and logic code: backend, metadata, library, HTTP, and everything in `public/app/logic/`.
+- **No automated DOM tests.** The UI components and `WebAudioEngine` are kept thin and checked in real browsers (below). Pure helpers used by the UI (`format`, `menus`, `position`) are unit-tested.
+- Tests live in `test/`, mirroring the source layout: `test/backend/`, `test/frontend/` and `test/helpers/`. They use `describe`/`it` from `node:test` and `node:assert/strict`, and their names describe behavior.
+- **Fixtures stay pristine.** `test_fixtures/example_soundboard` is only ever read or copied to a temporary directory with `copyFixture()`, never written to.
+
+## Test helpers (`test/helpers/`)
+
+| Helper | What it does |
+|---|---|
+| `tmp-tree.js` | `createTmpTree(spec)` builds a directory tree from an object; `copyFixture(name)` copies a fixture into a temp directory. Both return `{ root, remove() }`. |
+| `tag-builders.js` | Builds ID3v1/ID3v2 tags (every version and encoding, unsynchronization, extended headers, frame flags) and Ogg Vorbis/Opus pages in code, so metadata tests need no binary fixtures. |
+| `fake-clock.js` | Timers that only fire when a test calls `advance(ms)`, in time order, including timers created by timers. |
+| `fake-audio-engine.js` | The `AudioEngine` port on the fake clock, modelling media elements: load delay, `play()` before load, position advancing only while playing, `ended` once. Per-URL scripts add durations, load, play and decode errors, buffer sizes, and "leaky" voices that keep firing events after `stop()`. |
+| `fake-backend-api.js` | The `BackendApi` port with settable library, settings and failures; records saves. |
+| `fake-prompter.js` / `fake-reporter.js` | Scripted answers for bootstrap questions; records everything reported. |
+| `http-client.js` | `rawRequest()` sends a path exactly as given (for path traversal tests, which `fetch` would normalize); `findFreePort()`. |
+
+## What the suite covers
+
+| Area | Tests |
+|---|---|
+| Metadata | Every ID3 version and text encoding, extended headers, unsynchronization (tag-wide and per frame), group and data-length flags, compressed and encrypted frames, padding, the ID3v1 fallback; Ogg Vorbis and Opus, comments split across pages, multiplexed streams, the 1 MB limit; truncated and random data never throwing; every file in the example fixture. |
+| Library | Classification (hidden files, symlinks, orphans, unsupported formats, case rules), scanning built trees and the fixture, natural sorting with deterministic ties, validation messages, atomic writes that keep unknown keys, the settings store's serialized writes. |
+| Bootstrap | First and later runs with a fake prompter: nested directories accepted or declined (declining writes nothing), metadata titles accepted or declined, `.soundboard` written last, validation errors gathered before anything is asked, empty playlists left alone, the example fixture end to end. |
+| CLI | Arguments and ports, colors and `NO_COLOR`, the prompter (including typed-ahead answers and closed input), reporter output, `main` from usage errors to serving and stopping, port in use, `--verbose`. |
+| HTTP | A real server on a random port: static files and MIME types, path traversal attempts, the library and settings API with its error codes, media with every range form, `HEAD`, `416`, clients disconnecting mid-stream, request logging. |
+| Frontend logic | Event emitter; order strategies; transitions and rules; volume; settings sync (debounce, one save at a time, flush, failures); library model; command validation; buffer cache (sharing, eviction, in-use protection); sound player (instances, both caps, cancelling pending decodes, errors); playlist player (every state transition, stale callbacks from leaky voices, previous/next/jump rules, seeking, progress, errors and the consecutive-error limit, fades with non-zero rules, the retiring cap); the `Soundboard` facade; `HttpBackendApi` against the real server. |
+| Playlist invariant | 400 seeded random command sequences, with and without fades, broken and leaky tracks: afterwards, at most one live voice while active, none and no timers while idle (DESIGN.md §8). |
+
+## Checking the tests themselves
+
+When new tests pass on the first run, deliberately break the behavior they are meant to protect and confirm they fail, then restore the code. This has caught several tests that passed for the wrong reason.
+
+## Browser smoke tests
+
+The real page has been driven in headless Chromium over the DevTools protocol, with real mouse input (`Input.dispatchMouseEvent`) and Node's built-in `WebSocket`, against the real server and a copy of the example fixture. That script is not committed yet ([`ROADMAP.md`](ROADMAP.md)). Lessons for whoever writes or commits it:
+
+- Mouse events need the `buttons` bitmask (1 left, 2 right, 0 on release). Without it Chromium believes a button is still held after a right-click and drops the next click.
+- To test "clicking outside a popup", first check with `elementFromPoint` that the backdrop really is under the point, since a menu can sit on top of tiles.
+- Disabled buttons receive pointer events but no `click`.
+
+## Manual checklist
+
+Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that matters most. Start with a copy of the example fixture (`cp -r test_fixtures/example_soundboard /tmp/sb && npm start -- /tmp/sb`) or a real library.
+
+**Start and audio**
+- [ ] The splash appears on load; nothing plays or loads until the click.
+- [ ] Close the lid for a minute and reopen: the "resume" splash appears and audio continues after a click.
+- [ ] Switching the audio output (speakers, headphones, Bluetooth) while playing.
+- [ ] Ogg tiles play, or are disabled with an explanation where the browser can't play Ogg.
+
+**Sounds**
+- [ ] Overlapping sounds; the stop button appears and disappears; a ninth instance replaces the oldest.
+- [ ] Sounds never create a player bar.
+
+**Playlists**
+- [ ] Several playlists at once; next, previous, jump, seek, pause and stop on each.
+- [ ] Tracks advance on their own, including while the window is in the background.
+- [ ] Mashing "next" never leaves a stray track playing.
+- [ ] Seeking in a long MP3 works (Range requests).
+
+**Interface**
+- [ ] Clicking outside a context menu doesn't trigger the tile underneath; Esc closes it.
+- [ ] Context menus and the track list open fully on screen, also near the window edges and the first time.
+- [ ] The footer shows "No playlist playing" when idle and keeps the same height once music starts; it wraps at 3 bars and scrolls after 6.
+
+**Volume**
+- [ ] Each slider affects only its own category.
+- [ ] Volumes survive a page reload and a server restart.
+
+**Long session**
+- [ ] Compare the tab's memory in Activity Monitor at the start and after an hour of play; it should not keep growing.

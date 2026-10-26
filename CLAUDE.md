@@ -2,13 +2,16 @@
 
 A local soundboard for running RPG sessions. A Node.js server scans a directory of MP3/OGG files and streams them to a vanilla-JS web app, which plays everything in the browser: overlapping sound effects plus several music playlists at once.
 
-**`DESIGN.md` is the specification.** Read the relevant section before working on a feature. Build in the order of its §13.
+Project documents:
+- **`DESIGN.md`** describes the app as it is. Read the relevant section before changing anything.
+- **`ROADMAP.md`** holds feature proposals and the backlog of planned features.
+- **`TESTING.md`** holds the test strategy, the test helpers and the manual browser checklist.
 
 ## Commands
 
 - `npm start -- <dir>`: run the app against an audio directory
 - `npm run dev -- <dir>`: same, restarting on code changes
-- `npm test`: all tests. Single file: `node --test test/backend/foo.test.js`
+- `npm test`: all tests. Single file: `node --test test/backend/foo.test.js`; several: a quoted glob (a bare directory path does not work)
 - `npm run typecheck`, `npm run lint`, `npm run lint:fix`
 - `npm run check`: typecheck + lint + test
 
@@ -21,6 +24,15 @@ To try the app by hand, use `test_fixtures/example_soundboard`. **Copy it to a t
 - Node 24.14, ES modules only, plain `.js`, no build step. The browser loads source files directly.
 - `public/app/logic/**` must not use the DOM, `window`, audio APIs or Node APIs. Its type-check project enforces this; never loosen that config to make an error go away.
 
+## New features
+
+Follow the process in `ROADMAP.md`:
+
+1. Write a proposal in `ROADMAP.md` under "Proposals", using its template: goal, the `DESIGN.md` sections it changes, open questions with recommended answers, and a step-by-step plan. Commit it on its own.
+2. Wait for the owner's review and answers before writing code.
+3. Implement one plan step at a time, test-first. Commit each step once `npm run check` passes, summarize it, and wait for the go-ahead before the next step.
+4. Finally update `DESIGN.md` to describe the new behavior, in its own commit, and remove the proposal (and its backlog entry, if any) from `ROADMAP.md`.
+
 ## DESIGN.md changes
 
 `DESIGN.md` may be updated, but the owner reviews every change by hand. When implementation shows the design is wrong or incomplete:
@@ -30,7 +42,7 @@ To try the app by hand, use `test_fixtures/example_soundboard`. **Copy it to a t
 3. Tell the user which sections changed and why.
 4. Wait for their approval before building on it.
 
-Never quietly diverge from the design in code.
+Never quietly diverge from the design in code. Code comments refer to design sections as `DESIGN.md §n.n`; when sections are renumbered, update those references in the same commit.
 
 ## Architecture
 
@@ -61,7 +73,8 @@ Never quietly diverge from the design in code.
 
 ## Testing
 
-- TDD: write the test first for all domain and logic code. No automated tests for DOM/UI components or `WebAudioEngine`; those are checked with the manual checklist in `DESIGN.md` §11.3.
+- TDD: write the test first for all domain and logic code. No automated tests for DOM/UI components or `WebAudioEngine`; those are checked with the manual checklist in `TESTING.md`. When new tests pass on the first run, break the code on purpose to confirm they can fail.
+- Add new manual checks to `TESTING.md` when a feature changes something only a browser can verify.
 - Tests live in `test/`, mirroring the source layout. Use `describe`/`it` from `node:test` with `node:assert/strict`. Names describe behavior (`it('ignores ended from a superseded track')`).
 - Tests never write into `test_fixtures/`. Copy to a temp directory first.
 

@@ -1,22 +1,23 @@
 # Soundboard — Design
 
-This is the specification the app is built from. It is a living document: it changes as the project evolves, and **every change to it is reviewed by hand by the project owner** before work builds on it.
-Anything marked **[FUTURE]** is out of scope for now, but the design must leave room for it (see §12).
+This document describes the app **as it is**. Planned features and proposals live in [`ROADMAP.md`](ROADMAP.md); the test strategy and the manual browser checklist live in [`TESTING.md`](TESTING.md).
+
+It is a living document: every change to it is reviewed by hand by the project owner. Places where the code already leaves room for planned features are marked **Extension point** and point to the roadmap.
 
 ---
 
 ## 1. Overview
 
-A local soundboard. A Node.js server scans a directory of audio files and serves a vanilla-JS web app. The browser does all audio playback.
+A local soundboard for running RPG sessions. A Node.js server scans a directory of audio files and serves a vanilla-JS web app. The browser does all audio playback: overlapping sound effects plus several music playlists at once.
 
 ```
 node index.js <path-to-audio-directory> [--port <number>] [--verbose]
 ```
 
-- The server listens on `127.0.0.1` only. The default port is `3000`.
+- The server listens on `127.0.0.1` only. The default port is `3000`; `--port` accepts 1–65535.
 - Output is quiet by default: the startup summary, warnings and errors. `--verbose` also logs every HTTP request (§5.2).
-- After startup it prints `Soundboard running at http://127.0.0.1:3000`. The user opens that URL themselves.
-- It is always started by hand from a terminal. There is no unattended mode and no `--yes` option.
+- After startup it prints `Soundboard running at http://127.0.0.1:3000` and `Press Ctrl+C to stop.` The user opens that URL themselves.
+- It is always started by hand from a terminal. There is no unattended mode.
 
 ### 1.1 Constraints
 
@@ -27,15 +28,14 @@ node index.js <path-to-audio-directory> [--port <number>] [--verbose]
 | UI styling | Tailwind CSS v4 browser build (`@tailwindcss/browser`). It turns class names into CSS at runtime, so there is no CLI and no build step. |
 | Dev dependencies | Tooling only, never imported by app code: `typescript` and `@types/node` (type-checking JSDoc), `eslint`, `@eslint/js`, `@stylistic/eslint-plugin` and `globals` (linting and formatting) |
 | Language | Plain `.js` with JSDoc types. No build or compile step. The browser loads the source files directly as ES modules. |
-| Type-checking | `tsc --noEmit` with `checkJs` and `strict`, across three projects with different globals (§10.1) |
-| Formatting | ESLint with `@stylistic`, auto-fixed with `--fix`. **Not Prettier**: it always puts `&&`, `\|\|` and `?:` at the end of a line, and has no option to change that. Multi-line expressions put the operator at the **start** of the line (`@stylistic/operator-linebreak: before`). |
+| Type-checking | `tsc` (TypeScript 7) with `checkJs` and `strict`, across four projects with different globals (§10.1) |
+| Formatting | ESLint with `@stylistic`, auto-fixed with `--fix`. Not Prettier, which always puts `&&`, `\|\|` and `?:` at the end of a line. Multi-line expressions put the operator at the **start** of the line (`@stylistic/operator-linebreak: before`); assignments keep `=` at the end. |
 | Module system | ES modules everywhere (`"type": "module"`) |
-| Tests | `node --test` (built-in test runner and `node:assert/strict`) |
+| Tests | `node --test` with `node:assert/strict` ([`TESTING.md`](TESTING.md)) |
 | Browsers | Current desktop Chrome, Firefox and **Safari** |
 | Touch | No special handling. Touch users may not be able to open the context menus. |
-| Code style | Tabs for indentation. Domain-driven separation. TDD for logic. |
-| Memory/CPU | Stream files over HTTP Range requests. The server never holds audio in memory. The browser holds decoded audio only for small sound effects, within a fixed memory budget. |
-| Target machine | MacBook Neo, 8 GB RAM, macOS, Safari as the likely browser, used at the table during RPG sessions (see §14) |
+| Memory/CPU | Files stream over HTTP Range requests. The server never holds audio in memory. The browser holds decoded audio only for small sound effects, within a fixed memory budget. |
+| Target machine | MacBook Neo, 8 GB RAM, macOS, Safari as the likely browser, used at the table during RPG sessions (§12) |
 
 ---
 
@@ -62,12 +62,12 @@ node index.js <path-to-audio-directory> [--port <number>] [--verbose]
 
 The scanner applies these rules in order:
 
-1. Names starting with `.` (files or directories, at any depth) are **ignored**. This includes `.soundboard`.
+1. Names starting with `.` (files or directories, at any depth) are **ignored**. This includes `.soundboard`, `.DS_Store` and macOS `._*` files.
 2. **Symlinks are ignored**, with a warning, to avoid loops and files outside the root.
 3. In the root:
    - Each directory is a **playlist**. Its ID is the directory name.
    - A file with a supported audio extension is a **sound effect**.
-   - `<name>.<ext>.json`, where `<name>.<ext>` is an audio file in the root, is that **sound's options file**.
+   - `<name>.<ext>.json`, where `<name>.<ext>` is an audio file in the root, is that **sound's options file**. The name must match exactly, including case.
    - `<dir>.json`, where `<dir>/` is a directory in the root, is that **playlist's options file**.
    - Any other `.json` file is an **orphan options file**: warning, then ignored.
 4. Inside a playlist directory, at any depth:
@@ -78,9 +78,11 @@ The scanner applies these rules in order:
 6. Known but unsupported audio extensions (`.wav .flac .m4a .aac .opus .wma .aif .aiff .webm .mp4`) are **reported as warnings** and skipped. All other files are ignored silently.
 7. A playlist with no tracks gets a warning and is **hidden** from the UI.
 
+File names are used exactly as the file system returns them, including Unicode normalization, so IDs always match what the server looks up later.
+
 ### 2.2 Sorting
 
-All sorting uses `new Intl.Collator('en', { numeric: true, sensitivity: 'base' })`, so `2` sorts before `10`.
+All sorting uses `Intl.Collator('en', { numeric: true, sensitivity: 'base' })`, so `2` sorts before `10` and case and accents are ignored. Names the collator considers equal fall back to code point order, so the result never depends on the order the file system listed them in.
 
 - Playlists and sounds are sorted by **title**.
 - Tracks are sorted by **relative path** inside the playlist. A subdirectory's tracks therefore follow the parent folder's files in path order.
@@ -95,13 +97,14 @@ All sorting uses `new Intl.Collator('en', { numeric: true, sensitivity: 'base' }
 }
 ```
 - If the version is newer than the app supports, the app stops with a fatal error.
-- `volumes` is optional. A missing bus defaults to `1`. Each value must be a number from `0` to `1` (the slider position, not the gain).
+- `volumes` is optional. A missing bus defaults to `1`. Each value must be a number from `0` to `1` (the slider position, not the gain). Unknown keys inside `volumes` are ignored.
 - The server rewrites this file whenever the browser saves volumes (§5.2), keeping unknown keys.
 
 Sound or track options (`Explosion.mp3.json`)
 ```json
 { "title": "Big Explosion" }
 ```
+`title` is optional; without it the default title is used (§2.4).
 
 Playlist options (`Combat.json`)
 ```json
@@ -113,11 +116,11 @@ Playlist options (`Combat.json`)
 - `includedSubdirectories` lists paths relative to the playlist directory, using `/`. Every depth is listed explicitly.
 - Listed directories that no longer exist are ignored. They are not removed.
 
-**Validation (fatal).** Any options file or `.soundboard` that fails `JSON.parse`, is not an object, or has the wrong type for a known key (`title` must be a non-empty string, `includedSubdirectories` must be an array of strings, `volumes.*` must be numbers in `0..1`) is an error. The scanner gathers **all** such errors, prints them in red with their file paths, and exits with code `1` **before asking any questions or writing anything**. The user must fix or delete those files.
+**Validation (fatal).** Any options file or `.soundboard` that fails `JSON.parse`, is not an object, or has the wrong type for a known key (`title` must be a non-empty string, `includedSubdirectories` must be an array of strings, `version` must be a positive integer, `volumes.*` must be numbers in `0..1`) is an error. Bootstrap gathers **all** such errors, prints them in red with their paths, and exits with code `1` **before asking any questions or writing anything**. The user must fix or delete those files. Options files of empty playlists are validated too.
 
-**Unknown keys are preserved.** When the app rewrites a playlist options file (§3.3), it reads, merges and writes back the whole object, so keys from future versions survive.
+**Unknown keys are preserved.** Whenever the app rewrites a file, it reads it again, merges, and writes back the whole object, so keys from future versions survive.
 
-**Writes.** Files are written as JSON with tab indentation and a trailing newline. Each write goes to `<file>.tmp` and is then `rename`d into place, so a crash cannot leave a half-written file.
+**Writes.** Files are written as JSON with tab indentation and a trailing newline. Each write goes to `<file>.tmp` and is then renamed into place, so a crash cannot leave a half-written file.
 
 ### 2.4 Default titles
 
@@ -128,16 +131,20 @@ Playlist options (`Combat.json`)
 
 ## 3. Bootstrap (CLI)
 
-Bootstrap runs before the HTTP server starts. The decision logic is a pure domain service, `BootstrapService`. Terminal input and output go through injected ports (`Prompter.confirm(message) → Promise<boolean>` and `Reporter`), so the whole flow can be tested with fakes.
+Bootstrap runs before the HTTP server starts. The decision logic is the domain service `BootstrapService` (`src/library/`). Terminal input and output go through two ports, `Prompter.confirm(question) → Promise<boolean>` and `Reporter`, so the whole flow is tested with fakes. `src/cli/main.js` wires the real terminal in and turns the outcome into an exit code.
 
-Prompts use `node:readline/promises` and accept `y/N`, with **No** as the default. Colors use ANSI codes: red for nested directories and errors, yellow for warnings. Colors are turned off when `NO_COLOR` is set or stdout is not a TTY.
+- **Prompts** (`TerminalPrompter`) print `Question? [y/N] `. Only `y` or `yes` (any case) means yes; anything else, including just Enter or closed input, means no. Lines typed ahead are queued for the following questions rather than lost.
+- **Output** (`ConsoleReporter`) shows paths relative to the root. Colors use ANSI codes: red for nested directories and errors, yellow for warnings, bold for headings. Colors are off when `NO_COLOR` is set to a non-empty value or stdout is not a TTY.
+- **Ctrl+C** during the questions ends the process immediately. That is safe because every write is atomic and `.soundboard` is written last.
 
 ### 3.1 Steps common to both modes
 
-1. Parse arguments. If the path is missing or not a directory, print usage and exit `1`.
-2. **Scan** the tree (§2.1). Scanning reads directory entries only, never file contents.
+1. Parse arguments. On a usage error (missing directory, extra arguments, unknown option, invalid port) or a path that is not a directory, print the reason and the usage line to stderr and exit `1`.
+2. **Scan** the tree (§2.1). Scanning reads directory listings and file sizes only, never file contents.
 3. **Validate** every existing options file and `.soundboard` (§2.3). Any error is fatal.
-4. **Report warnings**: unsupported audio files, orphan options files, symlinks, empty playlists. These are printed for information and never stop the app.
+4. **Report warnings**: unsupported audio files, orphan options files, symlinks, empty playlists. These never stop the app.
+
+Playlists without tracks take no further part: no question is asked about their nested directories and no options file is created for them.
 
 ### 3.2 First run (no `.soundboard`)
 
@@ -145,7 +152,7 @@ Prompts use `node:readline/promises` and accept `y/N`, with **No** as the defaul
    `Nested directories will be merged into their playlists. Continue? [y/N]`
    - **No:** exit `0` without writing anything.
    - **Yes:** each one is recorded in its playlist's `includedSubdirectories` (written in step 7).
-6. **Metadata titles.** For every audio file **without** an options file, try to read a title (§4). List the files where one was found, as `path → "Title"`, then ask:
+6. **Metadata titles.** For every audio file **without** an options file, try to read a title (§4). If any were found, list them as `path → "Title"`, then ask:
    `Use these titles in the generated options files? [y/N]`
    - No means filenames are used for all of them.
 7. **Write**:
@@ -156,36 +163,35 @@ Prompts use `node:readline/promises` and accept `y/N`, with **No** as the defaul
 
 ### 3.3 Later runs (`.soundboard` exists)
 
-5. **New nested subdirectories.** These are subdirectories not listed in the playlist's `includedSubdirectories`. A brand-new playlist has none listed, so all of its subdirectories count as new. If there are any, print and ask exactly as in step 5 above. No exits `0`; Yes appends them to the list and writes the file.
-6. **Missing options files.** For every audio file without one, generate it **without asking**: the metadata title if found, otherwise the filename. Do the same for missing playlist options files, as in §3.2 step 7.
+5. **New nested subdirectories.** These are subdirectories not listed in the playlist's `includedSubdirectories`. A brand-new playlist has none listed, so all of its subdirectories count as new. If there are any, print and ask exactly as in §3.2 step 5. No exits `0`; Yes appends them to the list and writes the file.
+6. **Missing options files.** For every audio file without one, generate it **without asking**: the metadata title if found, otherwise the filename. Missing playlist options files are created as in §3.2 step 7. `.soundboard` is not rewritten.
 
 ### 3.4 Result
 
-Bootstrap returns an in-memory `Library` (§5.1) and the parsed `Settings` from `.soundboard`. The server keeps only these, never file contents. **[FUTURE]** Rescanning while running, whether by a button or by watching the directory.
+Bootstrap reports how many options files it created or updated and how many playlists and sounds were loaded. It returns an in-memory `Library` (§5.1) and a `SettingsStore` loaded from `.soundboard`. The server keeps only these, never file contents.
+
+**Extension point:** the library is built once at startup. Rescanning while running would reuse `BootstrapService` and the scanner ([roadmap](ROADMAP.md)).
 
 ---
 
-## 4. Metadata extraction (no dependencies)
+## 4. Metadata extraction
 
-`metadata/readTitle(filePath) → Promise<string | null>`. It never throws for malformed data; it returns `null` instead. It reads through a file handle with bounded reads and never loads the whole file.
+`readTitle(filePath) → Promise<string | null>` in `src/metadata/` picks the parser by extension (`.mp3`, `.ogg`, case-insensitive). It returns `null` for missing or malformed tags and only throws for file system errors. It reads through a file handle with bounded reads and never loads the whole file. No third-party code is involved.
 
 ### 4.1 MP3: ID3v2, falling back to ID3v1
 
-- **ID3v2.2, 2.3 and 2.4.** Read the 10-byte header (`"ID3"`, version, flags, syncsafe size). Skip the extended header if present. Walk frame headers one at a time, reading only headers and skipping over frame bodies, until the title frame (`TIT2`, or `TT2` in v2.2) is found or the tag ends.
+- **ID3v2.2, 2.3 and 2.4.** Read the 10-byte header (`"ID3"`, version, flags, syncsafe size). Skip the extended header if present (a v2.2 tag with that flag set is treated as unreadable). Walk frame headers one at a time, reading only headers and skipping over frame bodies, until the title frame (`TIT2`, or `TT2` in v2.2) is found, padding begins, or the tag ends.
   - Frame sizes are syncsafe in v2.4 and plain 32-bit in v2.3.
-  - Text encodings: `0` ISO-8859-1, `1` UTF-16 with BOM, `2` UTF-16BE, `3` UTF-8. Trim trailing `\0` and whitespace.
-  - If tag-wide unsynchronization is set (v2.3), read the whole tag (giving up beyond **2 MB**), reverse the unsynchronization, then parse. For v2.4, honor the per-frame unsynchronization flag on the title frame only.
+  - Text encodings: `0` ISO-8859-1, `1` UTF-16 with BOM, `2` UTF-16BE, `3` UTF-8. The first of several null-separated values is used, trimmed. An empty title counts as missing.
+  - If tag-wide unsynchronization is set (v2.2/2.3), read the whole tag (giving up beyond **2 MB**), reverse the unsynchronization, then parse. In v2.4, the title frame's own flags are honored: unsynchronization, data length indicator and group byte.
+  - Compressed or encrypted title frames count as missing. A title frame over 64 KB is ignored.
 - **ID3v1.** If there is no ID3v2 title, read the last 128 bytes. If they start with `TAG`, bytes 3–32 hold the title in ISO-8859-1, trimmed.
 
 ### 4.2 OGG: Vorbis comments
 
-- Read Ogg pages (`"OggS"` capture pattern, segment table) and reassemble packets until the **second** logical packet, which is the comment header. Stop after reading **1 MB**, because comment packets can hold embedded cover art.
-- Recognize `\x03vorbis` (Vorbis) and `OpusTags` (Opus in Ogg). Parse the vendor string, then the comment list. The value of the first `TITLE=` entry (key matched case-insensitively) is the title, decoded as UTF-8.
+- Read Ogg pages (`"OggS"` capture pattern, segment table) of the first logical stream, ignoring pages of other multiplexed streams, and reassemble the first two packets. The second is the comment header. Reading stops after **1 MB**, because comment packets can hold embedded cover art; whatever part of the comments arrived is still searched.
+- Recognize Vorbis (`\x01vorbis` / `\x03vorbis`) and Opus (`OpusHead` / `OpusTags`). Parse the vendor string, then the comment list. The value of the first non-empty `TITLE=` entry (key matched case-insensitively) is the title, decoded as UTF-8.
 - Other codecs in an Ogg container return `null`.
-
-### 4.3 Tests
-
-Tests build tag bytes in code (helpers such as `buildId3v23({ title, encoding })` and `buildOggVorbis({ comments })`) and write them to temporary files, so no binary fixtures are committed. Covered cases: each ID3 version and encoding, the v1 fallback, unsynchronization, a missing title, truncated or garbage data, a comment header split across pages, and the read limit.
 
 ---
 
@@ -194,25 +200,30 @@ Tests build tag bytes in code (helpers such as `buildId3v23({ title, encoding })
 ### 5.1 Domain model (`src/library/`)
 
 ```js
-Library  { root, playlists: Playlist[], sounds: Sound[], files: Map<id, AudioFile> }
-Playlist { id, title, tracks: AudioFile[], includedSubdirectories: string[] }
-AudioFile{ id /* root-relative POSIX path */, title, format: 'mp3'|'ogg', size, absolutePath }
-Settings { volumes: { master, music, sfx } }   // backed by SettingsStore → .soundboard
+Library   { root, playlists: Playlist[], sounds: AudioFile[], files: Map<id, AudioFile> }
+Playlist  { id, title, tracks: AudioFile[], includedSubdirectories: string[] }
+AudioFile { id /* root-relative POSIX path */, title, format: 'mp3'|'ogg', size, absolutePath }
+Settings  { volumes: { master, music, sfx } }   // held by SettingsStore, saved to .soundboard
 ```
 
-`SettingsStore` keeps the current settings in memory and writes them back to `.soundboard`. It uses the same read-merge-write and atomic rename as the options files (§2.3). Writes are **serialized**: one in flight at a time, and only the newest pending value is written next, so quick slider changes can't interleave or arrive out of order.
+- `playlists` contains only non-empty playlists, sorted by title; `sounds` are sorted by title; tracks keep path order (§2.2).
+- `files` indexes every sound and track by id. It is the only list of files the server may stream.
+- `SettingsStore` keeps the settings in memory and writes them back to `.soundboard` with the same read-merge-write and atomic rename as the options files (§2.3). Writes are **serialized**: one in flight at a time, and changes made meanwhile are written together by one follow-up write, so the file always ends with the newest values.
 
 ### 5.2 HTTP API (`src/http/`, built on `node:http`)
 
-The server knows nothing about playback state. That keeps **[FUTURE]** LAN and remote control possible without changing the API (§12).
+The server knows nothing about playback state.
 
 | Method | Path | Response |
 |---|---|---|
-| GET | `/` and static assets | Files from `public/`, with a MIME map. Path traversal guard: resolve, then check that the path is still inside `public/`. 404 otherwise. |
-| GET | `/api/library` | JSON (below), `Cache-Control: no-store` |
+| GET, HEAD | `/` and other paths | Files from `public/` (`/` serves `index.html`), with a MIME map and `Cache-Control: no-cache`. 404 for anything missing or outside `public/`. |
+| GET | `/api/library` | JSON (below) |
 | GET | `/api/settings` | `{ "volumes": { "master": 1, "music": 0.8, "sfx": 1 } }` |
-| PUT | `/api/settings/volumes` | Body `{ master?, music?, sfx? }` (numbers in `0..1`). Merged into the settings and saved. Returns the full settings. `400` for invalid input. |
+| PUT | `/api/settings/volumes` | Body `{ master?, music?, sfx? }` (numbers in `0..1`). Merged into the settings and saved; returns the full settings. `400` for invalid JSON, a non-object, an out-of-range value or an unknown key. `413` for bodies over 16 KB. |
 | GET, HEAD | `/media/<encoded id>` | The audio file, streamed |
+
+- API responses are JSON with `Cache-Control: no-store`. Errors are `{ "error": "message" }`.
+- A known path with the wrong method gets `405` with an `Allow` header. Unknown `/api/…` paths get a JSON `404`.
 
 `/api/library`
 ```json
@@ -228,20 +239,22 @@ The server knows nothing about playback state. That keeps **[FUTURE]** LAN and r
 	]
 }
 ```
+Each path segment of a media URL is percent-encoded separately.
 
-**Media streaming.** Safari refuses to play media unless the server answers Range requests correctly, so this has to be exact.
-- Each path segment is URL-decoded and the result is looked up in `Library.files`. Only indexed files can be served; anything else is a 404. The filesystem is never accessed with a path the user controls.
-- `Accept-Ranges: bytes`, `Content-Type` (`audio/mpeg` or `audio/ogg`), `Content-Length`, `Last-Modified`, `ETag` (built from size and mtime).
-- A `Range: bytes=a-b`, `a-` or `-n` request gets a `206` with `Content-Range`. An unsatisfiable range gets a `416` with `Content-Range: bytes */size`. Multiple ranges are not supported; only the first is served.
-- The body is `fs.createReadStream(path, { start, end })` piped with `stream.pipeline`. The stream is destroyed when the client disconnects.
+**Static files.** The path guard works on the raw request path, before any URL normalization: the path is percent-decoded, resolved against `public/`, and rejected unless it is still inside. Null bytes and malformed encoding are rejected too.
+
+**Media streaming.** Safari refuses to play media unless the server answers Range requests correctly, so this is exact.
+- Each path segment is percent-decoded and the result is looked up in `Library.files`. Only indexed files can be served; anything else is a 404. The file system is never accessed with a path from the URL.
+- Headers: `Accept-Ranges: bytes`, `Content-Type` (`audio/mpeg` or `audio/ogg`), `Content-Length`, `Last-Modified`, `ETag` (built from size and mtime).
+- `Range: bytes=a-b`, `a-` or `-n` gets a `206` with `Content-Range`. A range starting past the end gets a `416` with `Content-Range: bytes */size`. A malformed `Range` header is ignored and the whole file is sent. Only the first of several ranges is served.
+- The body is a file read stream piped with `stream.pipeline`. A client disconnecting mid-stream (seeking, skipping tracks) is normal: the stream is closed and nothing is logged as an error.
 - `HEAD` returns the same headers with no body.
 
-Other server behavior:
+**Other server behavior:**
 - Unexpected errors (500s, failed streams) are always printed to stderr with their stack trace.
-- With `--verbose`, each request is logged to stdout when its response finishes or the client disconnects:
-  `GET /media/Combat/01%20Battle.mp3 206 bytes=0-1023 12ms`. That's the method, the raw path, the status, the `Range` header if there was one, and the duration. A request whose client disconnected first ends with `(aborted)`.
-- If the port is already in use, print a clear error and exit `1`.
-- On SIGINT or SIGTERM, close the server and exit `0`.
+- With `--verbose`, each request is logged to stdout when its response finishes or the client disconnects: `GET /media/Combat/01%20Battle.mp3 206 bytes=0-1023 12ms`. That is the method, the raw path, the status, the `Range` header if there was one, and the duration. A request whose client disconnected first ends with `(aborted)`.
+- If the port is in use, or not allowed, print a clear message and exit `1`.
+- On SIGINT or SIGTERM, close the server, including open media streams, print `Stopped.` and exit `0`.
 
 ---
 
@@ -252,28 +265,35 @@ UI layer (DOM)  ──commands──▶  Soundboard (logic facade)  ──▶  A
      ▲                              │                              ▲
      └──────────events──────────────┘                ┌─────────────┴────────────┐
                                                 WebAudioEngine            FakeAudioEngine
-                                                (browser)                 (tests, manual clock)
+                                                (browser)                 (tests, fake clock)
 ```
 
-- `public/app/logic/**` **must not touch** `window`, `document` or any audio API. Everything it needs is injected: the `AudioEngine`, a `Clock`/timer port, a `BackendApi` port (`fetchLibrary()`, `fetchSettings()`, `saveVolumes(volumes, { keepalive })`), and a `Logger` port (`warn`, `error`) for the few things worth logging, since logic code cannot use `console`. The port types live in `public/app/logic/ports.js`. Node imports and tests it directly.
-- The UI calls only the facade's methods and listens to its events. The UI never reads logic internals.
-- **Commands and events are plain, serializable objects.** Each facade method builds a command (`{ type: 'playlist.next', playlistId, transition: 'instant' }`) and passes it to `dispatch(command)`. Events are `{ type, ...payload }`. This is what lets **[FUTURE]** remote control from a phone forward commands and events over a socket unchanged.
+- `public/app/main.js` is the composition root. It creates the `WebAudioEngine`, the `HttpBackendApi`, the browser clock and the `console` logger, passes them to `Soundboard`, and mounts the UI.
+- `public/app/logic/**` **never touches** `window`, `document`, audio APIs or Node APIs. Everything it needs is injected through ports, whose types live in `public/app/logic/ports.js`:
+  - the `AudioEngine` (§6.3);
+  - a `Clock` (`setTimeout`, `clearTimeout`, `setInterval`, `clearInterval`);
+  - a `BackendApi` (`fetchLibrary()`, `fetchSettings()`, `saveVolumes(volumes, { keepalive })`);
+  - a `Logger` (`warn`, `error`).
+
+  Node imports and tests this code directly; the type-checker and ESLint enforce the boundary (§10.1).
+- The UI calls only the facade's methods and listens to its events. It never reads logic internals.
+- **Commands and events are plain, serializable objects.** Each facade method builds a command (`{ type: 'playlist.next', playlistId, transition: 'instant' }`) and passes it to `dispatch(command)`, which validates it first. Events are `{ type, ...payload }` and contain only JSON-safe values: an unknown duration is `null`, never `NaN`. **Extension point:** a remote control could forward commands and events over a connection unchanged ([roadmap](ROADMAP.md)).
+- A UI event handler that throws never stops other handlers or leaves playback half-updated; the error is passed to the logger.
 
 ### 6.1 Facade API (`Soundboard`)
 
 ```js
 // lifecycle
-start() → Promise<void>                   // called from the splash screen click (§9.0): unlock audio,
-                                          // fetch library + settings, apply volumes, emit 'app.ready'
-unlockAudio()                             // UI also calls this synchronously at the start of every
-                                          // click handler, to recover if Safari suspended the context
+start() → Promise<void>                   // from the splash click (§9.0): unlock audio synchronously, then fetch
+                                          // library + settings once, apply volumes, emit 'app.ready' or 'app.startFailed'
+unlockAudio()                             // resume audio if the browser suspended it; must run inside a user gesture
+flushSettings()                           // save a pending volume change now (called on 'pagehide')
 
 // sounds (no transitions; sounds have no rules)
 playSound(soundId)
 stopSound(soundId)                        // stops all instances of that sound, instantly
 
-// playlists; transition is 'default' (follow the playlist's rules) or 'instant'.
-// Omitted means 'default'.
+// playlists; transition is 'default' (follow the playlist's rules) or 'instant'. Omitted means 'default'.
 togglePlaylist(playlistId)                // tile click: play if idle, otherwise stop ('default')
 playPlaylist(playlistId, { transition })
 stopPlaylist(playlistId, { transition })
@@ -284,79 +304,82 @@ seek(playlistId, seconds)
 pausePlaylist(playlistId)
 resumePlaylist(playlistId)
 
-// volume (value is 0..1, the slider position); saved to .soundboard (§6.4)
+// volume (value is the slider position, 0..1, clamped)
 setVolume(bus, value)                     // bus: 'master' | 'music' | 'sfx'
-flushSettings()                           // UI calls this on 'pagehide' to save a pending change
 
 // queries (read-only snapshots)
-getLibrary(), getPlaylistSnapshot(id), getActivePlaylists(), getVolumes(), isSoundActive(id)
+getLibrary(), getPlaylistSnapshot(id), getActivePlaylists() /* in start order */, getVolumes(), isSoundActive(id)
 
-dispatch(command)                         // the methods above are thin wrappers around this
-on(type, handler) / off(type, handler)
+dispatch(command)                         // the command methods above are thin wrappers around this
+on(type, handler) → unsubscribe, off(type, handler)
 ```
+
+- Commands before `start()` has finished throw `NotReadyError`. Malformed commands, unknown ids and invalid arguments throw `InvalidCommandError`.
+- `start()` can be called again after a failure; once ready it only unlocks audio.
 
 **Transitions** are a deliberate two-way choice, not a list of effects:
 
-- **`'default'`** asks the playlist's `PlaybackRules` (§8.2) what to do. For example: play → fade in, next → crossfade, stop → fade out. In V2 all the rule values are `0`, so `'default'` currently behaves exactly like `'instant'`. When fades arrive, only the rules change; callers stay the same.
-- **`'instant'`** ignores the rules completely. It starts or stops **everything** for that playlist right now, including tracks that are still fading out (the retiring set, §8). It's the panic button: a guaranteed immediate start or silence.
+- **`'default'`** asks the playlist's `PlaybackRules` (§8.2) what to do: play → fade in, next → crossfade, stop → fade out. All rule values are currently `0`, so `'default'` behaves like `'instant'`. When fades are configured, only the rules change; callers stay the same.
+- **`'instant'`** ignores the rules completely. It starts or stops **everything** for that playlist right now, including tracks still fading out (§8). It is the panic button: a guaranteed immediate start or silence.
 
 ### 6.2 Events
 
 | Event | Payload |
 |---|---|
-| `app.ready` | `{ library, volumes, unplayable: string[] }`, where `unplayable` lists IDs whose format the engine cannot play (from `canPlayType`) |
+| `app.ready` | `{ library, volumes, unplayable: string[] }`, where `unplayable` lists ids whose format this browser cannot play |
 | `app.startFailed` | `{ message }`, e.g. the server isn't reachable |
-| `audio.suspended` | `{}`, sent when the audio context leaves `running` without being asked (Safari interruption, Mac wake from sleep) |
-| `audio.resumed` | `{}` |
+| `audio.suspended` | `{}`, sent when the audio context stops running without being asked (Safari interruption, Mac wake from sleep) |
+| `audio.resumed` | `{}`, sent when it runs again after a suspension |
 | `sound.activeChanged` | `{ soundId, active }`, sent when the instance count goes from 0 to ≥1 or back |
 | `sound.error` | `{ soundId, message }`: decoding or playback failed, or the browser cannot play the format |
 | `playlist.stateChanged` | `{ playlistId, state, trackIndex, track, duration }` |
-| `playlist.progress` | `{ playlistId, position, duration }`, at about 4 Hz while playing |
+| `playlist.progress` | `{ playlistId, position, duration }`, every 250 ms while playing and right after a seek |
 | `playlist.error` | `{ playlistId, trackId, message }` |
 | `volume.changed` | `{ bus, value }` |
 
 ### 6.3 AudioEngine port
 
 ```js
-engine.now()                         → seconds (audio clock)
 engine.unlock()                      // creates (first call) or resumes the AudioContext;
                                      // must be called synchronously inside a user gesture
-engine.on('suspended' | 'resumed', handler)   // from AudioContext 'statechange'
+engine.on('suspended' | 'resumed', handler)
 engine.canPlay(format)               → boolean
 engine.setBusGain(bus, gain)         // 'master' | 'music' | 'sfx'
-engine.createStreamVoice({ url, bus }) → Voice          // HTMLAudioElement, streamed
-engine.loadBuffer(url)               → Promise<BufferHandle>   // fetch + decodeAudioData
+engine.createStreamVoice({ url, bus }) → Voice          // streamed through a media element
+engine.loadBuffer(url)               → Promise<BufferHandle>   // fetch + decodeAudioData; { memoryBytes }
 engine.createBufferVoice({ buffer, bus }) → Voice
 
 Voice:
-	play()  pause()  stop()          // stop() = stop now and release resources; no-op if called twice
-	seek(seconds)
-	position, duration (NaN until known), paused
-	rampGain(target, seconds)        // used by FUTURE fades
-	on('loaded' | 'ended', handler)  // 'ended' fires exactly once
+	play()  pause()  stop()          // play() failures arrive as an error event; stop() releases everything
+	seek(seconds)                    // and is safe to call twice
+	position, duration               // seconds; duration is NaN until 'loaded'
+	rampGain(target, seconds)
+	on('loaded' | 'ended', handler)  // 'ended' fires at most once
 	onError(handler)                 // handler receives { message }
 	                                 // no event fires after stop()
 ```
 
-Event payloads never contain `NaN`: an unknown duration is sent as `null`, so every event survives JSON serialization.
+**WebAudioEngine** (`public/app/audio/`):
+- One `AudioContext` (`latencyHint: 'interactive'`), created inside the first `unlock()`, never at page load. The graph is `voice gain → music or sfx bus gain → master gain → speakers`. Bus gains set before the context exists are applied when it is created.
+- **Stream voices** are `Audio` elements (`preload = 'auto'`) feeding `createMediaElementSource`. `loaded` is the element's `loadedmetadata`. `stop()` pauses, disconnects the nodes, removes `src` and calls `load()`, so the browser drops the connection and its buffers. A rejected `play()` becomes an `error` event, except `AbortError`, which only means a pause or stop interrupted the start.
+- **Buffer voices** use an `AudioBufferSourceNode` per play; pausing remembers the offset. `loaded` is announced asynchronously right away. `memoryBytes` is `length × channels × 4`.
+- `canPlay` uses `canPlayType` and caches the answer per format.
+- Bus gains change with `setTargetAtTime` (15 ms), so moving a slider never clicks; voice gains use ramps. No per-frame JavaScript loops.
+- `suspended` is only reported for a context that was running, so the short suspended state right after creation is not mistaken for an interruption. Safari's `interrupted` state counts as suspended.
 
-**WebAudioEngine** (browser):
-- One `AudioContext`, created inside the first `unlock()` call (the splash screen click), never at page load. The graph is `voiceGain → (musicBus | sfxBus) → masterGain → destination`. Each stream voice is `new Audio(url)` (`preload = 'auto'`) feeding `createMediaElementSource`. Each buffer voice is an `AudioBufferSourceNode`.
-- `stop()` on a stream voice: `pause()`, disconnect the nodes, `removeAttribute('src')`, then `load()` so the browser drops the connection and its buffers.
-- `play()` returns a promise in browsers. A rejection becomes an `error` event, never an unhandled rejection.
-- Gain changes use `setTargetAtTime` or ramps, never per-frame JavaScript loops.
-
-**FakeAudioEngine** (tests): a manual clock (`advance(seconds)`) and scripted voices: load delay, duration, injected load or play errors. It records every voice it created, so tests can check invariants such as "no live voice is left behind".
+**FakeAudioEngine** (`test/helpers/`) runs on a fake clock and models how media elements behave: loading takes time, `play()` before loading waits for it, position only advances while playing, `ended` fires once. Errors, durations and "leaky" voices that keep firing events after `stop()` can be scripted per URL. It records every voice so tests can check that none is left behind.
 
 ### 6.4 Volume
 
 There are three sliders: Master, Music and Sound Effects. Gain is `value ** 2`, which sounds more even across the slider than a linear mapping.
 
-**Saving.** Volumes are saved in `.soundboard` (§2.3), so they survive reloads and restarts.
+Volumes are saved in `.soundboard` (§2.3), so they survive reloads and restarts.
 - `start()` loads them with `fetchSettings()` and applies them before anything can play.
-- `setVolume` changes the gain immediately. It then **debounces** the save: `saveVolumes` is sent 500 ms after the last change, so dragging a slider doesn't send a stream of requests.
-- `flushSettings()` sends any pending change straight away with `keepalive: true`, so closing the tab mid-drag still saves it.
-- A failed save logs a warning and is retried on the next change. Volume itself keeps working. **[FUTURE]** Per-playlist, per-track and per-sound volume, applied through an extra gain node per playlist or voice (the graph already allows for it).
+- `setVolume` changes the gain immediately. The save is **debounced**: `saveVolumes` is sent 500 ms after the last change, and only one save is in flight at a time, so saves can't arrive out of order.
+- `flushSettings()` sends a pending change straight away with `keepalive: true`, so closing the tab mid-drag still saves it.
+- A failed save logs a warning; the next change saves the full set again. Volume itself keeps working.
+
+**Extension point:** per-playlist, per-track and per-sound volume would add a gain node per playlist or voice ([roadmap](ROADMAP.md)).
 
 ---
 
@@ -365,13 +388,12 @@ There are three sliders: Master, Music and Sound Effects. Gain is `value ** 2`, 
 - `playSound(id)` starts a **new instance** every time. Instances of one sound overlap.
 - Sounds never appear in the footer. Their only playing indicator is the stop button on the tile (§9.1).
 - **At most 8 live instances per sound.** Starting a ninth stops the oldest one instantly.
-- **At most 24 streamed sound instances in total**, across all sounds. Starting another stops the oldest streamed instance instantly. This keeps the number of media elements bounded (§14).
-- **Source choice.** Files of **256 KB or less** (`size` from the library) are decoded once with `loadBuffer` and cached, so they start almost instantly. Larger files stream through a stream voice.
-  - *This changes the agreed 2 MB threshold.* A 2 MB MP3 is about 2 minutes of audio and would decode to roughly 40 MB of memory. 256 KB is about 15 s, or roughly 5 MB decoded.
-- **Buffer cache.** An LRU cache with a **64 MB** budget, measured as `length × channels × 4` bytes. Entries are evicted, least recently used first, when the budget is exceeded. A buffer that is currently playing is never evicted, and neither is one that has just finished decoding, since its caller is about to play it.
-- **First press on an uncached small sound.** Decoding is asynchronous. Pressing the sound again while it decodes shares the same pending promise. **Race guard:** each sound has an `epoch` counter that `stopSound` increments. A pending start captures the epoch and is dropped if the epoch has changed by the time decoding finishes. "Stop All" therefore also cancels starts that haven't happened yet.
-- When a voice ends or fails, its instance is removed, and `sound.activeChanged` is sent when the count reaches 0.
-- Decode or load failure: `sound.error` (console plus a short-lived marker on the tile). The failed promise is evicted, so the next press tries again.
+- **At most 24 streamed sound instances in total**, across all sounds. Starting another stops the oldest streamed instance instantly. This keeps the number of media elements bounded (§12). Buffered instances don't count toward this limit.
+- **Source choice.** Files of **256 KB or less** (`size` from the library, about 15 s of MP3) are decoded once with `loadBuffer` and cached, so they start almost instantly. Larger files stream; their `play()` is called synchronously inside the click.
+- **Buffer cache.** An LRU cache with a **64 MB** budget, measured as `memoryBytes`. Entries are evicted, least recently used first, when the budget is exceeded. A buffer that is playing is never evicted, and neither is one that has just finished decoding, since its caller is about to play it.
+- **First press on an uncached small sound.** Decoding is asynchronous. Pressing the sound again while it decodes shares the same pending load. **Race guard:** each sound has an `epoch` counter that `stopSound` increments. A pending start captures the epoch and is dropped if it has changed by the time decoding finishes, so "Stop All" also cancels starts that haven't happened yet.
+- When a voice ends or fails, its instance is removed and its resources released, and `sound.activeChanged` is sent when the count reaches 0.
+- Errors: a decode or playback failure, or a format the browser can't play, sends `sound.error`. A failed decode is forgotten, so the next press tries again.
 
 ---
 
@@ -379,10 +401,15 @@ There are three sliders: Master, Music and Sound Effects. Gain is `value ** 2`, 
 
 This is where the race-condition risk sits. The design rules:
 
-1. **Every command runs synchronously.** No command `await`s anything. Commands start async work (loading, `play()`) and return straight away, so two commands can never interleave.
-2. **Generation tokens.** Each playlist has a `generation` integer, incremented whenever the *current voice* changes or the playlist stops. Every callback from a voice (`loaded`, `ended`, `error`) is bound to the generation it was created under. **A callback with an old generation is ignored.** A late `ended` from a skipped track can therefore never advance or restart the playlist.
-3. **One current voice, plus a retiring set.** At most one voice is *current*. A replaced voice moves to `retiring`. Today the rules have no fades, so it is stopped instantly and removed. With **[FUTURE]** fades and crossfades it fades out first. **Any `'instant'` command stops every retiring voice immediately**, as well as replacing or stopping the current one. Only an audible voice is faded. A voice that is paused or still loading, or whose track has ended or failed, is stopped at once. Each retiring voice also gets a **hard deadline** (fade duration + 1 s); when it passes, `stop()` is forced. This guarantees no sound plays forever. The retiring set is capped at 4 voices, and the oldest is stopped instantly when the cap is exceeded. This covers someone mashing "Next" while crossfades are on.
-4. **Invariant, tested after random command sequences:** once enough time has passed for all fades to finish, the playlist owns at most one live voice when playing or paused, and zero when stopped.
+1. **Every command runs synchronously.** No command `await`s anything. Commands start async work (loading, `play()`) and return straight away, so two commands can never interleave. `play()` is called right away, inside the click that caused it.
+2. **Generation tokens.** Each playlist has a `generation` integer, incremented whenever the *current voice* changes or the playlist stops. Every callback from a voice (`loaded`, `ended`, `error`) is bound to the voice and generation it was created under. **A callback from a replaced or stopped voice is ignored**, even if the engine delivers it after `stop()`. A late `ended` from a skipped track can therefore never advance or restart the playlist.
+3. **One current voice, plus a retiring set.**
+   - At most one voice is *current*. A replaced voice moves to the *retiring* set, where it fades out.
+   - Only an audible (`playing`) voice is faded. A voice that is paused or still loading, or whose track ended or failed, is stopped at once. With the current all-zero rules, every replaced voice is stopped at once.
+   - **Any `'instant'` command stops every retiring voice immediately**, as well as replacing or stopping the current one.
+   - Each retiring voice has a **hard deadline** (fade duration + 1 s), after which `stop()` is forced. No sound can play forever.
+   - The retiring set holds at most 4 voices; the oldest is stopped when it would grow larger. This covers someone mashing "Next" while crossfades are on.
+4. **Invariant**, checked by a randomized test over 400 command sequences: once enough time has passed for all fades to finish, the playlist owns at most one live voice when active and none when idle, with no timers left running.
 
 ### 8.1 States
 
@@ -392,68 +419,68 @@ This is where the race-condition risk sits. The design rules:
   ▲                  │  ▲                  │  └──pause──▶ paused
   │ stop (any state) │  └─next/prev/jump───┘                 │
   └──────────────────┴───────────────────────────────────────┘
-                     (stopping: [FUTURE] fade-out in progress → idle)
 ```
 
-- `next`, `previous` and `jumpTo` from `paused` start the new track **playing**.
-- `seek` works in `playing`, `paused` and `loading`. In `loading` it is applied once the track has loaded.
-- `previous`: if the position is past **3 s**, restart the current track. Otherwise go to the previous track, following the order strategy.
+- `play` is ignored unless idle. `jumpTo` works in any state; from idle it starts the playlist at that track.
+- `next`, `previous` and `jumpTo` from `paused` start the new track **playing**. `pause` in `loading` keeps the track paused once it loads; `resume` before loading goes back to `loading`.
+- `seek` works in `loading`, `playing` and `paused`, clamped to the track. While loading it is applied once the track has loaded.
+- `previous`: past **3 s** into the track, or when there is no previous track, it restarts the current track (seek to 0, and resume if paused). Otherwise it goes to the previous track, following the order strategy.
+- `next` past the last track without looping stops the playlist.
 - Track ends naturally: advance to the next track. With the default `loop: true` it wraps to the first track. If the strategy returns no next track, the playlist stops.
-- Track error (404, decode failure, `play()` rejected): send `playlist.error` and skip to the next track. After `tracks.length` errors in a row, stop the playlist so it doesn't loop on broken files.
-- Starting a playlist always begins at the strategy's first track. **[FUTURE]** Resume position.
+- Track error (404, decode failure, rejected `play()`), or a track in a format this browser cannot play: send `playlist.error` and skip to the next track. Unplayable tracks get no voice at all. After `tracks.length` errors in a row (reset whenever a track loads), the playlist stops instead of looping over broken files.
+- Starting a playlist always begins at the strategy's first track.
 
 ### 8.2 Extension points
 
-The defaults are hard-coded now. Each one is a single seam that later work can fill from the options files.
+The defaults are hard-coded today. Each is a single seam that the planned features in the [roadmap](ROADMAP.md) fill in.
 
 ```js
-// Resolved per playlist; V2 always returns the defaults.
+// Resolved per playlist by resolvePlaybackRules(playlist); currently always the defaults.
 PlaybackRules {
-	order: 'sequential',   // [FUTURE] 'shuffle', 'shuffle-no-repeat', …
+	order: 'sequential',   // name of an order strategy
 	loop: true,
-	fadeIn: 0,             // seconds, [FUTURE]: applied on first track via voice.rampGain
-	fadeOut: 0,            // [FUTURE]: applied on stop/last track
-	crossfade: 0,          // [FUTURE]: next/previous/jump and natural track end
+	fadeIn: 0,             // seconds, when the playlist starts
+	fadeOut: 0,            // seconds, when it stops
+	crossfade: 0,          // seconds, when the track changes
 }
 
 // The single place where a transition becomes concrete timings.
-// 'instant' → all zeros, and retiring voices are killed. 'default' → taken from the rules.
+// 'instant' → all zeros and retiring voices are killed; 'default' → taken from the rules.
 resolveTransition(action /* 'play'|'stop'|'change' */, transition, rules)
 	→ { fadeInSeconds, fadeOutSeconds, killRetiring }
 
-// Order strategy registry: name → factory. Strategies are pure and seeded, so they can be tested.
+// Order strategy registry: name → factory. Strategies are pure, so they can be tested deterministically.
 OrderStrategy {
 	first() → index | null
 	next(currentIndex) → index | null    // null = end of playlist
 	previous(currentIndex) → index | null
 }
 
-// Per-track plan; V2 returns { startAt: 0, endAt: null }.
+// Per-track plan; currently always { startAt: 0, endAt: null }.
 planTrack(track, rules) → { startAt, endAt }
 ```
 
-- `startAt` is applied by seeking before the first `play()`.
-- `endAt` is enforced by a clock timer, bound to the current generation, that treats reaching `endAt` like `ended`.
-- The **[FUTURE]** crossfade starts the next voice at `endAt - crossfade`, using the same retiring mechanism.
+- A non-zero `fadeIn` ramps the new voice's gain from 0; a non-zero fade-out ramps the old voice to 0 in the retiring set. Both are covered by tests with non-zero rules.
+- A non-zero `startAt` is applied by seeking once the track has loaded.
 
 ### 8.3 Progress
 
-While a playlist is `playing`, a timer from the injected clock sends `playlist.progress` every 250 ms. The timer is cleared on pause and stop, and when the generation changes.
+While a playlist is `playing`, a clock interval sends `playlist.progress` every 250 ms. The interval is cleared on pause, on stop, and whenever the track changes.
 
 ---
 
 ## 9. UI
 
-Dark theme, plain and functional. Icons appear only on controls (play, pause, stop, previous, next, volume), drawn as inline SVG. Sound and playlist tiles have no icons.
+Dark theme, plain and functional. Icons appear only on controls (play, pause, stop, previous, next, volume, and the track list chevron), drawn as inline SVG. Sound and playlist tiles have no icons.
 
 ### 9.0 Splash screen
 
-Browsers only allow an `AudioContext` to start inside a user gesture, so the app starts behind a splash screen.
+Browsers only allow audio to start inside a user gesture, so the app starts behind a full-screen splash.
 
-- On page load the app does **nothing** except show a full-screen splash: the app name and **"Click anywhere to start"**. No audio context, no requests.
-- The first click calls `soundboard.start()`. Inside that click handler, `unlockAudio()` creates and resumes the `AudioContext` **synchronously**. Then the library and settings are fetched and the splash shows "Loading…".
-- On `app.ready` the splash is removed and the board is rendered. On `app.startFailed` the splash shows the error and "Click to retry".
-- **Re-locking.** If Safari suspends the context later (the Mac sleeps, or another app takes the audio device), `audio.suspended` brings the splash back as "Audio paused by the system. Click to resume". The click calls `unlockAudio()`. Playlist state is kept; the media elements resume with the context.
+- On page load the app does **nothing** except show the splash: the app name and **"Click anywhere to start"**. No audio context, no API requests.
+- The first click calls `soundboard.start()`, which creates and resumes the `AudioContext` **synchronously** inside the click. The splash shows "Loading…" while the library and settings are fetched.
+- On `app.ready` the splash is hidden and the board is rendered. On `app.startFailed` the splash shows "Could not start the soundboard. Click to retry." with the error; clicking starts again.
+- **Re-locking.** If the system suspends audio later (the Mac sleeps, or another app takes the audio device), `audio.suspended` closes any open popup and brings the splash back as "Audio paused by the system. Click to resume." A click calls `unlockAudio()`, and the splash hides on `audio.resumed`. Playlist state is kept.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -465,9 +492,9 @@ Browsers only allow an `AudioContext` to start inside a user gesture, so the app
 │ SOUND EFFECTS                                                        │
 │ [Explosion ■] [Door creak] [Sword] [Thunder] …                       │
 ├──────────────────────────────────────────────────────────────────────┤
-│ ┌Combat ───────────┐ ┌Tavern ───────────┐ ┌Ambient ──────────┐       │  footer: player bars
-│ │01 Battle ▾       │ │Drinking song ▾   │ │Rain ▾            │       │  3 per row, 2 rows max,
-│ │⏮ ⏸ ⏭ ⏹  1:12/3:40│ │…                 │ │…                 │       │  then scrolls
+│ ┌Combat ───────────┐ ┌Tavern ───────────┐ ┌Ambient ──────────┐       │  footer: always visible,
+│ │01 Battle ▾       │ │Drinking song ▾   │ │Rain ▾            │       │  3 bars per row,
+│ │⏮ ⏸ ⏭ ⏹  1:12/3:40│ │…                 │ │…                 │       │  2 rows max, then scrolls
 │ │━━━━━━○──────────│ │                  │ │                  │       │
 │ └──────────────────┘ └──────────────────┘ └──────────────────┘       │
 └──────────────────────────────────────────────────────────────────────┘
@@ -475,41 +502,42 @@ Browsers only allow an `AudioContext` to start inside a user gesture, so the app
 
 ### 9.1 Layout
 
-- The page is a full-height column: header, a scrolling main area, then the footer.
-- Tiles are `<button>`s in a flex-wrap grid (min width about 160 px) with titles clamped to 3 lines. The full title shows in `title=`.
-- Playlist tiles and sound tiles are visually distinct (different accent colors).
-- A **playing playlist** tile is highlighted.
-- A **sound with live instances** shows a small ■ stop button in its top-right corner. That button is a separate element; clicking it calls `stopSound` and does not also trigger a play.
-- Tiles for unplayable formats (for example `.ogg` in an older Safari) are disabled, with a tooltip explaining why.
+- The page is a full-height column: header (title and volume sliders), a scrolling main area, then the footer.
+- The main area has a "Playlists" section above a "Sound Effects" section; empty sections are left out. With neither, it says no playlists or sounds were found.
+- Tiles are `<button>`s in a grid of columns at least 10rem (160 px) wide, with titles clamped to 3 lines. The full title shows as a tooltip.
+- Playlist tiles have a blue accent and sound tiles an amber one.
+- A playlist tile shows its track count when idle and "Loading…", "Playing" or "Paused" when active, and is highlighted while active.
+- A **sound with live instances** is highlighted and shows a small ■ stop button in its top-right corner. That button is a sibling of the tile, not inside it, so pressing it calls `stopSound` and never also plays the sound.
+- Tiles that can't play (an unsupported format, or a playlist with no playable track) are disabled, with a tooltip explaining why.
+- A playlist or sound error flashes a red ring on its tile for 2 seconds.
 - The footer shows **playlists only**. Sound effects never create a player bar.
-- The footer is **always visible**, so the layout doesn't shift when music starts or stops. It is at least one row of player bars tall; while no playlist is active, that row shows a muted "No playlist playing". Player bars sit in a CSS grid of `repeat(3, 1fr)`, in the order the playlists were started. The footer grows to at most two rows of bars; beyond that it scrolls vertically.
-- Color tokens are defined once, in Tailwind's `@theme` (§9.6), which exposes them as CSS custom properties on `:root`.
+- The footer is **always visible**, so the layout doesn't shift when music starts or stops. It is at least one row of player bars tall; while no playlist is active, that row shows a muted "No playlist playing". Player bars sit in a three-column grid, in the order the playlists were started. The footer grows to at most two rows of bars; beyond that it scrolls vertically.
+- Color tokens are defined once, in Tailwind's `@theme` (§9.6).
 
 ### 9.2 Player bar
 
 Each bar shows:
-- The playlist title.
-- The track title, which is clickable and opens the **track list popover**.
-- ⏮ previous, ⏯ pause/resume, ⏭ next, and ⏹ stop. Previous, next and stop use the `'default'` transition. Instant versions are in the context menu.
-- `m:ss / m:ss`, with `--:--` until the duration is known.
-- A progress bar. Clicking it seeks to that point.
+- The playlist title and `m:ss / m:ss` (`h:mm:ss` from an hour on), with `--:--` while the duration is unknown.
+- The track title with a ▾ chevron. Clicking it opens the **track list popover**.
+- ⏮ previous, ⏯ pause/resume, ⏭ next, and ⏹ stop. Previous, next and stop use the `'default'` transition; the instant versions are in the context menu.
+- A progress bar. Pressing anywhere on it seeks to that point.
 
-The track list popover lists every track with the current one marked. Clicking a track calls `jumpToTrack` with `'default'`.
+The track list popover lists every track, numbered, with the current one marked and scrolled into view. Tracks this browser can't play are disabled. Clicking a track calls `jumpToTrack` with `'default'`.
 
 ### 9.3 Overlay and context menus
 
-There is one shared `Overlay` component, used by both the context menus and the track list popover.
+One shared `Overlay` shows the context menus and the track list popover; opening one closes any other.
 
-- A full-screen backdrop (`rgba(0,0,0,.35)`) sits above the page. A `click`, `contextmenu` or `pointerdown` on the backdrop **closes the overlay and is swallowed**, so nothing on the page reacts. **Esc** also closes it.
-- The menu opens at the cursor and is clamped so it stays inside the viewport.
-- Right-clicking a tile suppresses the browser's own context menu.
+- A full-screen backdrop (`black/35`) sits above the page. Presses on it are swallowed. A `click` or right-click on the backdrop **closes the popup**, so nothing on the page reacts. **Esc** also closes it. Closing on `click` rather than `pointerdown` keeps the whole press on the backdrop, so the element underneath never receives a stray click.
+- A popup opens at the cursor (the track list at its chevron button). Where it would overflow the window, it flips to the other side of that point, and as a last resort it is clamped inside an 8 px margin. It is placed again whenever its size changes, because Tailwind may only style a newly used class after the popup has been measured.
+- Right-clicking a tile suppresses the browser's own context menu. Choosing a menu item closes the menu first, then runs the action. Disabled items are greyed out.
 
 **Sound menu**
 
 | Item | Behavior |
 |---|---|
 | Play | `playSound` |
-| Stop All | `stopSound` (disabled when no instances are playing) |
+| Stop All | `stopSound`; enabled only while instances are playing |
 | Customize | disabled (stub) |
 
 **Playlist menu**
@@ -524,84 +552,82 @@ There is one shared `Overlay` component, used by both the context menus and the 
 | Stop (Instant) | `stopPlaylist('instant')`; enabled only while active |
 | Customize | disabled (stub) |
 
-"Active" means `loading`, `playing` or `paused`. In V2, each plain item behaves exactly like its "(Instant)" twin, because the rules have no fades yet.
+"Active" means `loading`, `playing` or `paused`. With the current all-zero rules, each plain item behaves exactly like its "(Instant)" twin. Separators divide the groups.
 
-### 9.4 DOM helpers
+### 9.4 Components and DOM helpers
 
-A small helper module (`ui/dom.js`) with three functions:
-- `h(tag, props, ...children)` creates elements.
-- `on(el, type, handler)` adds a listener and returns a function that removes it.
+`ui/dom.js` has three helpers:
+- `h(tag, props, ...children)` creates elements; `on<Event>` props become listeners.
+- `on(target, type, handler)` adds a listener and returns a function that removes it.
 - `qs` / `qsa` look up elements.
 
-UI components are classes with `mount(parent)` and `destroy()`. They subscribe to facade events and unsubscribe in `destroy()`.
+UI components extend `Component` (`ui/component.js`): `render()` builds the element once, `mount(parent)` attaches it, and `destroy()` removes it together with every subscription registered through `own()`. `App` switches between the splash and the board; the board mounts the volume controls, the tiles and the player dock, and destroys them with itself.
 
-### 9.5 Safari notes
+### 9.5 Browser notes
 
-- `AudioContext` is created by the splash click (§9.0). As a safety net, the UI also calls `soundboard.unlockAudio()` **synchronously** at the start of every click handler; this costs nothing when the context is already running.
+- The `AudioContext` is created by the splash click (§9.0). As a safety net, a capturing `pointerdown` listener on the document calls `soundboard.unlockAudio()` on every press, which costs nothing while audio is running.
 - Media is same-origin, so `createMediaElementSource` works without CORS settings.
-- Ogg playback in Safari depends on the version. `canPlay('ogg')` is checked when the library loads, and unsupported tiles are disabled rather than failing silently.
-- These points are confirmed by hand (§11.3), not by automated tests.
+- Ogg support in Safari depends on the version. Formats are checked with `canPlayType` when the library loads, and unsupported tiles are disabled rather than failing silently.
+- Before closing, the page flushes any pending volume save (`pagehide`).
+- These points are confirmed by hand ([`TESTING.md`](TESTING.md)).
 
 ### 9.6 Styling with Tailwind
 
 - `public/vendor/tailwindcss-browser-<version>.js` is the unmodified `dist/index.global.js` from the npm package `@tailwindcss/browser`, with its MIT license next to it. `index.html` loads it with a plain `<script>`. It makes no network requests and uses no `eval`.
   - **Updating** means replacing the file, renaming it to the new version, and updating `index.html`.
-- Components style themselves with utility classes. App-wide tokens (colors, fonts) and the few rules utilities can't express live in one `<style type="text/tailwindcss">` block in `index.html`, using `@theme`.
-- The browser build watches the DOM and generates CSS for new class names. Keeping that cheap:
+- Components style themselves with utility classes. App-wide tokens (colors, fonts) and base styles live in one `<style type="text/tailwindcss">` block in `index.html`, using `@theme`. A small plain `<style>` sets the page background before Tailwind runs, so the page never flashes white.
+- The browser build watches the DOM and generates CSS for class names as they first appear. Keeping that cheap:
   - Anything that changes several times a second (progress bars, time readouts) is updated through inline `style` or text, **never** by swapping classes.
-  - State changes (playing, active, disabled) toggle a `data-*` attribute that is styled with Tailwind's `data-*` variants, so the full set of classes is already present when the element is created.
-- Tailwind's own docs describe the browser build as meant for prototyping, because CSS is generated in the page. For a single local page with a few dozen elements, the cost is a few milliseconds at load.
+  - State (active, playing, error) is a `data-*` attribute styled with Tailwind's `data-*` variants, so the full set of classes is already present when an element is created.
+- Because CSS for a class is generated only after the class first appears, code that measures a newly built element must allow for its size changing afterwards (§9.3).
 
 ---
 
 ## 10. Project structure
 
 ```
-index.js                         CLI entry: args → bootstrap → server
-package.json                     type: module, engines, scripts (§10.2)
-eslint.config.js  .editorconfig  tsconfig*.json (§10.1)
+index.js                         entry point: wires process streams and signals into src/cli/main.js
+package.json  package-lock.json  type: module, engines, scripts (§10.2), dev dependencies only
+eslint.config.js  .editorconfig  tsconfig.json  tsconfig.*.json (§10.1)
 src/
-	cli/        args.js  prompter.js  reporter.js  colors.js
-	library/    scanner.js  classify.js  options-store.js  validate.js
-	            bootstrap-service.js  library.js  sort.js  settings-store.js
+	cli/        main.js  args.js  prompter.js  reporter.js  colors.js
+	library/    bootstrap-service.js  scanner.js  classify.js  sort.js  validate.js  errors.js
+	            options-store.js  settings-store.js  library.js
 	metadata/   index.js  id3.js  ogg.js  binary-reader.js
-	http/       server.js  router.js  static-files.js  media.js  range.js  mime.js
+	http/       server.js  router.js  responses.js  static-files.js  media.js  range.js  mime.js  request-log.js
 public/
-	index.html  styles.css
+	index.html  favicon.svg
+	vendor/     tailwindcss-browser-<version>.js  tailwindcss-browser.LICENSE   (excluded from lint and type-checking)
 	app/
-		main.js                    composition root (creates the engine, Soundboard and UI)
-		logic/                     NO DOM / audio globals
-			event-emitter.js  soundboard.js  commands.js  library-model.js
-			sound-player.js  buffer-cache.js
+		main.js  browser-clock.js       composition root and the browser Clock
+		logic/                          no DOM, audio or Node APIs
+			ports.js  soundboard.js  commands.js  errors.js  event-emitter.js  library-model.js
 			playlist-player.js  playback-rules.js  transitions.js  order-strategies.js
-			volume.js  settings-sync.js  errors.js
-		audio/
-			web-audio-engine.js
-		api/
-			backend-api.js             fetch-based BackendApi
-		ui/
-			dom.js  splash.js  overlay.js  context-menu.js  tile-grid.js  sound-tile.js  playlist-tile.js
-			player-bar.js  player-dock.js  track-list.js  volume-controls.js  icons.js  format.js
+			sound-player.js  buffer-cache.js  volume.js  settings-sync.js
+		audio/      web-audio-engine.js
+		api/        backend-api.js
+		ui/         app.js  component.js  dom.js  icons.js  format.js  menus.js  position.js
+		            splash.js  overlay.js  context-menu.js  track-list.js  tile-grid.js
+		            playlist-tile.js  sound-tile.js  player-dock.js  player-bar.js  volume-controls.js
 test/
-	backend/   …*.test.js
-	frontend/  …*.test.js
-	helpers/   fake-audio-engine.js  fake-clock.js  fake-backend-api.js  fake-prompter.js  tmp-tree.js  tag-builders.js
-public/vendor/
-	tailwindcss-browser-<version>.js  tailwindcss-browser.LICENSE   (§9.6; excluded from lint and type-checking)
+	backend/    cli/  http/  library/  metadata/
+	frontend/   logic tests, backend-api.test.js, ui/ (pure UI helpers)
+	helpers/    fake-audio-engine.js  fake-clock.js  fake-backend-api.js  fake-prompter.js  fake-reporter.js
+	            tmp-tree.js  tag-builders.js  http-client.js
 test_fixtures/
-	example_soundboard/            real MP3/OGG library: 3 playlists, 4 sounds, some with titles
+	example_soundboard/             real MP3/OGG library: 3 playlists, 4 sounds, with and without title tags
 ```
 
 ### 10.1 Type-checking projects
 
-Each project is checked against only the globals its code may use, so the compiler enforces the logic/UI boundary:
+Each project is checked against only the globals its code may use, so the compiler enforces the logic/UI boundary. `tsconfig.json` lists them for the editor; `npm run typecheck` runs each.
 
 | Project | Covers | Globals available |
 |---|---|---|
-| Backend | `index.js`, `src/**`, `test/backend/**` | Node (`@types/node`), no DOM |
-| Frontend logic | `public/app/logic/**` | ECMAScript only: **no DOM, no Node**. Using `document`, `window` or `Audio` here is a compile error. |
-| Frontend UI | `public/app/**` except `logic/` | DOM |
-| Frontend tests | `test/frontend/**`, `test/helpers/**` | Node, plus the logic sources |
+| Backend (`tsconfig.backend.json`) | `index.js`, `src/**`, `test/backend/**`, `test/helpers/**` | Node, no DOM |
+| Frontend logic (`tsconfig.logic.json`) | `public/app/logic/**` | ECMAScript only: **no DOM, no Node**. Using `document`, `window`, `console` or `setTimeout` here is a compile error. |
+| Frontend UI (`tsconfig.ui.json`) | `public/app/**` except `logic/` | DOM |
+| Frontend tests (`tsconfig.frontend-tests.json`) | `test/frontend/**`, `test/helpers/**` | Node, plus the sources they import |
 
 ESLint backs this up with `no-restricted-globals` in `public/app/logic/**`.
 
@@ -612,111 +638,46 @@ ESLint backs this up with `no-restricted-globals` in `public/app/logic/**`.
 | `npm start -- <dir>` | `node index.js <dir>` |
 | `npm run dev -- <dir>` | `node --watch index.js <dir>` |
 | `npm test` | `node --test` |
-| `npm run typecheck` | `tsc` for every project in §10.1 |
+| `npm run typecheck` | `tsc -p` for every project in §10.1 |
 | `npm run lint` / `npm run lint:fix` | `eslint .` / `eslint . --fix` |
 | `npm run check` | typecheck + lint + test; must pass before every commit |
 
 ---
 
-## 11. Testing strategy
+## 11. Testing
 
-### 11.1 Automated tests (`npm test` → `node --test`)
-
-| Unit | What is tested |
-|---|---|
-| `metadata/*` | §4.3, plus every file in `test_fixtures/example_soundboard` (checking which have titles) |
-| `range.js` | Parsing `a-b`, `a-`, `-n`, invalid, out of bounds, multiple ranges |
-| `scanner` / `classify` | Built temporary trees: hidden files, symlinks, orphans, unsupported files, nesting, empty playlists, case-insensitive extensions |
-| `validate` / `options-store` | Fatal errors gathered together, unknown keys kept on rewrite, atomic write |
-| `settings-store` | Default volumes, merging partial updates, invalid values rejected, writes serialized so only the newest pending value is written, unknown `.soundboard` keys kept |
-| `bootstrap-service` | One end-to-end case runs against a **copy** of `test_fixtures/example_soundboard` in a temp directory. The fixture itself is never written to. First run and later runs driven by a fake prompter: answering No to nesting writes nothing, `.soundboard` is written last, new subdirectories are detected, missing options files are created without asking, metadata accepted versus declined |
-| `http` | Server started on port 0 and exercised with `fetch`: library JSON, settings GET/PUT (including `400`), 200/206/416/404, HEAD, traversal attempts (`/media/../x`, encoded `%2e%2e`), static MIME types |
-| `sound-player` | Overlapping instances, 8-per-sound and 24-streamed caps, stop-all during a pending decode (epoch), `activeChanged` edges, LRU eviction that skips buffers in use |
-| `playlist-player` | Every state transition, stale `ended`/`error` callbacks ignored, previous within 3 s versus after, wrap-around, consecutive error limit, seek while loading, progress timer cleanup, randomized command sequences checking the voice invariant (§8 rule 4) |
-| `order-strategies` | Sequential with and without loop, empty list |
-| `transitions` | `'instant'` gives zero timings and kills retiring voices; `'default'` follows the rules (tested with non-zero rule values, so the future path is already covered) |
-| `soundboard` facade | `start()` order (unlock → fetch → apply volumes → `app.ready`), `startFailed`, suspended/resumed forwarding, commands map to players, volume save debounce and `flushSettings` |
-
-### 11.2 Not tested automatically
-
-The DOM layer and `WebAudioEngine` are kept thin and checked by hand.
-
-### 11.3 Manual checklist (Chrome, Firefox, Safari)
-
-- [ ] Splash screen appears on load; nothing plays or loads until the click.
-- [ ] Close the lid for a minute and reopen: the "resume" splash appears and audio continues after a click.
-- [ ] Volumes survive a page reload and a server restart.
-- [ ] Switching the audio output (speakers, headphones, Bluetooth) while playing.
-- [ ] Overlapping sounds; stop-all button appears and disappears; ninth instance replaces the oldest; sounds never create a player bar.
-- [ ] Several playlists at once; next, previous, jump, seek, pause and stop on each.
-- [ ] Mashing "next" never leaves a stray track playing.
-- [ ] Clicking outside a context menu doesn't trigger the tile underneath.
-- [ ] Volume buses affect only their own category.
-- [ ] Footer wraps at 3 bars and scrolls after 6.
-- [ ] Seeking in a long MP3 works (Range requests).
-- [ ] Ogg behavior in Safari.
+Logic and backend code are developed test-first and covered by automated tests that run in Node, against fakes for the audio engine, clock, backend and terminal. The DOM layer and `WebAudioEngine` stay thin and are checked by hand in real browsers. What each suite covers, how the fakes work, and the manual checklist are in [`TESTING.md`](TESTING.md).
 
 ---
 
-## 12. Future work (not in this version)
+## 12. Target machine: MacBook Neo, 8 GB RAM
 
-| Feature | Seam already in place |
-|---|---|
-| Fade in/out and crossfade, used by the plain "Play", "Next" and "Stop" | `'default'` transition → `resolveTransition` → `PlaybackRules`; `voice.rampGain`; retiring set with deadlines |
-| Track ordering options (shuffle, …) | `OrderStrategy` registry |
-| Custom track start and end points | `planTrack → { startAt, endAt }` |
-| "Customize" dialogs for sounds, tracks and playlists | Options files keep unknown keys; menu items exist |
-| Per-playlist, per-track and per-sound volume | Per-voice gain node in the graph |
-| Rescanning while running, or watching the directory | `BootstrapService` and `scanner` are reusable; library is reloaded through `/api/library` |
-| LAN access and phone remote control (phone chooses, PC plays) | Serializable commands and events, `dispatch()`, stateless server. Would add `--host`, a `/api/events` stream (SSE) and `POST /api/commands` relay |
-| Search or filter tiles; keyboard shortcuts | UI-only, uses the existing facade |
-| Saving more UI preferences | `.soundboard` settings and the `/api/settings` endpoints |
-| Context menus on touch screens (long press) | Overlay component |
-| Resume playlist position; preload next track | `PlaylistPlayer` |
-
----
-
-## 13. Build order (TDD, each step ends with passing tests)
-
-1. Skeleton: `package.json`, `.gitignore`, `.editorconfig`, ESLint and TypeScript configs, `npm run check` passing on an empty project, test helpers (temporary trees, fake prompter).
-2. Metadata: `binary-reader`, `id3`, `ogg`.
-3. Library: `classify`, `scanner`, `sort`, `validate`, `options-store`, `settings-store`.
-4. `BootstrapService`, then CLI wiring (`args`, `prompter`, `reporter`, `index.js`).
-5. HTTP: `range`, `media`, `static-files`, `/api/library`, `/api/settings`, server lifecycle.
-6. Frontend logic: `event-emitter`, `fake-clock`, `fake-audio-engine`, `fake-backend-api`, `order-strategies`, `playback-rules`, `transitions`, `playlist-player`, `buffer-cache`, `sound-player`, `volume`, `settings-sync`, `soundboard` facade.
-7. `WebAudioEngine` and `BackendApi`.
-8. UI: layout and tokens → splash → tiles → overlay and context menus → player dock, bars and track list → volume controls.
-9. Manual checklist (§11.3) in all three browsers, with Safari on the MacBook Neo as the one that matters most.
-
----
-
-## 14. Target machine: MacBook Neo, 8 GB RAM
-
-The streaming design already keeps resource use well within what this machine can handle. No architectural changes are needed. These are the specific points, and how the design handles each.
+The streaming design keeps resource use well within what this machine can handle.
 
 **Memory (expected total under about 200 MB for the browser tab, a few tens of MB for Node):**
-- Node holds only the file index and settings. Files are streamed in chunks from disk.
+- Node holds only the file index and settings. Files are streamed from disk in chunks.
 - Each streamed track (a media element) buffers only a few MB ahead. With, say, 6 playlists, the 24 streamed-sound cap and a few retiring voices, that is well under 200 MB in the worst case.
 - Decoded sound effects are capped at 64 MB (§7).
-- macOS memory compression and swapping make occasional spikes harmless. The real goal is that the tab never grows over a 4-hour session. That is why voices release their resources on `stop()` (§6.3) and the retiring set has deadlines (§8). Manual check: compare the tab's memory in Activity Monitor at the start and after an hour of play.
+- The real goal is that the tab never grows over a 4-hour session. That is why voices release their resources on `stop()` (§6.3) and retiring voices have deadlines (§8).
 
 **CPU and battery:**
 - Decoding is done by the browser's native code. Mixing a handful of streams through Web Audio costs very little.
-- No `requestAnimationFrame` loops. Progress updates run at 4 Hz, and only while a playlist is playing. The progress bar uses CSS `transform`, not layout changes.
+- No `requestAnimationFrame` loops. Progress updates run at 4 Hz, only while a playlist is playing, and only change inline styles and text (§9.6).
 
 **Safari specifics:**
-- Range requests (§5.2), the splash unlock (§9.0) and same-origin media are covered in the design.
-- **Ogg support depends on the macOS and Safari version.** Tiles are disabled when `canPlayType` reports no support. If your library is mostly `.ogg` and the tiles show as disabled, use Chrome or Firefox, or convert the files to MP3.
+- Range requests (§5.2), the splash unlock (§9.0) and same-origin media are covered above.
+- **Ogg support depends on the macOS and Safari version.** Unplayable tiles are disabled. If a library is mostly `.ogg` and its tiles show as disabled, use Chrome or Firefox, or convert the files to MP3.
 - Safari slows down timers in background tabs. Track changes are driven by the media `ended` event, which still fires in the background, so playlists keep advancing even when the window isn't in front.
+- New media elements created after the audio context has been unlocked are assumed to play without a fresh gesture, as in browser games and web music players.
 
 **Sleep, wake and audio devices:**
-- After the Mac wakes, or when another app takes the audio device, the context may be suspended. This is handled by the "resume" splash (§9.0).
-- Switching to headphones, Bluetooth or HDMI: the `AudioContext` follows the system's default output device. Checked by hand (§11.3).
+- After the Mac wakes, or when another app takes the audio device, audio may be suspended. The "resume" splash handles this (§9.0).
+- The `AudioContext` follows the system's default output device when switching to headphones, Bluetooth or HDMI.
 
 **Filesystem (APFS, or an external drive):**
-- `.DS_Store` files, and the `._*` AppleDouble files macOS creates on exFAT and FAT drives, start with `.` and are ignored by rule §2.1-1.
-- macOS may store filenames in decomposed Unicode (NFD). IDs are always taken from what `readdir` returns and passed back unchanged through the URL, so the lookup in §5.2 matches without normalizing.
-- APFS is case-insensitive by default, so extension matching is already case-insensitive (§2.1).
+- `.DS_Store` files, and the `._*` AppleDouble files macOS creates on exFAT and FAT drives, start with `.` and are ignored (§2.1).
+- macOS may store filenames in decomposed Unicode (NFD). IDs are taken from what `readdir` returns and passed back unchanged through the URL, so lookups match without normalizing.
+- APFS is case-insensitive by default; extension matching is case-insensitive too (§2.1).
 
 **Session safety:**
 - **Keep the terminal window open.** Closing it stops the server, and with it any music that hasn't been buffered yet.
