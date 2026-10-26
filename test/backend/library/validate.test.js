@@ -23,6 +23,25 @@ describe('validateAudioOptions', () => {
 		}
 	});
 
+	it('accepts a gain from 0 to 4', () => {
+		for (const gain of [0, 0.0316, 1, 3.98, 4]) {
+			assert.deepEqual(validateAudioOptions({ gain }), [], `gain ${gain}`);
+		}
+	});
+
+	it('rejects a gain out of range or not a number', () => {
+		for (const gain of [-0.01, 4.0001, '1', null, true]) {
+			assert.deepEqual(validateAudioOptions({ gain }), ['"gain" must be a number from 0 to 4'], `gain ${gain}`);
+		}
+	});
+
+	it('reports a bad title and a bad gain together', () => {
+		assert.deepEqual(validateAudioOptions({ title: '', gain: 9 }), [
+			'"title" must be a non-empty string',
+			'"gain" must be a number from 0 to 4',
+		]);
+	});
+
 	it('rejects an empty or non-string title', () => {
 		assert.deepEqual(validateAudioOptions({ title: '' }), ['"title" must be a non-empty string']);
 		assert.deepEqual(validateAudioOptions({ title: '   ' }), ['"title" must be a non-empty string']);

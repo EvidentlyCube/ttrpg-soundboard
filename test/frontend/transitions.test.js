@@ -12,7 +12,7 @@ describe('playback rules', () => {
 	});
 
 	it('plans every track to play from start to end', () => {
-		const track = { id: 'a.mp3', title: 'a', format: /** @type {const} */ ('mp3'), size: 1, url: '/media/a.mp3' };
+		const track = { id: 'a.mp3', title: 'a', format: /** @type {const} */ ('mp3'), size: 1, gain: 1, url: '/media/a.mp3' };
 		assert.deepEqual(planTrack(track, DEFAULT_PLAYBACK_RULES), { startAt: 0, endAt: null });
 	});
 });

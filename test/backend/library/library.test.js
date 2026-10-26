@@ -58,9 +58,22 @@ describe('buildLibrary', () => {
 		const scan = scanOf({ sounds: [audio('Boom.mp3', true), audio('Creak.ogg')] });
 		const library = buildLibrary(scan, new Map([['/music/Boom.mp3.json', { title: 'Big Boom' }]]));
 		assert.deepEqual(library.sounds, [
-			{ id: 'Boom.mp3', title: 'Big Boom', format: 'mp3', size: 100, absolutePath: '/music/Boom.mp3' },
-			{ id: 'Creak.ogg', title: 'Creak.ogg', format: 'ogg', size: 100, absolutePath: '/music/Creak.ogg' },
+			{ id: 'Boom.mp3', title: 'Big Boom', format: 'mp3', size: 100, gain: 1, absolutePath: '/music/Boom.mp3' },
+			{ id: 'Creak.ogg', title: 'Creak.ogg', format: 'ogg', size: 100, gain: 1, absolutePath: '/music/Creak.ogg' },
 		]);
+	});
+
+	it('takes the gain of sounds and tracks from options, defaulting to 1', () => {
+		const scan = scanOf({
+			sounds: [audio('Boom.mp3', true), audio('Creak.ogg')],
+			playlists: [playlist('Combat', [audio('Combat/1.mp3', true), audio('Combat/2.mp3')])],
+		});
+		const library = buildLibrary(scan, new Map([
+			['/music/Boom.mp3.json', { gain: 0.5 }],
+			['/music/Combat/1.mp3.json', { title: 'Battle', gain: 0 }],
+		]));
+		assert.deepEqual(library.sounds.map((sound) => sound.gain), [0.5, 1]);
+		assert.deepEqual(library.playlists[0].tracks.map((track) => track.gain), [0, 1]);
 	});
 
 	it('sorts sounds and playlists by title', () => {

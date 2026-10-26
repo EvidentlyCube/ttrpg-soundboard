@@ -11,6 +11,7 @@ import { sortBy } from './sort.js';
  * @property {string} title
  * @property {import('./classify.js').AudioFormat} format
  * @property {number} size
+ * @property {number} gain linear multiplier for its own volume; 1 plays it as recorded
  * @property {string} absolutePath
  */
 
@@ -38,13 +39,17 @@ import { sortBy } from './sort.js';
  */
 export function buildLibrary(scan, optionsByPath) {
 	/** @param {ScannedAudio} scanned */
-	const toAudioFile = ({ id, name, format, size, absolutePath, optionsPath }) => ({
-		id,
-		title: optionsByPath.get(optionsPath)?.title ?? name,
-		format,
-		size,
-		absolutePath,
-	});
+	const toAudioFile = ({ id, name, format, size, absolutePath, optionsPath }) => {
+		const options = /** @type {AudioOptions | undefined} */ (optionsByPath.get(optionsPath));
+		return {
+			id,
+			title: options?.title ?? name,
+			format,
+			size,
+			gain: options?.gain ?? 1,
+			absolutePath,
+		};
+	};
 
 	const sounds = sortBy(scan.sounds.map(toAudioFile), (sound) => sound.title);
 	const playlists = sortBy(

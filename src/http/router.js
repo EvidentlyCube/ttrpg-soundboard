@@ -75,7 +75,7 @@ async function route(request, response, { library, settings, publicDir }) {
 /** @param {Library} library */
 function toLibraryJson(library) {
 	/** @param {import('../library/library.js').AudioFile} file */
-	const toFileJson = ({ id, title, format, size }) => ({ id, title, format, size, url: mediaUrl(id) });
+	const toFileJson = ({ id, title, format, size, gain }) => ({ id, title, format, size, gain, url: mediaUrl(id) });
 	return {
 		version: LIBRARY_FORMAT_VERSION,
 		playlists: library.playlists.map(({ id, title, tracks }) => ({ id, title, tracks: tracks.map(toFileJson) })),

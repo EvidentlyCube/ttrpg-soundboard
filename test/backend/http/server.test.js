@@ -46,7 +46,7 @@ before(async () => {
 		'music': {
 			'.soundboard': JSON.stringify({ version: 1, volumes: { music: 0.5 }, futureKey: 'kept' }),
 			'Boom.mp3': AUDIO,
-			'Boom.mp3.json': JSON.stringify({ title: 'Big Boom' }),
+			'Boom.mp3.json': JSON.stringify({ title: 'Big Boom', gain: 0.5 }),
 			'Long.ogg': LARGE_AUDIO,
 			'Combat': { 'Zażółć ♪ #1.ogg': AUDIO },
 		},
@@ -164,12 +164,13 @@ describe('server', () => {
 						title: 'Zażółć ♪ #1.ogg',
 						format: 'ogg',
 						size: 1000,
+						gain: 1,
 						url: '/media/Combat/Za%C5%BC%C3%B3%C5%82%C4%87%20%E2%99%AA%20%231.ogg',
 					}],
 				}],
 				sounds: [
-					{ id: 'Boom.mp3', title: 'Big Boom', format: 'mp3', size: 1000, url: '/media/Boom.mp3' },
-					{ id: 'Long.ogg', title: 'Long.ogg', format: 'ogg', size: LARGE_AUDIO.length, url: '/media/Long.ogg' },
+					{ id: 'Boom.mp3', title: 'Big Boom', format: 'mp3', size: 1000, gain: 0.5, url: '/media/Boom.mp3' },
+					{ id: 'Long.ogg', title: 'Long.ogg', format: 'ogg', size: LARGE_AUDIO.length, gain: 1, url: '/media/Long.ogg' },
 				],
 			});
 		});

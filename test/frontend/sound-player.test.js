@@ -14,7 +14,7 @@ import { FakeClock } from '../helpers/fake-clock.js';
  * @returns {AudioFileJson}
  */
 function sound(id, size) {
-	return { id, title: id, format: 'mp3', size, url: `/media/${id}` };
+	return { id, title: id, format: 'mp3', size, gain: 1, url: `/media/${id}` };
 }
 
 const SMALL = sound('Boom.mp3', 1000);

@@ -241,6 +241,8 @@ describe('BootstrapService', () => {
 				'.soundboard': '{ "version": 99 }',
 				'Boom.mp3': TITLED_MP3,
 				'Boom.mp3.json': '{ broken',
+				'Loud.mp3': '',
+				'Loud.mp3.json': '{ "gain": 5 }',
 				'Combat.json': '{ "includedSubdirectories": "Boss" }',
 				'Combat': { '1.mp3': '', '1.mp3.json': '[]', 'Boss': { '2.mp3': '' } },
 			});
@@ -254,6 +256,7 @@ describe('BootstrapService', () => {
 			assert.deepEqual(errors.map((error) => error.filePath).toSorted(), [
 				join(root, '.soundboard'),
 				join(root, 'Boom.mp3.json'),
+				join(root, 'Loud.mp3.json'),
 				join(root, 'Combat', '1.mp3.json'),
 				join(root, 'Combat.json'),
 			].toSorted());

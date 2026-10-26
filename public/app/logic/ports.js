@@ -13,6 +13,7 @@
  * @property {string} title
  * @property {AudioFormat} format
  * @property {number} size bytes
+ * @property {number} gain linear multiplier for its own volume; 1 plays it as recorded
  * @property {string} url
  */
 
