@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { buildLibrary } from '../../../src/library/library.js';
-import { LibraryEditor, UnknownSoundError } from '../../../src/library/library-editor.js';
+import { LibraryEditor, UnknownPlaylistError, UnknownSoundError } from '../../../src/library/library-editor.js';
 import { ValidationError } from '../../../src/library/errors.js';
 import { updateJsonFile } from '../../../src/library/options-store.js';
 import { createTmpTree } from '../../helpers/tmp-tree.js';
@@ -16,6 +16,8 @@ beforeEach(async () => {
 		'Alpha.mp3.json': JSON.stringify({ title: 'Alpha', futureKey: 'kept' }),
 		'Beta.mp3': '',
 		'Combat': { '1.mp3': '' },
+		'Combat.json': JSON.stringify({ title: 'Combat', includedSubdirectories: ['Boss'], futureKey: 'kept' }),
+		'Ambient': { '1.mp3': '' },
 	});
 });
 afterEach(() => tree.remove());
@@ -33,18 +35,27 @@ function sound(name) {
 	};
 }
 
+/** @param {string} id */
+function playlist(id) {
+	const track = { ...sound('1.mp3'), id: `${id}/1.mp3`, absolutePath: join(tree.root, id, '1.mp3'), optionsPath: join(tree.root, id, '1.mp3.json') };
+	return { id, absolutePath: join(tree.root, id), optionsPath: join(tree.root, `${id}.json`), hasOptions: true, tracks: [track], subdirectories: [] };
+}
+
 function library() {
-	const track = { ...sound('1.mp3'), id: 'Combat/1.mp3', absolutePath: join(tree.root, 'Combat', '1.mp3'), optionsPath: join(tree.root, 'Combat', '1.mp3.json') };
 	return buildLibrary(
 		{
 			root: tree.root,
 			hasSettingsFile: true,
 			settingsPath: join(tree.root, '.soundboard'),
 			sounds: [sound('Alpha.mp3'), sound('Beta.mp3')],
-			playlists: [{ id: 'Combat', absolutePath: join(tree.root, 'Combat'), optionsPath: join(tree.root, 'Combat.json'), hasOptions: false, tracks: [track], subdirectories: [] }],
+			playlists: [playlist('Combat'), playlist('Ambient')],
 			warnings: [],
 		},
-		new Map([[join(tree.root, 'Alpha.mp3.json'), { title: 'Alpha' }], [join(tree.root, 'Beta.mp3.json'), { title: 'Beta' }]]),
+		new Map([
+			[join(tree.root, 'Alpha.mp3.json'), { title: 'Alpha' }],
+			[join(tree.root, 'Beta.mp3.json'), { title: 'Beta' }],
+			[join(tree.root, 'Combat.json'), { title: 'Combat', includedSubdirectories: ['Boss'] }],
+		]),
 	);
 }
 
@@ -157,5 +168,39 @@ describe('LibraryEditor.updateSound', () => {
 		const editor = new LibraryEditor(lib);
 		await assert.rejects(editor.updateSound('Alpha.mp3', { title: 'Changed' }), ValidationError);
 		assert.equal(lib.files.get('Alpha.mp3')?.title, 'Alpha');
+	});
+});
+
+describe('LibraryEditor.updatePlaylist', () => {
+	it('merges the change into the playlist options file, keeping subdirectories and unknown keys', async () => {
+		const editor = new LibraryEditor(library());
+		await editor.updatePlaylist('Combat', { title: ' Fight ', gain: 0.333333 });
+		assert.deepEqual(await readOptions('Combat'), { title: 'Fight', includedSubdirectories: ['Boss'], futureKey: 'kept', gain: 0.3333 });
+	});
+
+	it('creates the options file when it is missing', async () => {
+		const editor = new LibraryEditor(library());
+		await editor.updatePlaylist('Ambient', { gain: 2 });
+		assert.deepEqual(await readOptions('Ambient'), { gain: 2 });
+	});
+
+	it('updates the playlist in the library, re-sorted, and returns it', async () => {
+		const lib = library();
+		const editor = new LibraryEditor(lib);
+		assert.deepEqual(lib.playlists.map((entry) => entry.id), ['Ambient', 'Combat']);
+		const updated = await editor.updatePlaylist('Combat', { title: 'Absolute Battle', gain: 0.5 });
+		assert.equal(updated.title, 'Absolute Battle');
+		assert.equal(updated.gain, 0.5);
+		assert.deepEqual(updated.includedSubdirectories, ['Boss']);
+		assert.deepEqual(lib.playlists.map((entry) => entry.id), ['Combat', 'Ambient']);
+	});
+
+	it('rejects invalid changes and unknown playlists without writing anything', async () => {
+		const editor = new LibraryEditor(library());
+		await assert.rejects(editor.updatePlaylist('Combat', /** @type {any} */ ({ includedSubdirectories: [] })), /Unknown option "includedSubdirectories"/);
+		await assert.rejects(editor.updatePlaylist('Combat', { gain: 9 }), /"gain" must be a number from 0 to 4/);
+		await assert.rejects(editor.updatePlaylist('Nope', { gain: 1 }), UnknownPlaylistError);
+		await assert.rejects(editor.updatePlaylist('Alpha.mp3', { gain: 1 }), UnknownPlaylistError);
+		assert.deepEqual(await readOptions('Combat'), { title: 'Combat', includedSubdirectories: ['Boss'], futureKey: 'kept' });
 	});
 });

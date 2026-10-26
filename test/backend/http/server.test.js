@@ -279,6 +279,39 @@ describe('server', () => {
 		});
 	});
 
+	describe('playlist options', () => {
+		/**
+		 * @param {string} encodedId
+		 * @param {unknown} body
+		 */
+		function patchPlaylist(encodedId, body) {
+			return get(`/api/playlists/${encodedId}`, { method: 'PATCH', body: typeof body === 'string' ? body : JSON.stringify(body) });
+		}
+
+		it('saves a change to the playlist options file and returns the playlist with its tracks', async () => {
+			const response = await patchPlaylist('Combat', { title: 'Fight', gain: 1.5 });
+			assert.equal(response.status, 200);
+			const playlist = await json(response);
+			assert.deepEqual({ ...playlist, tracks: playlist.tracks.length }, { id: 'Combat', title: 'Fight', gain: 1.5, tracks: 1 });
+			assert.deepEqual(JSON.parse(await readFile(join(musicRoot, 'Combat.json'), 'utf8')), { title: 'Fight', includedSubdirectories: [], gain: 1.5 });
+			assert.equal((await json(await get('/api/library'))).playlists[0].title, 'Fight');
+		});
+
+		it('rejects invalid changes with 400 and unknown playlists with 404', async () => {
+			assert.equal((await patchPlaylist('Combat', { gain: 'loud' })).status, 400);
+			assert.equal((await patchPlaylist('Combat', { includedSubdirectories: [] })).status, 400);
+			for (const id of ['Nope', 'Boom.mp3', 'Combat/x', '%E0%A4%A']) {
+				assert.equal((await patchPlaylist(id, { gain: 1 })).status, 404, id);
+			}
+		});
+
+		it('only allows PATCH', async () => {
+			const response = await get('/api/playlists/Combat');
+			assert.equal(response.status, 405);
+			assert.equal(response.headers.get('allow'), 'PATCH');
+		});
+	});
+
 	describe('media', () => {
 		it('streams a whole file with caching and range headers', async () => {
 			const response = await get('/media/Boom.mp3');

@@ -1,5 +1,5 @@
 import { ValidationError } from '../library/errors.js';
-import { UnknownSoundError } from '../library/library-editor.js';
+import { UnknownPlaylistError, UnknownSoundError } from '../library/library-editor.js';
 import { isPlainObject, VOLUME_BUSES } from '../library/validate.js';
 import { findMediaFile, isMediaPath, mediaUrl, serveMedia } from './media.js';
 import { allowMethods, HttpError, sendJson } from './responses.js';
@@ -10,6 +10,7 @@ import { serveStaticFile } from './static-files.js';
 /** @typedef {import('../library/library.js').Library} Library */
 /** @typedef {import('../library/settings-store.js').SettingsStore} SettingsStore */
 /** @typedef {import('../library/library-editor.js').LibraryEditor} LibraryEditor */
+/** @typedef {import('../library/library-editor.js').OptionChanges} OptionChanges */
 
 /**
  * @typedef {object} RouterContext
@@ -23,6 +24,7 @@ import { serveStaticFile } from './static-files.js';
 const LIBRARY_FORMAT_VERSION = 1;
 const MAX_BODY_BYTES = 16 * 1024;
 const SOUNDS_PREFIX = '/api/sounds/';
+const PLAYLISTS_PREFIX = '/api/playlists/';
 
 /**
  * @param {RouterContext} context
@@ -67,7 +69,12 @@ async function route(request, response, { library, settings, editor, publicDir }
 		sendJson(response, 200, await updateVolumes(settings, await readJsonBody(request)));
 	} else if (pathname.startsWith(SOUNDS_PREFIX)) {
 		allowMethods(request, ['PATCH']);
-		sendJson(response, 200, toFileJson(await updateSound(editor, pathname, await readJsonBody(request))));
+		const body = /** @type {OptionChanges} */ (await readJsonBody(request));
+		sendJson(response, 200, toFileJson(await editItem(pathname, SOUNDS_PREFIX, (id) => editor.updateSound(id, body))));
+	} else if (pathname.startsWith(PLAYLISTS_PREFIX)) {
+		allowMethods(request, ['PATCH']);
+		const body = /** @type {OptionChanges} */ (await readJsonBody(request));
+		sendJson(response, 200, toPlaylistJson(await editItem(pathname, PLAYLISTS_PREFIX, (id) => editor.updatePlaylist(id, body))));
 	} else if (pathname.startsWith('/api/')) {
 		throw new HttpError(404, 'Not found');
 	} else if (isMediaPath(pathname)) {
@@ -99,21 +106,24 @@ function toFileJson({ id, title, format, size, gain }) {
 }
 
 /**
- * @param {LibraryEditor} editor
+ * Runs an edit of the item named by the rest of the path, turning domain errors into HTTP errors.
+ * @template T
  * @param {string} pathname
- * @param {unknown} body
+ * @param {string} prefix
+ * @param {(id: string) => Promise<T>} edit
+ * @returns {Promise<T>}
  */
-async function updateSound(editor, pathname, body) {
-	let soundId;
+async function editItem(pathname, prefix, edit) {
+	let id;
 	try {
-		soundId = decodeURIComponent(pathname.slice(SOUNDS_PREFIX.length));
+		id = decodeURIComponent(pathname.slice(prefix.length));
 	} catch {
 		throw new HttpError(404, 'Not found');
 	}
 	try {
-		return await editor.updateSound(soundId, /** @type {import('../library/library-editor.js').SoundChanges} */ (body));
+		return await edit(id);
 	} catch (error) {
-		if (error instanceof UnknownSoundError) {
+		if (error instanceof UnknownSoundError || error instanceof UnknownPlaylistError) {
 			throw new HttpError(404, error.message);
 		}
 		if (error instanceof ValidationError) {

@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { ValidationError } from './errors.js';
 import { updateJsonFile } from './options-store.js';
 import { sortBy } from './sort.js';
@@ -5,10 +6,12 @@ import { isPlainObject, validateAudioOptions } from './validate.js';
 
 /** @typedef {import('./library.js').Library} Library */
 /** @typedef {import('./library.js').AudioFile} AudioFile */
+/** @typedef {import('./library.js').Playlist} Playlist */
 /** @typedef {import('./settings-store.js').FileUpdater} FileUpdater */
-/** @typedef {{ title?: string, gain?: number }} SoundChanges */
+/** @typedef {{ title?: string, gain?: number }} OptionChanges */
 
-const SOUND_OPTION_KEYS = ['title', 'gain'];
+/** The only options the app itself changes; anything else in a request is rejected. */
+const EDITABLE_KEYS = ['title', 'gain'];
 
 /** The id does not belong to a sound in the library. */
 export class UnknownSoundError extends Error {
@@ -16,6 +19,15 @@ export class UnknownSoundError extends Error {
 	constructor(soundId) {
 		super(`Unknown sound "${soundId}"`);
 		this.name = 'UnknownSoundError';
+	}
+}
+
+/** The id does not belong to a playlist in the library. */
+export class UnknownPlaylistError extends Error {
+	/** @param {string} playlistId */
+	constructor(playlistId) {
+		super(`Unknown playlist "${playlistId}"`);
+		this.name = 'UnknownPlaylistError';
 	}
 }
 
@@ -41,7 +53,7 @@ export class LibraryEditor {
 	/**
 	 * Validates and saves the change, then applies it to the library. The library is left unchanged if saving fails.
 	 * @param {string} soundId
-	 * @param {SoundChanges} changes
+	 * @param {OptionChanges} changes
 	 * @returns {Promise<AudioFile>}
 	 */
 	async updateSound(soundId, changes) {
@@ -49,7 +61,7 @@ export class LibraryEditor {
 		if (!sound) {
 			throw new UnknownSoundError(soundId);
 		}
-		const normalized = normalizeSoundChanges(changes);
+		const normalized = normalizeChanges(changes);
 		// Sound options files sit next to their audio file with ".json" appended (DESIGN.md §2.1).
 		await this.#queueWrite(`${sound.absolutePath}.json`, (current) => ({ ...current, ...normalized }));
 		Object.assign(sound, normalized);
@@ -57,6 +69,27 @@ export class LibraryEditor {
 			this.#library.sounds = sortBy(this.#library.sounds, (entry) => entry.title);
 		}
 		return sound;
+	}
+
+	/**
+	 * Like `updateSound`, for a playlist; its other options, such as `includedSubdirectories`, are left as they are.
+	 * @param {string} playlistId
+	 * @param {OptionChanges} changes
+	 * @returns {Promise<Playlist>}
+	 */
+	async updatePlaylist(playlistId, changes) {
+		const playlist = this.#library.playlists.find((entry) => entry.id === playlistId);
+		if (!playlist) {
+			throw new UnknownPlaylistError(playlistId);
+		}
+		const normalized = normalizeChanges(changes);
+		// A playlist's options file is "<directory>.json" in the root (DESIGN.md §2.1).
+		await this.#queueWrite(join(this.#library.root, `${playlist.id}.json`), (current) => ({ ...current, ...normalized }));
+		Object.assign(playlist, normalized);
+		if (normalized.title !== undefined) {
+			this.#library.playlists = sortBy(this.#library.playlists, (entry) => entry.title);
+		}
+		return playlist;
 	}
 
 	/**
@@ -79,19 +112,21 @@ export class LibraryEditor {
 }
 
 /**
+ * Checks a title and gain change with the options file rules (both kinds of options file share them for these keys),
+ * then trims the title and rounds the gain.
  * @param {unknown} changes
- * @returns {SoundChanges}
+ * @returns {OptionChanges}
  */
-function normalizeSoundChanges(changes) {
+function normalizeChanges(changes) {
 	if (!isPlainObject(changes)) {
 		throw new ValidationError(null, ['must be a JSON object']);
 	}
-	const unknown = Object.keys(changes).filter((key) => !SOUND_OPTION_KEYS.includes(key));
+	const unknown = Object.keys(changes).filter((key) => !EDITABLE_KEYS.includes(key));
 	const problems = [...unknown.map((key) => `Unknown option "${key}"`), ...validateAudioOptions(changes)];
 	if (problems.length > 0) {
 		throw new ValidationError(null, problems);
 	}
-	/** @type {SoundChanges} */
+	/** @type {OptionChanges} */
 	const normalized = {};
 	if (typeof changes.title === 'string') {
 		normalized.title = changes.title.trim();
