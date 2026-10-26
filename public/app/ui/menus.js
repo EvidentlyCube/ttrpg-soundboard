@@ -36,6 +36,6 @@ export function playlistMenuItems(state) {
 		{ id: 'nextInstant', label: 'Next (Instant)', enabled: active, group: 1 },
 		{ id: 'stop', label: 'Stop', enabled: active, group: 2 },
 		{ id: 'stopInstant', label: 'Stop (Instant)', enabled: active, group: 2 },
-		{ id: 'customize', label: 'Customize', enabled: false, group: 3 },
+		{ id: 'customize', label: 'Customize', enabled: true, group: 3 },
 	];
 }

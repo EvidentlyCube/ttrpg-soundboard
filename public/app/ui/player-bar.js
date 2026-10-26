@@ -90,10 +90,15 @@ export class PlayerBar extends Component {
 			},
 		}, h('div', { class: 'relative h-1.5 w-full rounded-full bg-line' }, fill));
 
+		const playlistTitle = h('span', { class: 'truncate text-xs font-semibold uppercase tracking-wide text-music' }, title);
+		this.own(soundboard.on('playlist.changed', ({ playlist }) => {
+			if (playlist.id === id) {
+				playlistTitle.textContent = playlist.title;
+			}
+		}));
+
 		const root = h('div', { 'class': 'flex h-28 flex-col justify-between rounded-lg border border-line bg-raised p-3', 'data-player-bar': id },
-			h('div', { class: 'flex items-baseline justify-between gap-2' },
-				h('span', { class: 'truncate text-xs font-semibold uppercase tracking-wide text-music' }, title),
-				time),
+			h('div', { class: 'flex items-baseline justify-between gap-2' }, playlistTitle, time),
 			trackButton,
 			h('div', { class: 'flex items-center gap-1' },
 				this.#control('Previous', [icon('previous')], () => soundboard.previousTrack(id)),

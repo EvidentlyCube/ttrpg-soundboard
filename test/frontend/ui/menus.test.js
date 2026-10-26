@@ -23,13 +23,13 @@ describe('playlistMenuItems', () => {
 		]);
 	});
 
-	it('only offers playing while idle', () => {
-		assert.deepEqual(enabledLabels(playlistMenuItems('idle')), ['Play', 'Play (Instant)']);
+	it('only offers playing while idle, and Customize always', () => {
+		assert.deepEqual(enabledLabels(playlistMenuItems('idle')), ['Play', 'Play (Instant)', 'Customize']);
 	});
 
 	it('offers next and stop while active, in every active state', () => {
 		for (const state of /** @type {const} */ (['loading', 'playing', 'paused'])) {
-			assert.deepEqual(enabledLabels(playlistMenuItems(state)), ['Next', 'Next (Instant)', 'Stop', 'Stop (Instant)'], state);
+			assert.deepEqual(enabledLabels(playlistMenuItems(state)), ['Next', 'Next (Instant)', 'Stop', 'Stop (Instant)', 'Customize'], state);
 		}
 	});
 

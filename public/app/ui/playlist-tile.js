@@ -18,6 +18,7 @@ export class PlaylistTile extends Component {
 	#overlay;
 	#playlist;
 	#playable;
+	#onCustomize;
 
 	/**
 	 * @param {object} options
@@ -25,13 +26,15 @@ export class PlaylistTile extends Component {
 	 * @param {Overlay} options.overlay
 	 * @param {PlaylistJson} options.playlist
 	 * @param {boolean} options.playable false when this browser can play none of its tracks
+	 * @param {(playlistId: string) => void} options.onCustomize
 	 */
-	constructor({ soundboard, overlay, playlist, playable }) {
+	constructor({ soundboard, overlay, playlist, playable, onCustomize }) {
 		super();
 		this.#soundboard = soundboard;
 		this.#overlay = overlay;
 		this.#playlist = playlist;
 		this.#playable = playable;
+		this.#onCustomize = onCustomize;
 	}
 
 	/** @override */
@@ -39,10 +42,12 @@ export class PlaylistTile extends Component {
 		const { id, title, tracks } = this.#playlist;
 		const idleStatus = `${tracks.length} ${tracks.length === 1 ? 'track' : 'tracks'}`;
 		const status = h('span', { class: 'text-xs text-muted' }, idleStatus);
+		const tooltip = (/** @type {string} */ text) => (this.#playable ? text : `${text}: this browser cannot play any of its tracks`);
+		const label = h('span', { class: 'line-clamp-3 font-medium' }, title);
 		const button = h('button', {
 			'type': 'button',
 			'class': `${TILE_CLASS} border-l-music data-[active=true]:border-music data-[active=true]:bg-music/20`,
-			'title': this.#playable ? title : `${title}: this browser cannot play any of its tracks`,
+			'title': tooltip(title),
 			'disabled': !this.#playable,
 			'data-playlist-id': id,
 			'data-active': 'false',
@@ -56,8 +61,14 @@ export class PlaylistTile extends Component {
 					(item) => this.#runMenuItem(item),
 				);
 			},
-		}, h('span', { class: 'line-clamp-3 font-medium' }, title), status);
+		}, label, status);
 
+		this.own(this.#soundboard.on('playlist.changed', ({ playlist }) => {
+			if (playlist.id === id) {
+				label.textContent = playlist.title;
+				button.title = tooltip(playlist.title);
+			}
+		}));
 		this.own(this.#soundboard.on('playlist.stateChanged', (event) => {
 			if (event.playlistId === id) {
 				button.dataset.active = String(event.state !== 'idle');
@@ -84,6 +95,7 @@ export class PlaylistTile extends Component {
 			nextInstant: () => soundboard.nextTrack(id, { transition: 'instant' }),
 			stop: () => soundboard.stopPlaylist(id),
 			stopInstant: () => soundboard.stopPlaylist(id, { transition: 'instant' }),
+			customize: () => this.#onCustomize(id),
 		};
 		actions[item]?.();
 	}

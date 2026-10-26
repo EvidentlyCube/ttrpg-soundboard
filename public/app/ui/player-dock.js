@@ -61,6 +61,8 @@ export class PlayerDock extends Component {
 			}
 			placeholder.hidden = this.#bars.size > 0;
 		}));
+		// Bars opened later must show the newest title.
+		this.own(this.#soundboard.on('playlist.changed', ({ playlist }) => this.#playlists.set(playlist.id, playlist)));
 		this.own(() => {
 			for (const bar of this.#bars.values()) {
 				bar.destroy();

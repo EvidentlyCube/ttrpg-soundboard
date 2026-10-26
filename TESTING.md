@@ -84,6 +84,13 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] Changes survive a reload; the `.json` file next to the sound holds `title` and `gain`.
 - [ ] Close the lid while the dialog is open: the resume splash covers it, and the dialog is still there afterwards.
 
+**Customize a playlist**
+- [ ] Right-click a playlist → Customize: the dialog shows the title, "Folder: …", the volume and Play.
+- [ ] Play starts the playlist like a tile click; the button turns into Stop and back when it stops from the footer.
+- [ ] Changing the volume while it plays changes the loudness at once, without clicks, and the next track keeps the new volume.
+- [ ] Renaming updates the tile and the player bar while typing; the tile moves into sorted order only when the dialog closes, and the footer order never changes.
+- [ ] The playlist's `.json` file keeps its `includedSubdirectories` after saving.
+
 **Playlists**
 - [ ] Several playlists at once; next, previous, jump, seek, pause and stop on each.
 - [ ] Tracks advance on their own, including while the window is in the background.

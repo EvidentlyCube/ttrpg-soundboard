@@ -3,6 +3,7 @@ import { Dialog } from './dialog.js';
 import { h, on } from './dom.js';
 import { Overlay } from './overlay.js';
 import { PlayerDock } from './player-dock.js';
+import { PlaylistEditor } from './playlist-editor.js';
 import { PlaylistTile } from './playlist-tile.js';
 import { SoundEditor } from './sound-editor.js';
 import { SoundTile } from './sound-tile.js';
@@ -91,6 +92,10 @@ class Board extends Component {
 	#soundTiles = new Map();
 	/** @type {HTMLElement | null} */
 	#soundGrid = null;
+	/** @type {Map<string, PlaylistTile>} */
+	#playlistTiles = new Map();
+	/** @type {HTMLElement | null} */
+	#playlistGrid = null;
 
 	/**
 	 * @param {object} options
@@ -121,9 +126,13 @@ class Board extends Component {
 		const { playlists, sounds } = this.#library;
 		if (playlists.length > 0) {
 			const { section, grid } = tileGrid('Playlists');
+			const onCustomize = (/** @type {string} */ playlistId) => this.#customizePlaylist(playlistId);
 			for (const playlist of playlists) {
-				this.#adopt(new PlaylistTile({ soundboard, overlay, playlist, playable: playlist.tracks.some(isPlayable) }).mount(grid));
+				const tile = new PlaylistTile({ soundboard, overlay, playlist, playable: playlist.tracks.some(isPlayable), onCustomize }).mount(grid);
+				this.#playlistTiles.set(playlist.id, tile);
+				this.#adopt(tile);
 			}
+			this.#playlistGrid = grid;
 			main.append(section);
 		}
 		if (sounds.length > 0) {
@@ -156,31 +165,58 @@ class Board extends Component {
 	#customizeSound(soundId) {
 		const soundboard = this.#soundboard;
 		const sound = soundboard.getLibrary()?.sounds.find((entry) => entry.id === soundId);
-		if (!sound) {
-			return;
+		if (sound) {
+			this.#openEditor('Customize sound', new SoundEditor({ soundboard, sound }), () => {
+				soundboard.flushSoundOptions(soundId);
+				sortTiles(soundboard.getLibrary()?.sounds ?? [], this.#soundTiles, this.#soundGrid);
+			});
 		}
+	}
+
+	/** @param {string} playlistId */
+	#customizePlaylist(playlistId) {
+		const soundboard = this.#soundboard;
+		const playlist = soundboard.getLibrary()?.playlists.find((entry) => entry.id === playlistId);
+		if (playlist) {
+			this.#openEditor('Customize playlist', new PlaylistEditor({ soundboard, playlist }), () => {
+				soundboard.flushPlaylistOptions(playlistId);
+				sortTiles(soundboard.getLibrary()?.playlists ?? [], this.#playlistTiles, this.#playlistGrid);
+			});
+		}
+	}
+
+	/**
+	 * @param {string} title
+	 * @param {SoundEditor | PlaylistEditor} editor
+	 * @param {() => void} onClose
+	 */
+	#openEditor(title, editor, onClose) {
 		this.#overlay.close();
 		const body = h('div');
-		const editor = new SoundEditor({ soundboard, sound }).mount(body);
+		editor.mount(body);
 		this.#dialog.open({
-			title: 'Customize sound',
+			title,
 			body,
 			onClose: () => {
 				editor.destroy();
-				soundboard.flushSoundOptions(soundId);
-				this.#sortSounds();
+				onClose();
 			},
 		});
 		editor.focus();
 	}
+}
 
-	/** Moves the sound tiles into the library's order. Done only when editing ends, so a tile never moves while it is renamed. */
-	#sortSounds() {
-		for (const sound of this.#soundboard.getLibrary()?.sounds ?? []) {
-			const tile = this.#soundTiles.get(sound.id);
-			if (tile && this.#soundGrid) {
-				this.#soundGrid.append(tile.element);
-			}
+/**
+ * Moves tiles into the library's order. Done only when editing ends, so a tile never moves while it is renamed.
+ * @param {{ id: string }[]} items in the library's order
+ * @param {Map<string, Component>} tiles
+ * @param {HTMLElement | null} grid
+ */
+function sortTiles(items, tiles, grid) {
+	for (const item of items) {
+		const tile = tiles.get(item.id);
+		if (tile && grid) {
+			grid.append(tile.element);
 		}
 	}
 }
