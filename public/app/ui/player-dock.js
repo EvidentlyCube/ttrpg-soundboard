@@ -9,7 +9,7 @@ import { PlayerBar } from './player-bar.js';
 
 /**
  * The footer: one player bar per active playlist, in the order they started, three per row; after two rows it
- * scrolls (DESIGN.md §9.1). Sound effects never appear here. Hidden while no playlist is active.
+ * scrolls (DESIGN.md §9.1). Sound effects never appear here. Always visible, so the layout never shifts.
  */
 export class PlayerDock extends Component {
 	#soundboard;
@@ -36,9 +36,14 @@ export class PlayerDock extends Component {
 
 	/** @override */
 	render() {
+		// The placeholder is as tall as a bar (h-28), so the footer keeps the height of one row while nothing plays.
+		const placeholder = h('div', {
+			'class': 'col-span-3 flex h-28 items-center justify-center rounded-lg border border-dashed border-line text-sm text-muted',
+			'data-dock-placeholder': true,
+		}, 'No playlist playing');
 		// Bars are h-28 (7rem): two rows plus the gap and padding is 16.25rem.
-		const grid = h('div', { class: 'grid max-h-[16.25rem] grid-cols-3 gap-3 overflow-y-auto p-3' });
-		const footer = h('footer', { 'class': 'shrink-0 border-t border-line bg-panel', 'hidden': true, 'data-player-dock': true }, grid);
+		const grid = h('div', { class: 'grid max-h-[16.25rem] grid-cols-3 gap-3 overflow-y-auto p-3' }, placeholder);
+		const footer = h('footer', { 'class': 'shrink-0 border-t border-line bg-panel', 'data-player-dock': true }, grid);
 
 		this.own(this.#soundboard.on('playlist.stateChanged', ({ playlistId, state }) => {
 			const bar = this.#bars.get(playlistId);
@@ -54,7 +59,7 @@ export class PlayerDock extends Component {
 					isPlayable: this.#isPlayable,
 				}).mount(grid));
 			}
-			footer.hidden = this.#bars.size === 0;
+			placeholder.hidden = this.#bars.size > 0;
 		}));
 		this.own(() => {
 			for (const bar of this.#bars.values()) {

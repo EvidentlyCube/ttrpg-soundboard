@@ -36,5 +36,9 @@ export function openTrackList(overlay, { tracks, currentIndex, isPlayable, point
 	});
 	const panel = h('div', { role: 'menu', class: 'max-h-80 w-80 overflow-y-auto rounded-lg border border-line bg-panel py-1 shadow-xl shadow-black/50' }, rows);
 	overlay.open(panel, point);
-	panel.querySelector('[data-current="true"]')?.scrollIntoView({ block: 'nearest' });
+	// Set directly: scrollIntoView could also scroll the page behind the overlay.
+	const current = /** @type {HTMLElement | null} */ (panel.querySelector('[data-current="true"]'));
+	if (current) {
+		panel.scrollTop = current.offsetTop - (panel.clientHeight - current.offsetHeight) / 2;
+	}
 }

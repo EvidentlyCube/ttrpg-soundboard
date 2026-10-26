@@ -25,9 +25,15 @@ export class Overlay {
 		Object.assign(panel.style, { left: '0px', top: '0px', visibility: 'hidden' });
 		document.body.append(backdrop, panel);
 
-		const { width, height } = panel.getBoundingClientRect();
-		const { x, y } = placeInViewport(point, { width, height }, { width: window.innerWidth, height: window.innerHeight });
-		Object.assign(panel.style, { left: `${x}px`, top: `${y}px`, visibility: '' });
+		// The panel's final size is only known once Tailwind has generated CSS for any classes it uses for the first
+		// time, which happens after this call. Placing it again on every size change keeps it on screen regardless.
+		const place = () => {
+			const { width, height } = panel.getBoundingClientRect();
+			const { x, y } = placeInViewport(point, { width, height }, { width: window.innerWidth, height: window.innerHeight });
+			Object.assign(panel.style, { left: `${x}px`, top: `${y}px`, visibility: '' });
+		};
+		const resizes = new ResizeObserver(place);
+		resizes.observe(panel);
 
 		/** @param {Event} event */
 		const swallow = (event) => {
@@ -53,6 +59,7 @@ export class Overlay {
 			}),
 		];
 		this.#closeOpen = () => {
+			resizes.disconnect();
 			for (const remove of listeners) {
 				remove();
 			}
