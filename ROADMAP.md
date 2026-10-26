@@ -29,7 +29,38 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## Proposals
 
-None yet.
+### 4. Playlist fade in and fade out
+
+**Goal.** A playlist can fade in when it starts and fade out when it stops, each with its own duration set in the Customize dialog. The plain "Play" and "Stop" (tile clicks, the footer's stop button, the menu items) use them; "Play (Instant)" and "Stop (Instant)" keep cutting at once.
+
+**Already decided** (backlog): stopping during a crossfade lets the fading-out track carry on and fades the incoming one out from its current level over the full fade-out. There is no `stopping` state: a stop marks the playlist idle at once and the fades finish in the background. Playing again during those fades starts a new playback and leaves them alone. Pausing no longer cuts a crossfade.
+
+**Design changes.**
+
+- **§2.3, §5.1, §5.2.** Playlist options gain `fadeIn` and `fadeOut`: seconds, `0` to `30`, default `0`, rounded to 2 decimals, validated like `crossfade`. They are part of `Playlist`, `/api/library` and `PATCH /api/playlists/<id>`.
+- **§6.1, §6.2.** `customizePlaylist(playlistId, { …, fadeIn?, fadeOut? })`; `playlist.changed` carries them. `resolvePlaybackRules` reads them (§8.2).
+- **§8 PlaylistPlayer:**
+  - **Fade-in** on a `'default'` play, and on a jump from idle: the first voice ramps from silence over `fadeIn`.
+  - **Fade-out** on a `'default'` stop: the current voice, if audible, moves to the retiring set and ramps to silence from its *current* level over `fadeOut`, cut to the time the track has left. Thanks to the fade-ramp fix, an interrupted fade-in continues down from where it had got to. A paused or still-loading voice is stopped at once, as today.
+  - **Retiring voices** keep fading after a stop and after a new play. Only `'instant'` cuts them, as today. The rule that a stop without a fade-out cuts them (`killRetiring` when `fadeOut` is 0) stays, so with fade-out off, Stop still means silence.
+  - **Pause** no longer stops voices that are fading out.
+  - **Invariant (§8 rule 4):** while idle, no voice is *audible*; voices may still be fading out until their deadline (fade + 1 s). After that, nothing is left.
+- **§9.7.** The playlist dialog gets **Fade in** and **Fade out** sections. They reuse the Crossfade control, generalized into a seconds control: a slider from 0 to 10 s and a typed value up to 30 s, with no limit from track lengths.
+
+**Open questions.**
+
+1. **Resuming after a pause.** *Recommended: no fade-in*; Pause and Resume stay immediate, like a media player's.
+2. **Pausing itself.** *Recommended: immediate, no fade-out.* A fading pause would need a "pausing" state, which the no-`stopping`-state decision avoids.
+3. **Pause during a crossfade, with fade-out off.** The decision says pausing no longer cuts the fading-out track. *Recommended: never cut it, whatever the settings*, so the rule stays simple. The fading track finishes within its crossfade while the new one waits paused.
+4. **Short tracks.** *Recommended: no extra limit on the fade-in*; a crossfade or the track's end simply takes over from wherever the fade-in had got to. The fade-out is cut to the time the track has left, as above.
+5. **Jumping to a track from idle** (the track list while stopped, later the dialog's per-track buttons). *Recommended: fades in*, like Play.
+
+**Plan.**
+
+1. **Settings.** `fadeIn` and `fadeOut` in validation, `Playlist`, `/api/library`, the playlist `PATCH`, `LibraryModel`, the facade, `OptionsSync` and `resolvePlaybackRules`. *Tests:* as for `crossfade`.
+2. **Player.** Fade-in on play, fade-out on stop from the current level and cut to the time left, retiring voices surviving stop, play and pause, the invariant updated. *Tests:* each case on the fake engine, stop during a crossfade (both voices), play again during a fade-out, `'instant'` still cutting everything, and the randomized invariant.
+3. **UI.** The shared seconds control and the two sections. *Tests:* the control's helpers, the manual checklist and a headless Chromium run, including measuring the real gain levels of a fade-in and a fade-out.
+4. **Design update.** `DESIGN.md` in its own commit; then this proposal and its backlog entry are removed.
 
 ---
 
