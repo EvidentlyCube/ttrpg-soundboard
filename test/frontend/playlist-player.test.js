@@ -442,6 +442,139 @@ describe('PlaylistPlayer', () => {
 		});
 	});
 
+	describe('crossfade', () => {
+		/**
+		 * Plays the first track until it has loaded, at clock time 0.1 s.
+		 * @param {Parameters<typeof setup>[0]} [options]
+		 */
+		function playing(options) {
+			const context = setup({ rules: { crossfade: 2 }, ...options });
+			context.player.play();
+			context.advance(0.1);
+			return context;
+		}
+
+		it('starts the next track before the current one ends, fading across over the crossfade', () => {
+			const { engine, advance, player } = playing();
+			advance(7.99);
+			assert.equal(engine.voices.length, 1);
+			advance(0.01);
+			const [old, fresh] = engine.voices;
+			assert.equal(fresh?.url, '/t1');
+			assert.deepEqual(old.gainRamps, [[0, 2]]);
+			assert.deepEqual(fresh.gainRamps, [[0, 0], [1, 2]]);
+			assert.equal(player.snapshot().trackIndex, 1);
+			assert.equal(old.stopped, false, 'the old track plays out under the new one');
+			advance(3.1);
+			assert.equal(old.stopped, true);
+		});
+
+		it('plans again after a seek, and crossfades at once from within the last seconds', () => {
+			const { engine, advance, player } = playing();
+			player.seek(5);
+			advance(2.99);
+			assert.equal(engine.voices.length, 1);
+			advance(0.01);
+			assert.equal(engine.voices.length, 2);
+
+			advance(0.1);
+			player.seek(9);
+			assert.equal(engine.voices.length, 3);
+			assert.deepEqual(engine.voices[1].gainRamps.at(-1), [0, 1], 'the fade-out fits in the 1 s left');
+			assert.deepEqual(engine.voices[2].gainRamps.at(-1), [1, 2]);
+		});
+
+		it('waits while paused and plans again on resume', () => {
+			const { engine, advance, player } = playing();
+			advance(3);
+			player.pause();
+			advance(20);
+			assert.equal(engine.voices.length, 1);
+			player.resume();
+			advance(4.99);
+			assert.equal(engine.voices.length, 1);
+			advance(0.01);
+			assert.equal(engine.voices.length, 2);
+		});
+
+		it('plans again when the crossfade setting changes while playing', () => {
+			const { engine, advance, player } = playing({ rules: { crossfade: 0 } });
+			advance(3);
+			player.setRules({ ...DEFAULT_PLAYBACK_RULES, crossfade: 4 });
+			advance(2.99);
+			assert.equal(engine.voices.length, 1);
+			advance(0.01);
+			assert.equal(engine.voices.length, 2);
+		});
+
+		it('uses at most half of a short track', () => {
+			const context = setup({ rules: { crossfade: 2 } });
+			context.engine.script('/t0', { duration: 3 });
+			context.player.play();
+			context.advance(0.1);
+			context.advance(1.5);
+			const [old, fresh] = context.engine.voices;
+			assert.deepEqual(old.gainRamps, [[0, 1.5]]);
+			assert.deepEqual(fresh.gainRamps, [[0, 0], [1, 1.5]]);
+		});
+
+		it('ignores the end of a track that was replaced', () => {
+			const { engine, advance, player } = playing();
+			advance(5);
+			player.next('instant');
+			advance(3.5);
+			assert.equal(engine.voices.length, 2, 'no crossfade from the old track\'s end');
+			advance(5);
+			assert.equal(engine.voices.length, 3, 'the new track crossfades at its own end');
+		});
+
+		it('ignores a planned crossfade once the track was replaced, even while the new one is still loading', () => {
+			const { engine, advance, player } = playing();
+			engine.script('/t2', { loadDelay: 1 });
+			advance(7.8);
+			player.jumpTo(2, 'instant');
+			advance(0.5);
+			assert.deepEqual(engine.voices.map((voice) => voice.url), ['/t0', '/t2']);
+		});
+
+		it('crossfades a single looping track into a new start of itself', () => {
+			const { engine, advance } = playing({ tracks: 1 });
+			advance(8);
+			assert.deepEqual(engine.voices.map((voice) => voice.url), ['/t0', '/t0']);
+		});
+
+		it('crossfades manual changes too, but stops a paused track at once', () => {
+			const { engine, advance, player } = playing();
+			advance(1);
+			player.next();
+			assert.deepEqual(engine.voices[0].gainRamps, [[0, 2]]);
+			advance(0.1);
+			player.pause();
+			player.next();
+			assert.equal(engine.voices[1].stopped, true);
+		});
+
+		it('cuts both tracks when stopped during a crossfade, as long as there is no fade-out', () => {
+			const { engine, advance, player } = playing();
+			advance(8);
+			assert.equal(engine.liveVoices.length, 2);
+			player.stop();
+			assert.equal(engine.liveVoices.length, 0);
+		});
+
+		it('stops the fading-out track when paused during a crossfade', () => {
+			const { engine, advance, player } = playing();
+			advance(8);
+			player.pause();
+			const [old, fresh] = engine.voices;
+			assert.equal(old.stopped, true);
+			assert.equal(fresh.stopped, false);
+			assert.equal(fresh.playing, false);
+			player.resume();
+			assert.equal(engine.liveVoices.length, 1);
+		});
+	});
+
 	describe('fades (future rules)', () => {
 		it('uses new rules from the next change of track', () => {
 			const { player, engine, advance } = setup();
@@ -476,6 +609,10 @@ describe('PlaylistPlayer', () => {
 
 		it('keeps at most 4 voices fading out', () => {
 			const { player, engine, advance } = setup({ tracks: 3, rules: { crossfade: 5 } });
+			// Long enough that no track reaches its own crossfade during the test.
+			for (const url of ['/t0', '/t1', '/t2']) {
+				engine.script(url, { duration: 60 });
+			}
 			player.play();
 			for (let i = 0; i < 8; i++) {
 				advance(0.2);
@@ -504,15 +641,18 @@ describe('PlaylistPlayer', () => {
 			assert.equal(cut.engine.liveVoices.length, 0);
 		});
 
-		it('stops a finished or failed track at once instead of fading it', () => {
+		it('stops a track that fails during a crossfade at once instead of fading it', () => {
 			const { player, engine, advance } = setup({ rules: { crossfade: 2 } });
 			engine.script('/t1', { loadError: 'broken' });
 			player.play();
-			advance(0.1 + 10);
-			assert.equal(engine.voices[0].stopped, true);
+			advance(0.1 + 8);
+			assert.equal(engine.voices[1].url, '/t1');
 			advance(0.1);
 			assert.equal(engine.voices[1].stopped, true);
-			assert.equal(engine.liveVoicesOn('music').length, 1);
+			assert.equal(engine.voices[2].url, '/t2');
+			assert.equal(engine.voices[0].stopped, false, 'the first track still fades out');
+			advance(3);
+			assert.deepEqual(engine.liveVoicesOn('music').map((voice) => voice.url), ['/t2']);
 		});
 
 		it('does not fade voices that are not audible', () => {
@@ -526,7 +666,7 @@ describe('PlaylistPlayer', () => {
 	});
 
 	describe('invariant under random commands', () => {
-		it('never leaves more than the current voice playing once fades are over', () => {
+		it('keeps one audible voice at most, and leaves nothing behind once stopped', () => {
 			let seed = 12345;
 			const random = () => {
 				seed = (seed * 1103515245 + 12345) % 2 ** 31;
@@ -559,13 +699,21 @@ describe('PlaylistPlayer', () => {
 					pick(commands)();
 				}
 				advance(10);
-				const live = engine.liveVoicesOn('music').length;
+				const live = engine.liveVoicesOn('music');
+				// A voice whose last fade went to silence is on its way out; with crossfades one can overlap the current one.
+				const audible = live.filter((voice) => voice.gainRamps.at(-1)?.[0] !== 0);
 				if (player.state === 'idle') {
-					assert.equal(live, 0, `run ${run}: idle with ${live} live voices`);
+					assert.equal(live.length, 0, `run ${run}: idle with ${live.length} live voices`);
 					assert.equal(clock.pendingTimerCount, 0, `run ${run}: idle with timers left`);
 				} else {
-					assert.ok(live <= 1, `run ${run}: ${player.state} with ${live} live voices`);
+					assert.ok(audible.length <= 1, `run ${run}: ${player.state} with ${audible.length} audible voices`);
+					assert.ok(live.length <= 5, `run ${run}: ${live.length} live voices`);
 				}
+
+				player.stop('default');
+				advance(5);
+				assert.equal(engine.liveVoicesOn('music').length, 0, `run ${run}: voices left after stopping`);
+				assert.equal(clock.pendingTimerCount, 0, `run ${run}: timers left after stopping`);
 			}
 		});
 	});

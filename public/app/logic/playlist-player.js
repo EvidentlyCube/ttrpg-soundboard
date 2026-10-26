@@ -72,6 +72,8 @@ export class PlaylistPlayer {
 	#consecutiveErrors = 0;
 	/** @type {number | null} */
 	#progressTimer = null;
+	/** Fires when the current track should start crossfading into the next one. @type {number | null} */
+	#crossfadeTimer = null;
 
 	/**
 	 * @param {object} options
@@ -135,6 +137,7 @@ export class PlaylistPlayer {
 		this.#generation++;
 		this.#retireCurrent(resolveTransition('stop', transition, this.#rules));
 		this.#stopProgress();
+		this.#cancelCrossfade();
 		this.#setState('idle');
 	}
 
@@ -149,7 +152,7 @@ export class PlaylistPlayer {
 			this.stop(transition);
 			return;
 		}
-		this.#startTrack(index, resolveTransition('change', transition, this.#rules));
+		this.#startTrack(index, this.#changeTiming(transition, index));
 	}
 
 	/**
@@ -167,7 +170,7 @@ export class PlaylistPlayer {
 			this.resume();
 			return;
 		}
-		this.#startTrack(index, resolveTransition('change', transition, this.#rules));
+		this.#startTrack(index, this.#changeTiming(transition, index));
 	}
 
 	/**
@@ -178,9 +181,10 @@ export class PlaylistPlayer {
 		if (!Number.isInteger(trackIndex) || trackIndex < 0 || trackIndex >= this.#playlist.tracks.length) {
 			throw new InvalidCommandError(`Playlist "${this.#playlist.id}" has no track ${trackIndex}`);
 		}
-		const action = this.#state === 'idle' ? 'play' : 'change';
 		this.#consecutiveErrors = 0;
-		this.#startTrack(trackIndex, resolveTransition(action, transition, this.#rules));
+		this.#startTrack(trackIndex, this.#state === 'idle'
+			? resolveTransition('play', transition, this.#rules)
+			: this.#changeTiming(transition, trackIndex));
 	}
 
 	/** @param {number} seconds */
@@ -198,14 +202,18 @@ export class PlaylistPlayer {
 			current.pendingSeek = Math.max(0, seconds);
 		}
 		this.#emitProgress();
+		this.#planCrossfade();
 	}
 
+	/** Pausing means silence, so a track still fading out from a crossfade is stopped too. */
 	pause() {
 		if (!this.#current || (this.#state !== 'playing' && this.#state !== 'loading')) {
 			return;
 		}
 		this.#current.voice.pause();
 		this.#stopProgress();
+		this.#cancelCrossfade();
+		this.#finishAllRetiring();
 		this.#setState('paused');
 	}
 
@@ -218,6 +226,7 @@ export class PlaylistPlayer {
 		if (current.loaded) {
 			this.#setState('playing');
 			this.#startProgress();
+			this.#planCrossfade();
 		} else {
 			this.#setState('loading');
 		}
@@ -239,11 +248,89 @@ export class PlaylistPlayer {
 	}
 
 	/**
-	 * Replaces the rules, for example after the crossfade was customized. They apply from the next change of track.
+	 * Replaces the rules, for example after the crossfade was customized. They apply from the next change of track,
+	 * including the end of the track playing now.
 	 * @param {Readonly<PlaybackRules>} rules
 	 */
 	setRules(rules) {
 		this.#rules = rules;
+		this.#planCrossfade();
+	}
+
+	/**
+	 * The timing for moving from the current track to another (DESIGN.md §8). A crossfade lasts at most half of either
+	 * track, and the fade-out never outlasts what is left of the current track.
+	 * @param {Transition} transition
+	 * @param {number} toIndex
+	 * @returns {TransitionTiming}
+	 */
+	#changeTiming(transition, toIndex) {
+		const timing = resolveTransition('change', transition, this.#rules);
+		const current = this.#current;
+		if (!current || timing.fadeInSeconds <= 0) {
+			return timing;
+		}
+		const overlap = this.#overlap(current, toIndex);
+		return { ...timing, fadeInSeconds: overlap, fadeOutSeconds: Math.min(overlap, this.#timeLeft(current)) };
+	}
+
+	/**
+	 * @param {CurrentVoice} current
+	 * @param {number} toIndex
+	 */
+	#overlap(current, toIndex) {
+		const { duration } = current.voice;
+		const fromDuration = Number.isFinite(duration) ? duration : this.#playlist.tracks[current.trackIndex].duration;
+		const toDuration = this.#playlist.tracks[toIndex].duration;
+		return Math.min(this.#rules.crossfade, (fromDuration ?? Infinity) / 2, (toDuration ?? Infinity) / 2);
+	}
+
+	/** @param {CurrentVoice} current */
+	#timeLeft(current) {
+		const { duration, position } = current.voice;
+		return Number.isFinite(duration) ? Math.max(0, duration - position) : Infinity;
+	}
+
+	/**
+	 * Sets the timer that starts the crossfade into the next track before the current one ends, replacing any earlier
+	 * one. From within the last seconds of the track it starts at once. If the timer never fires, `ended` still
+	 * advances, without the overlap.
+	 */
+	#planCrossfade() {
+		this.#cancelCrossfade();
+		const current = this.#current;
+		if (!current || !current.loaded || this.#state !== 'playing' || this.#rules.crossfade <= 0) {
+			return;
+		}
+		const next = this.#order.next(current.trackIndex);
+		const timeLeft = this.#timeLeft(current);
+		if (next === null || !Number.isFinite(timeLeft)) {
+			return;
+		}
+		const wait = timeLeft - this.#overlap(current, next);
+		if (wait <= 0) {
+			this.#crossfadeFrom(current);
+			return;
+		}
+		this.#crossfadeTimer = this.#clock.setTimeout(() => {
+			this.#crossfadeTimer = null;
+			this.#crossfadeFrom(current);
+		}, wait * 1000);
+	}
+
+	/** @param {CurrentVoice} current */
+	#crossfadeFrom(current) {
+		const next = this.#order.next(current.trackIndex);
+		if (this.#isCurrent(current) && this.#state === 'playing' && next !== null) {
+			this.#startTrack(next, this.#changeTiming('default', next));
+		}
+	}
+
+	#cancelCrossfade() {
+		if (this.#crossfadeTimer !== null) {
+			this.#clock.clearTimeout(this.#crossfadeTimer);
+			this.#crossfadeTimer = null;
+		}
 	}
 
 	/**
@@ -254,6 +341,7 @@ export class PlaylistPlayer {
 		const generation = ++this.#generation;
 		this.#retireCurrent(timing);
 		this.#stopProgress();
+		this.#cancelCrossfade();
 
 		const track = this.#playlist.tracks[index];
 		if (!this.#isPlayable(track)) {
@@ -292,6 +380,7 @@ export class PlaylistPlayer {
 		if (this.#state === 'loading') {
 			this.#setState('playing');
 			this.#startProgress();
+			this.#planCrossfade();
 		} else {
 			this.#emitState();
 		}
@@ -339,7 +428,7 @@ export class PlaylistPlayer {
 			this.stop('instant');
 			return;
 		}
-		this.#startTrack(next, { ...resolveTransition('change', 'default', this.#rules), fadeOutSeconds: 0 });
+		this.#startTrack(next, { ...this.#changeTiming('default', next), fadeOutSeconds: 0 });
 	}
 
 	/** @param {TransitionTiming} timing */
@@ -347,9 +436,7 @@ export class PlaylistPlayer {
 		const current = this.#current;
 		this.#current = null;
 		if (timing.killRetiring) {
-			for (const retiring of [...this.#retiring]) {
-				this.#finishRetiring(retiring);
-			}
+			this.#finishAllRetiring();
 		}
 		if (!current) {
 			return;
@@ -375,6 +462,12 @@ export class PlaylistPlayer {
 		this.#clock.clearTimeout(retiring.timer);
 		retiring.voice.stop();
 		this.#retiring = this.#retiring.filter((entry) => entry !== retiring);
+	}
+
+	#finishAllRetiring() {
+		for (const retiring of [...this.#retiring]) {
+			this.#finishRetiring(retiring);
+		}
 	}
 
 	/** @param {number} trackIndex */

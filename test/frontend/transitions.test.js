@@ -37,6 +37,10 @@ describe('resolveTransition', () => {
 	it('behaves like instant with the current default rules, apart from killing', () => {
 		assert.deepEqual(resolveTransition('change', 'default', DEFAULT_PLAYBACK_RULES), { fadeInSeconds: 0, fadeOutSeconds: 0, killRetiring: false });
 	});
+
+	it('cuts fading voices on a default stop without a fade-out, so Stop always means silence', () => {
+		assert.deepEqual(resolveTransition('stop', 'default', { ...DEFAULT_PLAYBACK_RULES, crossfade: 2 }), { fadeInSeconds: 0, fadeOutSeconds: 0, killRetiring: true });
+	});
 });
 
 describe('isTransition', () => {

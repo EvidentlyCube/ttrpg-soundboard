@@ -39,7 +39,8 @@ export function resolveTransition(action, transition, rules) {
 		case 'play':
 			return { fadeInSeconds: rules.fadeIn, fadeOutSeconds: 0, killRetiring: false };
 		case 'stop':
-			return { fadeInSeconds: 0, fadeOutSeconds: rules.fadeOut, killRetiring: false };
+			// Without a fade-out a stop means silence, so a track still fading out from a crossfade is cut as well.
+			return { fadeInSeconds: 0, fadeOutSeconds: rules.fadeOut, killRetiring: rules.fadeOut <= 0 };
 		case 'change':
 			return { fadeInSeconds: rules.crossfade, fadeOutSeconds: rules.crossfade, killRetiring: false };
 	}
