@@ -76,7 +76,8 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 **Customize a sound**
 - [ ] Right-click a sound → Customize: the dialog opens with the title field focused; the menu is gone.
 - [ ] While a sound plays (use the dialog's Play button on a long sound), moving the volume changes its loudness at once, without clicks; new presses play at the new volume.
-- [ ] The gain widget: bars light up in proportion, the boost block turns yellow above 0 dB with the warning, a press near the 100 % mark lands on exactly `0.0 dB`, dragging works, double-click resets.
+- [ ] The gain widget: bars light up in proportion, the boost block and the dB readout turn orange above 0 dB, dragging works, double-click resets to `0.0 dB`.
+- [ ] While a change is being saved a spinner shows in the corner, then a checkmark.
 - [ ] The dB readout: click it, type `-6` and Enter; `-inf` silences; nonsense stays in the field marked red; Esc cancels only the edit.
 - [ ] Keyboard on the widget: arrows step 1 dB, Home silences, End is +12 dB.
 - [ ] Renaming updates the tile while typing but only moves it into sorted order when the dialog closes. An emptied title field keeps the old title.
@@ -95,7 +96,7 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] The footer shows "No playlist playing" when idle and keeps the same height once music starts; it wraps at 3 bars and scrolls after 6.
 
 **Volume**
-- [ ] Each slider affects only its own category.
+- [ ] Each header volume widget affects only its own category; none goes above `0.0 dB`, and they have no boost block.
 - [ ] Volumes survive a page reload and a server restart.
 
 **Long session**

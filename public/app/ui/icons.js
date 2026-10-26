@@ -1,4 +1,4 @@
-/** Control icons only (DESIGN.md §9): tiles never get icons. Drawn on a 24×24 grid in the current text color. */
+/** Control and status icons only (DESIGN.md §9): tiles never get icons. Drawn on a 24×24 grid in the current text color. */
 const SHAPES = {
 	play: '<path fill="currentColor" d="M8 5.5v13l10.5-6.5z"/>',
 	pause: '<path fill="currentColor" d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/>',
@@ -8,6 +8,9 @@ const SHAPES = {
 	volume: '<path fill="currentColor" d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/>'
 		+ '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/>',
 	chevronDown: '<path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M7 10l5 5 5-5"/>',
+	spinner: '<circle fill="none" stroke="currentColor" stroke-width="2.5" opacity="0.25" cx="12" cy="12" r="8.5"/>'
+		+ '<path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5"/>',
+	check: '<path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="M5 12.5l4.5 4.5L19 7.5"/>',
 };
 
 /** @typedef {keyof typeof SHAPES} IconName */

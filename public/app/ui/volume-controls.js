@@ -1,14 +1,16 @@
 import { Component } from './component.js';
 import { h } from './dom.js';
+import { GainControl } from './gain-control.js';
+import { BUS_SCALE } from './gain-scale.js';
 import { icon } from './icons.js';
 
 /** @typedef {import('../logic/ports.js').Bus} Bus */
 /** @typedef {import('../logic/soundboard.js').Soundboard} Soundboard */
 
 /** @type {[Bus, string][]} */
-const SLIDERS = [['master', 'Master'], ['music', 'Music'], ['sfx', 'Sound Effects']];
+const CONTROLS = [['master', 'Master'], ['music', 'Music'], ['sfx', 'Sound Effects']];
 
-/** The three volume sliders in the header (DESIGN.md §6.4). */
+/** The three volume controls in the header (DESIGN.md §6.4): gain widgets that stop at 0 dB, without a boost. */
 export class VolumeControls extends Component {
 	#soundboard;
 
@@ -21,31 +23,24 @@ export class VolumeControls extends Component {
 	/** @override */
 	render() {
 		const volumes = this.#soundboard.getVolumes();
-		/** @type {Map<Bus, HTMLInputElement>} */
-		const inputs = new Map();
-		const sliders = SLIDERS.map(([bus, label]) => {
-			const input = h('input', {
-				'type': 'range',
-				'min': '0',
-				'max': '1',
-				'step': '0.01',
-				'value': String(volumes[bus]),
-				'aria-label': `${label} volume`,
-				'data-volume': bus,
-				'class': 'w-28 cursor-pointer accent-music',
-				'onInput': () => this.#soundboard.setVolume(bus, Number(input.value)),
+		/** @type {Map<Bus, GainControl>} */
+		const controls = new Map();
+		const groups = CONTROLS.map(([bus, label]) => {
+			const control = new GainControl({
+				value: volumes[bus],
+				scale: BUS_SCALE,
+				label: `${label} volume`,
+				compact: true,
+				onChange: (value) => this.#soundboard.setVolume(bus, value),
 			});
-			inputs.set(bus, input);
-			return h('label', { class: 'flex items-center gap-2 text-sm text-muted' }, label, input);
+			const group = h('div', { 'class': 'flex items-center gap-2 text-sm text-muted', 'data-volume': bus }, label);
+			control.mount(group);
+			controls.set(bus, control);
+			this.own(() => control.destroy());
+			return group;
 		});
 
-		this.own(this.#soundboard.on('volume.changed', ({ bus, value }) => {
-			const input = inputs.get(bus);
-			// Never fight the slider the user is dragging.
-			if (input && document.activeElement !== input && Number(input.value) !== value) {
-				input.value = String(value);
-			}
-		}));
-		return h('div', { class: 'flex items-center gap-5' }, icon('volume', 'size-5 text-muted'), sliders);
+		this.own(this.#soundboard.on('volume.changed', ({ bus, value }) => controls.get(bus)?.update(value)));
+		return h('div', { class: 'flex items-center gap-5' }, icon('volume', 'size-5 text-muted'), groups);
 	}
 }

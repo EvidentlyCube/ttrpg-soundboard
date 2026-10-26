@@ -30,10 +30,19 @@ export class SoundEditor extends Component {
 		const soundboard = this.#soundboard;
 		const { id } = this.#sound;
 
-		const status = h('p', { 'class': 'h-5 text-sm text-muted data-[failed=true]:text-danger', 'aria-live': 'polite', 'data-save-status': true });
-		const setStatus = (/** @type {string} */ text, failed = false) => {
-			status.textContent = text;
-			status.dataset.failed = String(failed);
+		const status = h('div', { 'class': 'flex h-5 items-center gap-2 text-sm text-danger', 'role': 'status', 'data-save-status': true });
+		/** @param {'saving' | 'saved' | 'failed'} state */
+		const setStatus = (state, message = '') => {
+			status.dataset.state = state;
+			if (state === 'failed') {
+				status.replaceChildren(`Could not save: ${message}`);
+				status.removeAttribute('aria-label');
+				return;
+			}
+			status.replaceChildren(state === 'saving'
+				? icon('spinner', 'size-5 animate-spin text-muted')
+				: icon('check', 'size-5 text-emerald-400'));
+			status.setAttribute('aria-label', state === 'saving' ? 'Saving' : 'Saved');
 		};
 
 		const title = h('input', {
@@ -49,18 +58,16 @@ export class SoundEditor extends Component {
 			title.setAttribute('aria-invalid', String(empty));
 			titleHint.textContent = empty ? 'A title cannot be empty; the last one is kept.' : `File: ${id}`;
 			if (!empty) {
-				setStatus('Saving…');
+				setStatus('saving');
 				soundboard.customizeSound(id, { title: title.value });
 			}
 		}));
 
-		const warning = h('p', { class: 'text-sm text-boost', hidden: this.#sound.gain <= 1 }, 'Boosting can distort loud sounds.');
 		const gain = new GainControl({
-			gain: this.#sound.gain,
+			value: this.#sound.gain,
 			label: 'Volume',
 			onChange: (value) => {
-				warning.hidden = value <= 1;
-				setStatus('Saving…');
+				setStatus('saving');
 				soundboard.customizeSound(id, { gain: value });
 			},
 		});
@@ -90,24 +97,23 @@ export class SoundEditor extends Component {
 		this.own(soundboard.on('sound.changed', (event) => {
 			if (event.sound.id === id) {
 				gain.update(event.sound.gain);
-				warning.hidden = event.sound.gain <= 1;
 			}
 		}));
 		this.own(soundboard.on('sound.saved', (event) => {
 			if (event.soundId === id) {
-				setStatus('Saved');
+				setStatus('saved');
 			}
 		}));
 		this.own(soundboard.on('sound.saveFailed', (event) => {
 			if (event.soundId === id) {
-				setStatus(`Could not save: ${event.message}`, true);
+				setStatus('failed', event.message);
 			}
 		}));
 
 		const label = (/** @type {string} */ text) => h('span', { class: 'text-xs font-semibold uppercase tracking-widest text-muted' }, text);
 		return h('div', { class: 'space-y-5' },
 			h('label', { class: 'block space-y-1.5' }, label('Title'), title, titleHint),
-			h('div', { class: 'space-y-1.5' }, label('Volume'), gainSlot, warning),
+			h('div', { class: 'space-y-1.5' }, label('Volume'), gainSlot),
 			h('div', { class: 'flex items-center justify-between gap-4' }, play, status));
 	}
 

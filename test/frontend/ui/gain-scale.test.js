@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { BARS_SHARE, formatDb, gainToPosition, parseDb, positionToGain, stepGain } from '../../../public/app/ui/gain-scale.js';
+import { BARS_SHARE, BUS_SCALE, formatDb, gainToPosition, ITEM_SCALE, parseDb, positionToGain, stepGain } from '../../../public/app/ui/gain-scale.js';
 import { MAX_GAIN } from '../../../public/app/logic/volume.js';
 
 /**
@@ -36,11 +36,9 @@ describe('positionToGain', () => {
 		}
 	});
 
-	it('snaps to exactly 1 within 2 % of the width around the 100 % mark', () => {
-		assert.equal(positionToGain(BARS_SHARE - 0.019), 1);
-		assert.equal(positionToGain(BARS_SHARE + 0.019), 1);
-		assert.notEqual(positionToGain(BARS_SHARE - 0.021), 1);
-		assert.notEqual(positionToGain(BARS_SHARE + 0.021), 1);
+	it('does not snap near the 100 % mark', () => {
+		near(positionToGain(BARS_SHARE - 0.01), (BARS_SHARE - 0.01) / BARS_SHARE);
+		assert.ok(positionToGain(BARS_SHARE + 0.01) > 1);
 	});
 
 	it('clamps positions outside the widget', () => {
@@ -108,5 +106,36 @@ describe('stepGain', () => {
 
 	it('stops at the maximum', () => {
 		assert.equal(stepGain(MAX_GAIN, 1), MAX_GAIN);
+	});
+});
+
+describe('ITEM_SCALE', () => {
+	it('works on gains up to the maximum boost, with the boost section', () => {
+		assert.equal(ITEM_SCALE.max, MAX_GAIN);
+		assert.equal(ITEM_SCALE.boost, true);
+		near(ITEM_SCALE.toPosition(1), BARS_SHARE);
+		near(ITEM_SCALE.fromPosition(1), MAX_GAIN);
+		assert.equal(ITEM_SCALE.toGain(2.5), 2.5);
+		assert.equal(ITEM_SCALE.fromGain(9), MAX_GAIN);
+	});
+});
+
+describe('BUS_SCALE', () => {
+	it('works on slider positions over the full width, without a boost section', () => {
+		assert.equal(BUS_SCALE.max, 1);
+		assert.equal(BUS_SCALE.boost, false);
+		near(BUS_SCALE.toPosition(0.5), 0.5);
+		near(BUS_SCALE.fromPosition(0.8), 0.8);
+		near(BUS_SCALE.fromPosition(1.4), 1);
+	});
+
+	it('shows the gain the slider position really gives: the position squared', () => {
+		near(BUS_SCALE.toGain(0.5), 0.25);
+		assert.equal(formatDb(BUS_SCALE.toGain(0.5)), '−12.0 dB');
+		near(BUS_SCALE.fromGain(0.25), 0.5);
+	});
+
+	it('never goes above 0 dB, whatever is typed', () => {
+		assert.equal(BUS_SCALE.fromGain(/** @type {number} */ (parseDb('+6'))), 1);
 	});
 });
