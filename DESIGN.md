@@ -280,7 +280,7 @@ UI layer (DOM)  ──commands──▶  Soundboard (logic facade)  ──▶  A
   - a `Logger` (`warn`, `error`).
 
   Node imports and tests this code directly; the type-checker and ESLint enforce the boundary (§10.1).
-- The UI calls only the facade's methods and listens to its events. It never reads logic internals. The one exception is stateless helpers with no state of their own: the UI imports `MAX_GAIN`, `gainToDb` and `dbToGain` from `logic/volume.js`, so the gain range and dB math exist only once.
+- The UI calls only the facade's methods and listens to its events. It never reads logic internals. The one exception is stateless helpers with no state of their own: the UI imports `MAX_GAIN`, `gainToDb`, `dbToGain` and `sliderToGain` from `logic/volume.js`, so the gain range and the volume math exist only once.
 - **Commands and events are plain, serializable objects.** Each facade method builds a command (`{ type: 'playlist.next', playlistId, transition: 'instant' }`) and passes it to `dispatch(command)`, which validates it first. Events are `{ type, ...payload }` and contain only JSON-safe values: an unknown duration is `null`, never `NaN`. **Extension point:** a remote control could forward commands and events over a connection unchanged ([roadmap](ROADMAP.md)).
 - A UI event handler that throws never stops other handlers or leaves playback half-updated; the error is passed to the logger.
 
@@ -382,7 +382,7 @@ Voice:
 
 ### 6.4 Volume
 
-There are three sliders: Master, Music and Sound Effects. Gain is `value ** 2`, which sounds more even across the slider than a linear mapping.
+There are three volume controls in the header: Master, Music and Sound Effects. Each is a gain widget (§9.7) on `BUS_SCALE`: its value is a slider position from `0` to `1`, and the gain is `value ** 2`, which sounds more even across the widget than a linear mapping. They stop at 0 dB and have no boost.
 
 Volumes are saved in `.soundboard` (§2.3), so they survive reloads and restarts.
 - `start()` loads them with `fetchSettings()` and applies them before anything can play.
@@ -391,7 +391,7 @@ Volumes are saved in `.soundboard` (§2.3), so they survive reloads and restarts
 - A failed save logs a warning; the next change saves the full set again. Volume itself keeps working.
 
 **Sound volume.** Each sound has its own `gain` (§2.3), set in its Customize dialog (§9.7).
-- **Range and display.** Gain runs from `0` (silent) to `MAX_GAIN = 4` (+12.04 dB); the server enforces the same limit. People see decibels: `dB = 20 · log10(gain)`, `gain = 10^(dB / 20)`, and gain 0 is shown as `−∞ dB`. Above gain 1 a loud file can clip; that is allowed, and the dialog warns about it.
+- **Range and display.** Gain runs from `0` (silent) to `MAX_GAIN = 4` (+12.04 dB); the server enforces the same limit. People see decibels: `dB = 20 · log10(gain)`, `gain = 10^(dB / 20)`, and gain 0 is shown as `−∞ dB`. Above gain 1 a loud file can clip; that is allowed, and the widget shows it in orange.
 - **Applying.** `customizeSound` changes the browser's library at once (`LibraryModel.updateSound`, which keeps sounds sorted with the same order as the server, §2.2) and `SoundPlayer.setGain` applies the gain to every playing instance and to later ones. An empty title or a gain out of range is an `InvalidCommandError`.
 - **Saving.** `OptionsSync` saves per sound like the volume save: 500 ms after the last change, one request per sound in flight, always the full `{ title, gain }`, so a failed save is repaired by the next one. `flushSoundOptions` sends one sound's pending change now (after any save of it in flight); `flushSettings` sends everything pending with `keepalive`.
 
@@ -488,7 +488,7 @@ While a playlist is `playing`, a clock interval sends `playlist.progress` every 
 
 ## 9. UI
 
-Dark theme, plain and functional. Icons appear only on controls (play, pause, stop, previous, next, volume, and the track list chevron), drawn as inline SVG. Sound and playlist tiles have no icons.
+Dark theme, plain and functional. Icons appear only on controls (play, pause, stop, previous, next, volume, and the track list chevron) and as the saving spinner and checkmark (§9.7), drawn as inline SVG. Sound and playlist tiles have no icons.
 
 ### 9.0 Splash screen
 
@@ -501,7 +501,7 @@ Browsers only allow audio to start inside a user gesture, so the app starts behi
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│ Soundboard          🔊 Master ▬▬▬▬○  Music ▬▬▬○▬  Sound Effects ▬▬○▬▬ │  header
+│ Soundboard     🔊 Master ▂▄▆█ 0.0 dB  Music ▂▄▆ −3.1 dB  Sound Effects … │  header
 ├──────────────────────────────────────────────────────────────────────┤
 │ PLAYLISTS                                                            │
 │ [Combat ▶] [Tavern] [Exploration] [Boss Fight] …                     │  main (scrolls)
@@ -519,7 +519,7 @@ Browsers only allow audio to start inside a user gesture, so the app starts behi
 
 ### 9.1 Layout
 
-- The page is a full-height column: header (title and volume sliders), a scrolling main area, then the footer.
+- The page is a full-height column: header (title and volume controls), a scrolling main area, then the footer.
 - The main area has a "Playlists" section above a "Sound Effects" section; empty sections are left out. With neither, it says no playlists or sounds were found.
 - Tiles are `<button>`s in a grid of columns at least 10rem (160 px) wide, with titles clamped to 3 lines. The full title shows as a tooltip.
 - Playlist tiles have a blue accent and sound tiles an amber one.
@@ -608,23 +608,26 @@ UI components extend `Component` (`ui/component.js`): `render()` builds the elem
 
 **The sound dialog** (`ui/sound-editor.js`), opened from the sound menu:
 - **Title.** A text field, focused on open, with the file name below it. Every edit is sent with `customizeSound`. While the field is empty or only spaces, it is marked invalid, nothing is sent, the hint explains that the last title is kept, and the tile keeps it.
-- **Volume.** The gain widget, with "Boosting can distort loud sounds." in yellow while the gain is above 1.
+- **Volume.** The gain widget on `ITEM_SCALE`.
 - **Play / Stop.** Plays the sound with `playSound`, or stops all of its instances. It follows `sound.activeChanged`, so it also reflects presses on the tile.
-- **Status.** "Saving…" after a change, "Saved" on `sound.saved`, or the error on `sound.saveFailed`.
+- **Status.** In the corner, without text: a spinner after a change, a checkmark on `sound.saved`. A failure is shown as a red message, on `sound.saveFailed`.
 
-**Gain widget** (`ui/gain-control.js`), reusable by later dialogs. It looks like the volume control of many media players:
+**Gain widget** (`ui/gain-control.js`), used in the dialogs and for the header volumes. It looks like the volume control of many media players, `h-8` tall:
 ```
 ▁ ▂ ▃ ▄ ▅ ▆ ▇ █ █ █  ┌──────┐
 ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔  │boost │   +3.5 dB
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
-- **Bars.** Ten bars that grow taller cover gain 0 to 1, on the left three quarters of the width. They light up in proportion to the gain, so the last lit bar can be partly lit.
-- **Boost.** One wide rectangle covers gain 1 to 4. It fills in proportion and is **yellow** (`--color-boost`).
-- **Line.** A thick line under the whole widget lights up to the same point, yellow over the boost part.
-- **Pointer.** Pressing sets the gain for that point, and dragging keeps setting it. Over the bars the gain is linear in the position (halfway is 0.5, −6 dB). Within 2 % of the width around the 100 % mark it snaps to exactly 1. Double-clicking resets to 1.
-- **Readout.** The dB value on the right (`+3.5 dB`, `0.0 dB`, `−12.0 dB`, `−∞ dB`). Clicking it swaps in a text field, focused and selected. Enter or leaving the field applies the value. Esc cancels only the edit, and the dialog stays open. Pressing Enter on unreadable text keeps the field open and marks it red; leaving the field discards it. Values above +12.04 dB are clamped; `-inf` or −60 dB and below mean silence. Signs, `,` as the decimal point and a `dB` suffix are accepted.
-- **Keyboard.** It is a `role="slider"`: the arrow keys step 1 dB on whole decibels, stepping into and out of silence below −59 dB, and Home and End go to silence and to gain 4.
-- **Drawing.** The lit part is a copy of the shapes, clipped with an inline `clip-path`, so updates during a drag never change classes (§9.6). The position ↔ gain mapping, snapping, keyboard steps and dB formatting and parsing are pure functions in `ui/gain-scale.js`, with unit tests.
+- **Scales.** A `GainScale` (`ui/gain-scale.js`) decides what the widget controls: its range, whether it has a boost section, how a value maps onto the width, and which real gain the readout shows.
+  - `ITEM_SCALE`: a sound's gain, 0 to 4, with the boost section. Used in the dialogs.
+  - `BUS_SCALE`: a header volume's slider position, 0 to 1, over the full width with no boost section, so it never goes above 0 dB. The readout shows the gain the position really gives, its square (§6.4): halfway reads `−12.0 dB`. Used in the header in a narrower, `compact` size.
+- **Bars.** Ten bars that grow taller cover gain 0 to 1: the left three quarters of the width with a boost section, the whole width without one. They light up in proportion, so the last lit bar can be partly lit.
+- **Boost.** One wide rectangle covers gain 1 to 4. It fills in proportion and is **orange** (`--color-boost`).
+- **Line.** A thick line under the whole widget lights up to the same point, orange over the boost part.
+- **Pointer.** Pressing sets the value for that point, and dragging keeps setting it. Over the bars an item's gain is linear in the position (halfway is 0.5, −6 dB). There is no snapping. Double-clicking resets to 0 dB.
+- **Readout.** The dB value on the right (`+3.5 dB`, `0.0 dB`, `−12.0 dB`, `−∞ dB`), orange while the gain is above 1; that color is the only warning that boosting can distort. Clicking it swaps in a text field, focused and selected. Enter or leaving the field applies the value. Esc cancels only the edit, and a dialog around it stays open. Pressing Enter on unreadable text keeps the field open and marks it red; leaving the field discards it. Values above the scale's maximum are clamped; `-inf` or −60 dB and below mean silence. Signs, `,` as the decimal point and a `dB` suffix are accepted.
+- **Keyboard.** It is a `role="slider"`: the arrow keys step 1 dB on whole decibels, stepping into and out of silence below −59 dB, and Home and End go to silence and to the scale's maximum.
+- **Drawing.** The lit part is a copy of the shapes, clipped with an inline `clip-path`, so updates during a drag never change classes (§9.6). The scales, keyboard steps and dB formatting and parsing are pure functions in `ui/gain-scale.js`, with unit tests.
 
 ---
 
