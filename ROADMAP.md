@@ -41,23 +41,23 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 - **§8.** `PlaylistPlayer.setPlaylist(playlist)` takes the changed playlist (same tracks, same order, new titles) and sends `playlist.stateChanged` again if it is active. The footer then shows the current track's new title at once.
 - **§9.2.** The player bar keeps the newest playlist from `playlist.changed`, so its track list popover shows new titles too.
 - **§9.7.**
-  - A **Tracks** section at the bottom of the playlist dialog. Each header row shows the number, the title and the duration (`m:ss`, `--:--` when unknown). Clicking a row opens it and closes any other; clicking the open one closes it. Rows are buttons with `aria-expanded`.
+  - The playlist dialog gets two **tabs**, "Playlist" (title, volume, fades, crossfade) and "Tracks". Play / Stop and the save status sit in a row below both, so they stay visible on either tab. The dialog always opens on "Playlist". The tabs follow the usual pattern: `role="tablist"`, the left and right arrow keys move between them, and only the active tab's panel is shown.
+  - The **Tracks** tab lists every track as an accordion. Each header row shows the number, the title and the duration (`m:ss`, `--:--` when unknown). Clicking a row opens it and closes any other; clicking the open one closes it. Rows are buttons with `aria-expanded`.
   - The open track shows the shared title field (hint: `File: Combat/01 Battle.mp3`), with the empty-title rule.
   - The dialog's save status covers track saves too.
   - The dialog gets a maximum height of 90 % of the window. Its body scrolls under a fixed header, so long track lists stay usable.
   - Closing the dialog flushes the tracks renamed in it.
 
-**Open questions.**
-
-1. **How a track rename is announced.** *Recommended: `playlist.changed`* with the updated playlist, plus per-track save events. The alternative, a separate `track.changed`, would make every view of track titles (tile, footer, popover, dialog) listen to one more event. The earlier "separate events per kind" decision was about saving, and that stays per kind.
-2. **Where the list goes.** *Recommended: below the playlist's own settings, in the same scrolling dialog.* Tabs ("Playlist" and "Tracks") would be the other option. The single page keeps everything one scroll away and needs nothing new.
-3. **What a header row shows.** *Recommended: number, title and duration*, since the duration is now known for every track.
+**Owner's decisions (review round 1).**
+1. A track rename is announced with `playlist.changed`; the heavier event is fine, since renames are rare. Saving is reported per track.
+2. The list goes in its own **Tracks tab**, separate from the playlist's settings.
+3. Header rows show number, title and duration.
 
 **Plan.**
 
 1. **Server.** `LibraryEditor.updateTrack` and `PATCH /api/tracks/<id>`. *Tests:* the editor (options kept, path order kept, unknown ids, sound ids rejected) and the route with both encodings, spaces and non-ASCII.
 2. **Logic.** The `track.customize` command, `LibraryModel.updateTrack`, `PlaylistPlayer.setPlaylist`, the `track` kind in `OptionsSync`, `saveTrackOptions` in the port, `HttpBackendApi` and the fake, the events and `flushTrackOptions`. *Tests:* immediate effect on the library and the player's state, debounced saving and its events, a track and a sound with the same id saving independently, and `HttpBackendApi` against the real server.
-3. **UI.** The accordion list, the scrolling dialog, and titles updating in the footer and the popover. *Tests:* the manual checklist and a headless Chromium run.
+3. **UI.** The tabs, the accordion list, the scrolling dialog, and titles updating in the footer and the popover. *Tests:* the manual checklist and a headless Chromium run.
 4. **Design update.** `DESIGN.md` in its own commit; then this proposal and its backlog entry are removed.
 
 ---
