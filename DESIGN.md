@@ -407,6 +407,7 @@ Voice:
 **WebAudioEngine** (`public/app/audio/`):
 - One `AudioContext` (`latencyHint: 'interactive'`), created inside the first `unlock()`, never at page load. The graph is `source → voice gain → voice fade → music or sfx bus gain → master gain → speakers`. Bus gains set before the context exists are applied when it is created.
 - Every voice plays through two gain nodes (`VoiceOutput`): its own volume (`gain`, `setGain`) and its fade (`rampGain`). Keeping them apart means a fade never needs to know the volume, and a volume change never disturbs a fade in progress.
+- `VoiceOutput` remembers the fade it last scheduled (`fade-ramp.js`) and starts every new fade from that fade's level at the current time. It never reads `AudioParam.value`, which only catches up once the audio thread has run. A fade-in scheduled straight after a jump to silence therefore really starts from silence, and an interrupted fade continues from wherever it had got to.
 - **Stream voices** are `Audio` elements (`preload = 'auto'`) feeding `createMediaElementSource`. `loaded` is the element's `loadedmetadata`. `stop()` pauses, disconnects the nodes, removes `src` and calls `load()`, so the browser drops the connection and its buffers. A rejected `play()` becomes an `error` event, except `AbortError`, which only means a pause or stop interrupted the start.
 - **Buffer voices** use an `AudioBufferSourceNode` per play; pausing remembers the offset. `loaded` is announced asynchronously right away. `memoryBytes` is `length × channels × 4`.
 - `canPlay` uses `canPlayType` and caches the answer per format.
@@ -713,7 +714,7 @@ public/
 			ports.js  soundboard.js  commands.js  errors.js  event-emitter.js  library-model.js
 			playlist-player.js  playback-rules.js  transitions.js  order-strategies.js
 			sound-player.js  buffer-cache.js  volume.js  settings-sync.js  options-sync.js  sort.js
-		audio/      web-audio-engine.js
+		audio/      web-audio-engine.js  fade-ramp.js
 		api/        backend-api.js
 		ui/         app.js  component.js  dom.js  icons.js  format.js  menus.js  position.js
 		            splash.js  overlay.js  context-menu.js  track-list.js  tile-grid.js
