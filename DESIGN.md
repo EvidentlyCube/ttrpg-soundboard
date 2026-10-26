@@ -102,9 +102,11 @@ All sorting uses `Intl.Collator('en', { numeric: true, sensitivity: 'base' })`, 
 
 Sound or track options (`Explosion.mp3.json`)
 ```json
-{ "title": "Big Explosion" }
+{ "title": "Big Explosion", "gain": 0.5957 }
 ```
-`title` is optional; without it the default title is used (§2.4).
+- `title` is optional; without it the default title is used (§2.4).
+- `gain` is optional and defaults to `1`. It is the item's own volume as the linear multiplier a Web Audio `GainNode` takes: `1` plays the file as recorded, `2` doubles the amplitude (about +6 dB), `0` is silent. The UI shows it in decibels (§6.4). It is deliberately not called `volume`, because the volumes in `.soundboard` are slider positions, a different thing. Sounds use it; tracks accept it, but playlists don't apply it yet ([roadmap](ROADMAP.md)).
+- The app writes `gain` rounded to 4 decimal places.
 
 Playlist options (`Combat.json`)
 ```json
@@ -116,7 +118,7 @@ Playlist options (`Combat.json`)
 - `includedSubdirectories` lists paths relative to the playlist directory, using `/`. Every depth is listed explicitly.
 - Listed directories that no longer exist are ignored. They are not removed.
 
-**Validation (fatal).** Any options file or `.soundboard` that fails `JSON.parse`, is not an object, or has the wrong type for a known key (`title` must be a non-empty string, `includedSubdirectories` must be an array of strings, `version` must be a positive integer, `volumes.*` must be numbers in `0..1`) is an error. Bootstrap gathers **all** such errors, prints them in red with their paths, and exits with code `1` **before asking any questions or writing anything**. The user must fix or delete those files. Options files of empty playlists are validated too.
+**Validation (fatal).** Any options file or `.soundboard` that fails `JSON.parse`, is not an object, or has the wrong type for a known key (`title` must be a non-empty string, `gain` must be a number from `0` to `4`, `includedSubdirectories` must be an array of strings, `version` must be a positive integer, `volumes.*` must be numbers in `0..1`) is an error. Bootstrap gathers **all** such errors, prints them in red with their paths, and exits with code `1` **before asking any questions or writing anything**. The user must fix or delete those files. Options files of empty playlists are validated too.
 
 **Unknown keys are preserved.** Whenever the app rewrites a file, it reads it again, merges, and writes back the whole object, so keys from future versions survive.
 
@@ -202,12 +204,13 @@ Bootstrap reports how many options files it created or updated and how many play
 ```js
 Library   { root, playlists: Playlist[], sounds: AudioFile[], files: Map<id, AudioFile> }
 Playlist  { id, title, tracks: AudioFile[], includedSubdirectories: string[] }
-AudioFile { id /* root-relative POSIX path */, title, format: 'mp3'|'ogg', size, absolutePath }
+AudioFile { id /* root-relative POSIX path */, title, format: 'mp3'|'ogg', size, gain, absolutePath }
 Settings  { volumes: { master, music, sfx } }   // held by SettingsStore, saved to .soundboard
 ```
 
 - `playlists` contains only non-empty playlists, sorted by title; `sounds` are sorted by title; tracks keep path order (§2.2).
 - `files` indexes every sound and track by id. It is the only list of files the server may stream.
+- `LibraryEditor` changes the library while the app runs. `updateSound(id, { title?, gain? })` validates the change with the options file rules (§2.3), rejects unknown keys, trims the title, and rounds the gain. It then merges the change into the sound's options file (read, merge, atomic write, unknown keys kept), and only once that succeeded updates the `AudioFile` in place and sorts `sounds` again. Writes to one options file run one after another in the order they were requested, so the file always ends with the newest values; a failed write doesn't block later ones. An id that isn't a sound (including a track id) is an `UnknownSoundError`.
 - `SettingsStore` keeps the settings in memory and writes them back to `.soundboard` with the same read-merge-write and atomic rename as the options files (§2.3). Writes are **serialized**: one in flight at a time, and changes made meanwhile are written together by one follow-up write, so the file always ends with the newest values.
 
 ### 5.2 HTTP API (`src/http/`, built on `node:http`)
@@ -220,6 +223,7 @@ The server knows nothing about playback state.
 | GET | `/api/library` | JSON (below) |
 | GET | `/api/settings` | `{ "volumes": { "master": 1, "music": 0.8, "sfx": 1 } }` |
 | PUT | `/api/settings/volumes` | Body `{ master?, music?, sfx? }` (numbers in `0..1`). Merged into the settings and saved; returns the full settings. `400` for invalid JSON, a non-object, an out-of-range value or an unknown key. `413` for bodies over 16 KB. |
+| PATCH | `/api/sounds/<encoded id>` | Body `{ title?, gain? }`. Saved through `LibraryEditor` (§5.1); returns the updated sound in the `/api/library` format. `400` for invalid JSON, a non-object, an unknown key, an empty title or an out-of-range gain. `404` when the id isn't a sound. `413` for bodies over 16 KB. |
 | GET, HEAD | `/media/<encoded id>` | The audio file, streamed |
 
 - API responses are JSON with `Cache-Control: no-store`. Errors are `{ "error": "message" }`.
@@ -231,15 +235,15 @@ The server knows nothing about playback state.
 	"version": 1,
 	"playlists": [
 		{ "id": "Combat", "title": "Combat", "tracks": [
-			{ "id": "Combat/01 Battle.mp3", "title": "Battle", "format": "mp3", "size": 4194304, "url": "/media/Combat/01%20Battle.mp3" }
+			{ "id": "Combat/01 Battle.mp3", "title": "Battle", "format": "mp3", "size": 4194304, "gain": 1, "url": "/media/Combat/01%20Battle.mp3" }
 		] }
 	],
 	"sounds": [
-		{ "id": "Explosion.mp3", "title": "Big Explosion", "format": "mp3", "size": 48213, "url": "/media/Explosion.mp3" }
+		{ "id": "Explosion.mp3", "title": "Big Explosion", "format": "mp3", "size": 48213, "gain": 0.5957, "url": "/media/Explosion.mp3" }
 	]
 }
 ```
-Each path segment of a media URL is percent-encoded separately.
+Each path segment of a media URL is percent-encoded separately. The library reflects changes made through `PATCH`, so a reload shows them.
 
 **Static files.** The path guard works on the raw request path, before any URL normalization: the path is percent-decoded, resolved against `public/`, and rejected unless it is still inside. Null bytes and malformed encoding are rejected too.
 
@@ -272,11 +276,11 @@ UI layer (DOM)  ──commands──▶  Soundboard (logic facade)  ──▶  A
 - `public/app/logic/**` **never touches** `window`, `document`, audio APIs or Node APIs. Everything it needs is injected through ports, whose types live in `public/app/logic/ports.js`:
   - the `AudioEngine` (§6.3);
   - a `Clock` (`setTimeout`, `clearTimeout`, `setInterval`, `clearInterval`);
-  - a `BackendApi` (`fetchLibrary()`, `fetchSettings()`, `saveVolumes(volumes, { keepalive })`);
+  - a `BackendApi` (`fetchLibrary()`, `fetchSettings()`, `saveVolumes(volumes, { keepalive })`, `saveSoundOptions(soundId, { title, gain }, { keepalive })`);
   - a `Logger` (`warn`, `error`).
 
   Node imports and tests this code directly; the type-checker and ESLint enforce the boundary (§10.1).
-- The UI calls only the facade's methods and listens to its events. It never reads logic internals.
+- The UI calls only the facade's methods and listens to its events. It never reads logic internals. The one exception is stateless helpers with no state of their own: the UI imports `MAX_GAIN`, `gainToDb` and `dbToGain` from `logic/volume.js`, so the gain range and dB math exist only once.
 - **Commands and events are plain, serializable objects.** Each facade method builds a command (`{ type: 'playlist.next', playlistId, transition: 'instant' }`) and passes it to `dispatch(command)`, which validates it first. Events are `{ type, ...payload }` and contain only JSON-safe values: an unknown duration is `null`, never `NaN`. **Extension point:** a remote control could forward commands and events over a connection unchanged ([roadmap](ROADMAP.md)).
 - A UI event handler that throws never stops other handlers or leaves playback half-updated; the error is passed to the logger.
 
@@ -287,11 +291,13 @@ UI layer (DOM)  ──commands──▶  Soundboard (logic facade)  ──▶  A
 start() → Promise<void>                   // from the splash click (§9.0): unlock audio synchronously, then fetch
                                           // library + settings once, apply volumes, emit 'app.ready' or 'app.startFailed'
 unlockAudio()                             // resume audio if the browser suspended it; must run inside a user gesture
-flushSettings()                           // save a pending volume change now (called on 'pagehide')
+flushSettings()                           // save pending volume and sound changes now, with keepalive (called on 'pagehide')
 
 // sounds (no transitions; sounds have no rules)
 playSound(soundId)
 stopSound(soundId)                        // stops all instances of that sound, instantly
+customizeSound(soundId, { title?, gain? }) // applies at once, saves 500 ms later (§6.4)
+flushSoundOptions(soundId)                // save that sound's pending change now (its dialog closed)
 
 // playlists; transition is 'default' (follow the playlist's rules) or 'instant'. Omitted means 'default'.
 togglePlaylist(playlistId)                // tile click: play if idle, otherwise stop ('default')
@@ -332,6 +338,9 @@ on(type, handler) → unsubscribe, off(type, handler)
 | `audio.resumed` | `{}`, sent when it runs again after a suspension |
 | `sound.activeChanged` | `{ soundId, active }`, sent when the instance count goes from 0 to ≥1 or back |
 | `sound.error` | `{ soundId, message }`: decoding or playback failed, or the browser cannot play the format |
+| `sound.changed` | `{ sound }`, the sound with its new title or gain, right after `customizeSound` |
+| `sound.saved` | `{ soundId }`, once every change to that sound has been saved |
+| `sound.saveFailed` | `{ soundId, message }`; the change stays in effect and is saved again with the next one |
 | `playlist.stateChanged` | `{ playlistId, state, trackIndex, track, duration }` |
 | `playlist.progress` | `{ playlistId, position, duration }`, every 250 ms while playing and right after a seek |
 | `playlist.error` | `{ playlistId, trackId, message }` |
@@ -345,29 +354,31 @@ engine.unlock()                      // creates (first call) or resumes the Audi
 engine.on('suspended' | 'resumed', handler)
 engine.canPlay(format)               → boolean
 engine.setBusGain(bus, gain)         // 'master' | 'music' | 'sfx'
-engine.createStreamVoice({ url, bus }) → Voice          // streamed through a media element
+engine.createStreamVoice({ url, bus, gain? }) → Voice          // streamed through a media element
 engine.loadBuffer(url)               → Promise<BufferHandle>   // fetch + decodeAudioData; { memoryBytes }
-engine.createBufferVoice({ buffer, bus }) → Voice
+engine.createBufferVoice({ buffer, bus, gain? }) → Voice      // gain: the voice's own volume, default 1
 
 Voice:
 	play()  pause()  stop()          // play() failures arrive as an error event; stop() releases everything
 	seek(seconds)                    // and is safe to call twice
 	position, duration               // seconds; duration is NaN until 'loaded'
-	rampGain(target, seconds)
+	rampGain(target, seconds)        // fades
+	setGain(gain)                    // the voice's own volume, smoothed; independent of fades
 	on('loaded' | 'ended', handler)  // 'ended' fires at most once
 	onError(handler)                 // handler receives { message }
 	                                 // no event fires after stop()
 ```
 
 **WebAudioEngine** (`public/app/audio/`):
-- One `AudioContext` (`latencyHint: 'interactive'`), created inside the first `unlock()`, never at page load. The graph is `voice gain → music or sfx bus gain → master gain → speakers`. Bus gains set before the context exists are applied when it is created.
+- One `AudioContext` (`latencyHint: 'interactive'`), created inside the first `unlock()`, never at page load. The graph is `source → voice gain → voice fade → music or sfx bus gain → master gain → speakers`. Bus gains set before the context exists are applied when it is created.
+- Every voice plays through two gain nodes (`VoiceOutput`): its own volume (`gain`, `setGain`) and its fade (`rampGain`). Keeping them apart means a fade never needs to know the volume, and a volume change never disturbs a fade in progress.
 - **Stream voices** are `Audio` elements (`preload = 'auto'`) feeding `createMediaElementSource`. `loaded` is the element's `loadedmetadata`. `stop()` pauses, disconnects the nodes, removes `src` and calls `load()`, so the browser drops the connection and its buffers. A rejected `play()` becomes an `error` event, except `AbortError`, which only means a pause or stop interrupted the start.
 - **Buffer voices** use an `AudioBufferSourceNode` per play; pausing remembers the offset. `loaded` is announced asynchronously right away. `memoryBytes` is `length × channels × 4`.
 - `canPlay` uses `canPlayType` and caches the answer per format.
-- Bus gains change with `setTargetAtTime` (15 ms), so moving a slider never clicks; voice gains use ramps. No per-frame JavaScript loops.
+- Bus gains and voice volumes change with `setTargetAtTime` (15 ms), so moving a slider never clicks; fades use ramps. No per-frame JavaScript loops.
 - `suspended` is only reported for a context that was running, so the short suspended state right after creation is not mistaken for an interruption. Safari's `interrupted` state counts as suspended.
 
-**FakeAudioEngine** (`test/helpers/`) runs on a fake clock and models how media elements behave: loading takes time, `play()` before loading waits for it, position only advances while playing, `ended` fires once. Errors, durations and "leaky" voices that keep firing events after `stop()` can be scripted per URL. It records every voice so tests can check that none is left behind.
+**FakeAudioEngine** (`test/helpers/`) runs on a fake clock and models how media elements behave: loading takes time, `play()` before loading waits for it, position only advances while playing, `ended` fires once. Errors, durations and "leaky" voices that keep firing events after `stop()` can be scripted per URL. It records every voice, with its current `gain`, so tests can check that none is left behind.
 
 ### 6.4 Volume
 
@@ -379,7 +390,12 @@ Volumes are saved in `.soundboard` (§2.3), so they survive reloads and restarts
 - `flushSettings()` sends a pending change straight away with `keepalive: true`, so closing the tab mid-drag still saves it.
 - A failed save logs a warning; the next change saves the full set again. Volume itself keeps working.
 
-**Extension point:** per-playlist, per-track and per-sound volume would add a gain node per playlist or voice ([roadmap](ROADMAP.md)).
+**Sound volume.** Each sound has its own `gain` (§2.3), set in its Customize dialog (§9.7).
+- **Range and display.** Gain runs from `0` (silent) to `MAX_GAIN = 4` (+12.04 dB); the server enforces the same limit. People see decibels: `dB = 20 · log10(gain)`, `gain = 10^(dB / 20)`, and gain 0 is shown as `−∞ dB`. Above gain 1 a loud file can clip; that is allowed, and the dialog warns about it.
+- **Applying.** `customizeSound` changes the browser's library at once (`LibraryModel.updateSound`, which keeps sounds sorted with the same order as the server, §2.2) and `SoundPlayer.setGain` applies the gain to every playing instance and to later ones. An empty title or a gain out of range is an `InvalidCommandError`.
+- **Saving.** `OptionsSync` saves per sound like the volume save: 500 ms after the last change, one request per sound in flight, always the full `{ title, gain }`, so a failed save is repaired by the next one. `flushSoundOptions` sends one sound's pending change now (after any save of it in flight); `flushSettings` sends everything pending with `keepalive`.
+
+**Extension point:** per-playlist and per-track volume would multiply into each playlist voice's own gain ([roadmap](ROADMAP.md)).
 
 ---
 
@@ -392,6 +408,7 @@ Volumes are saved in `.soundboard` (§2.3), so they survive reloads and restarts
 - **Source choice.** Files of **256 KB or less** (`size` from the library, about 15 s of MP3) are decoded once with `loadBuffer` and cached, so they start almost instantly. Larger files stream; their `play()` is called synchronously inside the click.
 - **Buffer cache.** An LRU cache with a **64 MB** budget, measured as `memoryBytes`. Entries are evicted, least recently used first, when the budget is exceeded. A buffer that is playing is never evicted, and neither is one that has just finished decoding, since its caller is about to play it.
 - **First press on an uncached small sound.** Decoding is asynchronous. Pressing the sound again while it decodes shares the same pending load. **Race guard:** each sound has an `epoch` counter that `stopSound` increments. A pending start captures the epoch and is dropped if it has changed by the time decoding finishes, so "Stop All" also cancels starts that haven't happened yet.
+- **Volume.** Every instance starts at the sound's gain (§6.4). `setGain(soundId, gain)` applies a new gain to the instances playing and remembers it for later ones, including a press still waiting for its decode.
 - When a voice ends or fails, its instance is removed and its resources released, and `sound.activeChanged` is sent when the count reaches 0.
 - Errors: a decode or playback failure, or a format the browser can't play, sends `sound.error`. A failed decode is forgotten, so the next press tries again.
 
@@ -480,7 +497,7 @@ Browsers only allow audio to start inside a user gesture, so the app starts behi
 - On page load the app does **nothing** except show the splash: the app name and **"Click anywhere to start"**. No audio context, no API requests.
 - The first click calls `soundboard.start()`, which creates and resumes the `AudioContext` **synchronously** inside the click. The splash shows "Loading…" while the library and settings are fetched.
 - On `app.ready` the splash is hidden and the board is rendered. On `app.startFailed` the splash shows "Could not start the soundboard. Click to retry." with the error; clicking starts again.
-- **Re-locking.** If the system suspends audio later (the Mac sleeps, or another app takes the audio device), `audio.suspended` closes any open popup and brings the splash back as "Audio paused by the system. Click to resume." A click calls `unlockAudio()`, and the splash hides on `audio.resumed`. Playlist state is kept.
+- **Re-locking.** If the system suspends audio later (the Mac sleeps, or another app takes the audio device), `audio.suspended` closes any open popup (an open Customize dialog stays, underneath the splash) and brings the splash back as "Audio paused by the system. Click to resume." A click calls `unlockAudio()`, and the splash hides on `audio.resumed`. Playlist state is kept.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -510,6 +527,7 @@ Browsers only allow audio to start inside a user gesture, so the app starts behi
 - A **sound with live instances** is highlighted and shows a small ■ stop button in its top-right corner. That button is a sibling of the tile, not inside it, so pressing it calls `stopSound` and never also plays the sound.
 - Tiles that can't play (an unsupported format, or a playlist with no playable track) are disabled, with a tooltip explaining why.
 - A playlist or sound error flashes a red ring on its tile for 2 seconds.
+- A sound tile shows a new title as soon as `sound.changed` arrives, but tiles are only moved into the new sorted order when the Customize dialog closes, so a tile never jumps around while it is being renamed.
 - The footer shows **playlists only**. Sound effects never create a player bar.
 - The footer is **always visible**, so the layout doesn't shift when music starts or stops. It is at least one row of player bars tall; while no playlist is active, that row shows a muted "No playlist playing". Player bars sit in a three-column grid, in the order the playlists were started. The footer grows to at most two rows of bars; beyond that it scrolls vertically.
 - Color tokens are defined once, in Tailwind's `@theme` (§9.6).
@@ -538,7 +556,7 @@ One shared `Overlay` shows the context menus and the track list popover; opening
 |---|---|
 | Play | `playSound` |
 | Stop All | `stopSound`; enabled only while instances are playing |
-| Customize | disabled (stub) |
+| Customize | opens the sound's Customize dialog (§9.7) |
 
 **Playlist menu**
 
@@ -581,6 +599,33 @@ UI components extend `Component` (`ui/component.js`): `render()` builds the elem
   - State (active, playing, error) is a `data-*` attribute styled with Tailwind's `data-*` variants, so the full set of classes is already present when an element is created.
 - Because CSS for a class is generated only after the class first appears, code that measures a newly built element must allow for its size changing afterwards (§9.3).
 
+### 9.7 Customize dialog
+
+**Dialog** (`ui/dialog.js`) is a centered modal shared by the Customize dialogs.
+- It has a title, a body and a × button. Every change inside applies at once, so nothing can be lost by closing: the × button, Esc, and a click that both starts and ends on the backdrop all close it. Esc is left to a popup when one is open on top.
+- It sits above the board and the footer, but below popups (§9.3) and the splash (§9.0).
+- When the sound dialog closes, the board saves that sound's pending change at once (`flushSoundOptions`) and moves the sound tiles into their sorted order.
+
+**The sound dialog** (`ui/sound-editor.js`), opened from the sound menu:
+- **Title.** A text field, focused on open, with the file name below it. Every edit is sent with `customizeSound`. While the field is empty or only spaces, it is marked invalid, nothing is sent, the hint explains that the last title is kept, and the tile keeps it.
+- **Volume.** The gain widget, with "Boosting can distort loud sounds." in yellow while the gain is above 1.
+- **Play / Stop.** Plays the sound with `playSound`, or stops all of its instances. It follows `sound.activeChanged`, so it also reflects presses on the tile.
+- **Status.** "Saving…" after a change, "Saved" on `sound.saved`, or the error on `sound.saveFailed`.
+
+**Gain widget** (`ui/gain-control.js`), reusable by later dialogs. It looks like the volume control of many media players:
+```
+▁ ▂ ▃ ▄ ▅ ▆ ▇ █ █ █  ┌──────┐
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔  │boost │   +3.5 dB
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+- **Bars.** Ten bars that grow taller cover gain 0 to 1, on the left three quarters of the width. They light up in proportion to the gain, so the last lit bar can be partly lit.
+- **Boost.** One wide rectangle covers gain 1 to 4. It fills in proportion and is **yellow** (`--color-boost`).
+- **Line.** A thick line under the whole widget lights up to the same point, yellow over the boost part.
+- **Pointer.** Pressing sets the gain for that point, and dragging keeps setting it. Over the bars the gain is linear in the position (halfway is 0.5, −6 dB). Within 2 % of the width around the 100 % mark it snaps to exactly 1. Double-clicking resets to 1.
+- **Readout.** The dB value on the right (`+3.5 dB`, `0.0 dB`, `−12.0 dB`, `−∞ dB`). Clicking it swaps in a text field, focused and selected. Enter or leaving the field applies the value. Esc cancels only the edit, and the dialog stays open. Pressing Enter on unreadable text keeps the field open and marks it red; leaving the field discards it. Values above +12.04 dB are clamped; `-inf` or −60 dB and below mean silence. Signs, `,` as the decimal point and a `dB` suffix are accepted.
+- **Keyboard.** It is a `role="slider"`: the arrow keys step 1 dB on whole decibels, stepping into and out of silence below −59 dB, and Home and End go to silence and to gain 4.
+- **Drawing.** The lit part is a copy of the shapes, clipped with an inline `clip-path`, so updates during a drag never change classes (§9.6). The position ↔ gain mapping, snapping, keyboard steps and dB formatting and parsing are pure functions in `ui/gain-scale.js`, with unit tests.
+
 ---
 
 ## 10. Project structure
@@ -589,10 +634,11 @@ UI components extend `Component` (`ui/component.js`): `render()` builds the elem
 index.js                         entry point: wires process streams and signals into src/cli/main.js
 package.json  package-lock.json  type: module, engines, scripts (§10.2), dev dependencies only
 eslint.config.js  .editorconfig  tsconfig.json  tsconfig.*.json (§10.1)
+scripts/        mutate.js                checks that tests fail when code is broken (TESTING.md)
 src/
 	cli/        main.js  args.js  prompter.js  reporter.js  colors.js
 	library/    bootstrap-service.js  scanner.js  classify.js  sort.js  validate.js  errors.js
-	            options-store.js  settings-store.js  library.js
+	            options-store.js  settings-store.js  library.js  library-editor.js
 	metadata/   index.js  id3.js  ogg.js  binary-reader.js
 	http/       server.js  router.js  responses.js  static-files.js  media.js  range.js  mime.js  request-log.js
 public/
@@ -603,12 +649,13 @@ public/
 		logic/                          no DOM, audio or Node APIs
 			ports.js  soundboard.js  commands.js  errors.js  event-emitter.js  library-model.js
 			playlist-player.js  playback-rules.js  transitions.js  order-strategies.js
-			sound-player.js  buffer-cache.js  volume.js  settings-sync.js
+			sound-player.js  buffer-cache.js  volume.js  settings-sync.js  options-sync.js  sort.js
 		audio/      web-audio-engine.js
 		api/        backend-api.js
 		ui/         app.js  component.js  dom.js  icons.js  format.js  menus.js  position.js
 		            splash.js  overlay.js  context-menu.js  track-list.js  tile-grid.js
 		            playlist-tile.js  sound-tile.js  player-dock.js  player-bar.js  volume-controls.js
+		            dialog.js  sound-editor.js  gain-control.js  gain-scale.js
 test/
 	backend/    cli/  http/  library/  metadata/
 	frontend/   logic tests, backend-api.test.js, ui/ (pure UI helpers)
@@ -624,7 +671,7 @@ Each project is checked against only the globals its code may use, so the compil
 
 | Project | Covers | Globals available |
 |---|---|---|
-| Backend (`tsconfig.backend.json`) | `index.js`, `src/**`, `test/backend/**`, `test/helpers/**` | Node, no DOM |
+| Backend (`tsconfig.backend.json`) | `index.js`, `scripts/**`, `src/**`, `test/backend/**`, `test/helpers/**` | Node, no DOM |
 | Frontend logic (`tsconfig.logic.json`) | `public/app/logic/**` | ECMAScript only: **no DOM, no Node**. Using `document`, `window`, `console` or `setTimeout` here is a compile error. |
 | Frontend UI (`tsconfig.ui.json`) | `public/app/**` except `logic/` | DOM |
 | Frontend tests (`tsconfig.frontend-tests.json`) | `test/frontend/**`, `test/helpers/**` | Node, plus the sources they import |
