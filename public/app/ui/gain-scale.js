@@ -1,0 +1,88 @@
+import { dbToGain, gainToDb, MAX_GAIN } from '../logic/volume.js';
+
+/** The part of the gain widget's width taken by the bars for gain 0 to 1; the boost from 1 to MAX_GAIN gets the rest. */
+export const BARS_SHARE = 0.75;
+
+/** Presses this close to the 100 % mark, as a share of the width, land exactly on gain 1. */
+const SNAP_DISTANCE = 0.02;
+
+/** Typed values at or below this mean silence, as does stepping below it. */
+const SILENCE_DB = -60;
+
+const DB_PATTERN = /^\s*([+\-−]?)\s*(\d+(?:[.,]\d+)?|inf|∞)\s*(?:db)?\s*$/iu;
+
+/**
+ * Where a gain sits on the widget, from 0 (left) to 1 (right).
+ * @param {number} gain
+ */
+export function gainToPosition(gain) {
+	const clamped = clamp(gain, 0, MAX_GAIN);
+	return clamped <= 1
+		? clamped * BARS_SHARE
+		: BARS_SHARE + ((clamped - 1) / (MAX_GAIN - 1)) * (1 - BARS_SHARE);
+}
+
+/**
+ * The gain for a press on the widget; presses near the 100 % mark snap to exactly 1.
+ * @param {number} position 0 (left) to 1 (right), clamped
+ */
+export function positionToGain(position) {
+	const clamped = clamp(position, 0, 1);
+	if (Math.abs(clamped - BARS_SHARE) < SNAP_DISTANCE) {
+		return 1;
+	}
+	return clamped <= BARS_SHARE
+		? clamped / BARS_SHARE
+		: 1 + ((clamped - BARS_SHARE) / (1 - BARS_SHARE)) * (MAX_GAIN - 1);
+}
+
+/**
+ * `+3.5 dB`, `0.0 dB`, `−12.0 dB` or `−∞ dB`.
+ * @param {number} gain
+ */
+export function formatDb(gain) {
+	if (gain <= 0) {
+		return '−∞ dB';
+	}
+	const db = Math.round(gainToDb(gain) * 10) / 10;
+	if (db === 0) {
+		return '0.0 dB';
+	}
+	return `${db > 0 ? '+' : '−'}${Math.abs(db).toFixed(1)} dB`;
+}
+
+/**
+ * Reads what someone typed into the dB field, such as `-6`, `+3.5 dB`, `−2,5` or `-inf`.
+ * @param {string} text
+ * @returns {number | null} the gain, clamped to the allowed range, or null when the text is not a level
+ */
+export function parseDb(text) {
+	const match = DB_PATTERN.exec(text);
+	if (!match) {
+		return null;
+	}
+	const negative = match[1] === '-' || match[1] === '−';
+	const magnitude = /^(inf|∞)$/iu.test(match[2]) ? Infinity : Number(match[2].replace(',', '.'));
+	const db = negative ? -magnitude : magnitude;
+	return db <= SILENCE_DB ? 0 : Math.min(MAX_GAIN, dbToGain(db));
+}
+
+/**
+ * The gain one keyboard step away: whole decibels, stepping into and out of silence below -59 dB.
+ * @param {number} gain
+ * @param {number} steps +1 or -1 dB
+ */
+export function stepGain(gain, steps) {
+	const db = gain > 0 ? Math.max(gainToDb(gain), SILENCE_DB) : SILENCE_DB;
+	const next = Math.round(db + steps);
+	return next <= SILENCE_DB ? 0 : Math.min(MAX_GAIN, dbToGain(next));
+}
+
+/**
+ * @param {number} value
+ * @param {number} min
+ * @param {number} max
+ */
+function clamp(value, min, max) {
+	return Math.min(max, Math.max(min, value));
+}
