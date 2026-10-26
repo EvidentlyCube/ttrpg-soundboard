@@ -16,7 +16,8 @@ To try the app by hand, use `test_fixtures/example_soundboard`. **Copy it to a t
 
 ## Hard rules
 
-- **No runtime dependencies.** App code imports only Node built-ins and its own modules. Dev dependencies are limited to type-checking and linting tools (`DESIGN.md` §1.1). Ask before adding anything else.
+- **No runtime dependencies.** App code imports only Node built-ins and its own modules. Dev dependencies are limited to type-checking and linting tools (`DESIGN.md` §1.1). The one exception is the vendored Tailwind browser build in `public/vendor/` (`DESIGN.md` §9.6). Ask before adding anything else.
+- UI styling uses Tailwind utility classes. Anything updated several times a second goes through inline `style` or text, never class changes; state is shown with `data-*` attributes and Tailwind's `data-*` variants.
 - Node 24.14, ES modules only, plain `.js`, no build step. The browser loads source files directly.
 - `public/app/logic/**` must not use the DOM, `window`, audio APIs or Node APIs. Its type-check project enforces this; never loosen that config to make an error go away.
 

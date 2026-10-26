@@ -23,7 +23,8 @@ node index.js <path-to-audio-directory> [--port <number>] [--verbose]
 | Area | Decision |
 |---|---|
 | Runtime | Node **24.14.0** (`"engines": { "node": ">=24.14.0" }`) |
-| Runtime dependencies | **None.** The app runs with nothing but Node and a browser. |
+| Runtime dependencies | **None on the server.** The browser loads exactly one third-party file: Tailwind CSS's browser build, vendored in `public/vendor/` (§9.6). Nothing is ever fetched from the internet. |
+| UI styling | Tailwind CSS v4 browser build (`@tailwindcss/browser`). It turns class names into CSS at runtime, so there is no CLI and no build step. |
 | Dev dependencies | Tooling only, never imported by app code: `typescript` and `@types/node` (type-checking JSDoc), `eslint`, `@eslint/js`, `@stylistic/eslint-plugin` and `globals` (linting and formatting) |
 | Language | Plain `.js` with JSDoc types. No build or compile step. The browser loads the source files directly as ES modules. |
 | Type-checking | `tsc --noEmit` with `checkJs` and `strict`, across three projects with different globals (§10.1) |
@@ -482,7 +483,7 @@ Browsers only allow an `AudioContext` to start inside a user gesture, so the app
 - Tiles for unplayable formats (for example `.ogg` in an older Safari) are disabled, with a tooltip explaining why.
 - The footer shows **playlists only**. Sound effects never create a player bar.
 - The footer is hidden when no playlist is active. Player bars sit in a CSS grid of `repeat(3, 1fr)`, in the order the playlists were started. The footer's max height is two rows of bars; beyond that it scrolls vertically.
-- Color tokens are defined as CSS custom properties on `:root`.
+- Color tokens are defined once, in Tailwind's `@theme` (§9.6), which exposes them as CSS custom properties on `:root`.
 
 ### 9.2 Player bar
 
@@ -541,6 +542,16 @@ UI components are classes with `mount(parent)` and `destroy()`. They subscribe t
 - Ogg playback in Safari depends on the version. `canPlay('ogg')` is checked when the library loads, and unsupported tiles are disabled rather than failing silently.
 - These points are confirmed by hand (§11.3), not by automated tests.
 
+### 9.6 Styling with Tailwind
+
+- `public/vendor/tailwindcss-browser-<version>.js` is the unmodified `dist/index.global.js` from the npm package `@tailwindcss/browser`, with its MIT license next to it. `index.html` loads it with a plain `<script>`. It makes no network requests and uses no `eval`.
+  - **Updating** means replacing the file, renaming it to the new version, and updating `index.html`.
+- Components style themselves with utility classes. App-wide tokens (colors, fonts) and the few rules utilities can't express live in one `<style type="text/tailwindcss">` block in `index.html`, using `@theme`.
+- The browser build watches the DOM and generates CSS for new class names. Keeping that cheap:
+  - Anything that changes several times a second (progress bars, time readouts) is updated through inline `style` or text, **never** by swapping classes.
+  - State changes (playing, active, disabled) toggle a `data-*` attribute that is styled with Tailwind's `data-*` variants, so the full set of classes is already present when the element is created.
+- Tailwind's own docs describe the browser build as meant for prototyping, because CSS is generated in the page. For a single local page with a few dozen elements, the cost is a few milliseconds at load.
+
 ---
 
 ## 10. Project structure
@@ -575,6 +586,8 @@ test/
 	backend/   …*.test.js
 	frontend/  …*.test.js
 	helpers/   fake-audio-engine.js  fake-clock.js  fake-backend-api.js  fake-prompter.js  tmp-tree.js  tag-builders.js
+public/vendor/
+	tailwindcss-browser-<version>.js  tailwindcss-browser.LICENSE   (§9.6; excluded from lint and type-checking)
 test_fixtures/
 	example_soundboard/            real MP3/OGG library: 3 playlists, 4 sounds, some with titles
 ```
