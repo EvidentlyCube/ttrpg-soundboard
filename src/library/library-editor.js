@@ -17,6 +17,7 @@ const SECONDS_KEYS = ['crossfade', 'fadeIn', 'fadeOut'];
 const EDITABLE = {
 	sound: { keys: ['title', 'gain'], validate: validateAudioOptions },
 	playlist: { keys: ['title', 'gain', ...SECONDS_KEYS], validate: validatePlaylistOptions },
+	track: { keys: ['title'], validate: validateAudioOptions },
 };
 
 /** The id does not belong to a sound in the library. */
@@ -25,6 +26,15 @@ export class UnknownSoundError extends Error {
 	constructor(soundId) {
 		super(`Unknown sound "${soundId}"`);
 		this.name = 'UnknownSoundError';
+	}
+}
+
+/** The id does not belong to a track of any playlist in the library. */
+export class UnknownTrackError extends Error {
+	/** @param {string} trackId */
+	constructor(trackId) {
+		super(`Unknown track "${trackId}"`);
+		this.name = 'UnknownTrackError';
 	}
 }
 
@@ -75,6 +85,24 @@ export class LibraryEditor {
 			this.#library.sounds = sortBy(this.#library.sounds, (entry) => entry.title);
 		}
 		return sound;
+	}
+
+	/**
+	 * Like `updateSound`, for a track; only its title can change for now. Tracks keep their path order (DESIGN.md §2.2),
+	 * so nothing is sorted again.
+	 * @param {string} trackId
+	 * @param {OptionChanges} changes
+	 * @returns {Promise<AudioFile>}
+	 */
+	async updateTrack(trackId, changes) {
+		const track = this.#library.playlists.flatMap((playlist) => playlist.tracks).find((entry) => entry.id === trackId);
+		if (!track) {
+			throw new UnknownTrackError(trackId);
+		}
+		const normalized = normalizeChanges(changes, EDITABLE.track);
+		await this.#queueWrite(`${track.absolutePath}.json`, (current) => ({ ...current, ...normalized }));
+		Object.assign(track, normalized);
+		return track;
 	}
 
 	/**

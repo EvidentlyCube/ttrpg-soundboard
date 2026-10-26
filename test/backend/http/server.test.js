@@ -285,6 +285,33 @@ describe('server', () => {
 		});
 	});
 
+	describe('track options', () => {
+		/**
+		 * @param {string} encodedId
+		 * @param {unknown} body
+		 */
+		function patchTrack(encodedId, body) {
+			return get(`/api/tracks/${encodedId}`, { method: 'PATCH', body: JSON.stringify(body) });
+		}
+
+		it('renames a track whose id is encoded as one segment or segment by segment', async () => {
+			const whole = await patchTrack(encodeURIComponent('Combat/Zażółć ♪ #1.ogg'), { title: 'Calm' });
+			assert.equal(whole.status, 200);
+			assert.equal((await json(whole)).title, 'Calm');
+			const segments = await patchTrack(`Combat/${encodeURIComponent('Zażółć ♪ #1.ogg')}`, { title: 'Calmer' });
+			assert.equal(segments.status, 200);
+			const { title } = JSON.parse(await readFile(join(musicRoot, 'Combat', 'Zażółć ♪ #1.ogg.json'), 'utf8'));
+			assert.equal(title, 'Calmer');
+			assert.equal((await json(await get('/api/library'))).playlists[0].tracks[0].title, 'Calmer');
+		});
+
+		it('rejects other options with 400 and unknown or sound ids with 404', async () => {
+			assert.equal((await patchTrack(encodeURIComponent('Combat/Zażółć ♪ #1.ogg'), { gain: 1 })).status, 400);
+			assert.equal((await patchTrack('Combat%2Fnope.ogg', { title: 'X' })).status, 404);
+			assert.equal((await patchTrack('Boom.mp3', { title: 'X' })).status, 404);
+		});
+	});
+
 	describe('playlist options', () => {
 		/**
 		 * @param {string} encodedId

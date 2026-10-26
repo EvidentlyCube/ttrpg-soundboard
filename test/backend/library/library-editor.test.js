@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { buildLibrary } from '../../../src/library/library.js';
-import { LibraryEditor, UnknownPlaylistError, UnknownSoundError } from '../../../src/library/library-editor.js';
+import { LibraryEditor, UnknownPlaylistError, UnknownSoundError, UnknownTrackError } from '../../../src/library/library-editor.js';
 import { ValidationError } from '../../../src/library/errors.js';
 import { updateJsonFile } from '../../../src/library/options-store.js';
 import { createTmpTree } from '../../helpers/tmp-tree.js';
@@ -226,5 +226,32 @@ describe('LibraryEditor.updatePlaylist', () => {
 		await assert.rejects(editor.updatePlaylist('Nope', { gain: 1 }), UnknownPlaylistError);
 		await assert.rejects(editor.updatePlaylist('Alpha.mp3', { gain: 1 }), UnknownPlaylistError);
 		assert.deepEqual(await readOptions('Combat'), { title: 'Combat', includedSubdirectories: ['Boss'], futureKey: 'kept' });
+	});
+});
+
+describe('LibraryEditor.updateTrack', () => {
+	it('saves a trimmed title into the track options file and updates the track in place', async () => {
+		const lib = library();
+		const editor = new LibraryEditor(lib);
+		const updated = await editor.updateTrack('Combat/1.mp3', { title: ' Battle ' });
+		assert.equal(updated.title, 'Battle');
+		assert.equal(lib.playlists.find((playlist) => playlist.id === 'Combat')?.tracks[0], updated);
+		assert.equal(lib.files.get('Combat/1.mp3'), updated);
+		assert.deepEqual(await readOptions('Combat/1.mp3'), { title: 'Battle' });
+	});
+
+	it('keeps other keys of the options file', async () => {
+		await writeFile(join(tree.root, 'Combat', '1.mp3.json'), JSON.stringify({ title: 'Old', gain: 0.5, futureKey: 1 }));
+		const editor = new LibraryEditor(library());
+		await editor.updateTrack('Combat/1.mp3', { title: 'New' });
+		assert.deepEqual(await readOptions('Combat/1.mp3'), { title: 'New', gain: 0.5, futureKey: 1 });
+	});
+
+	it('accepts only a title, and rejects unknown ids and sound ids', async () => {
+		const editor = new LibraryEditor(library());
+		await assert.rejects(editor.updateTrack('Combat/1.mp3', /** @type {any} */ ({ gain: 1 })), /Unknown option "gain"/);
+		await assert.rejects(editor.updateTrack('Combat/1.mp3', { title: ' ' }), /"title" must be a non-empty string/);
+		await assert.rejects(editor.updateTrack('Combat/nope.mp3', { title: 'X' }), UnknownTrackError);
+		await assert.rejects(editor.updateTrack('Alpha.mp3', { title: 'X' }), UnknownTrackError);
 	});
 });

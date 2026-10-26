@@ -1,5 +1,5 @@
 import { ValidationError } from '../library/errors.js';
-import { UnknownPlaylistError, UnknownSoundError } from '../library/library-editor.js';
+import { UnknownPlaylistError, UnknownSoundError, UnknownTrackError } from '../library/library-editor.js';
 import { isPlainObject, VOLUME_BUSES } from '../library/validate.js';
 import { findMediaFile, isMediaPath, mediaUrl, serveMedia } from './media.js';
 import { allowMethods, HttpError, sendJson } from './responses.js';
@@ -25,6 +25,7 @@ const LIBRARY_FORMAT_VERSION = 1;
 const MAX_BODY_BYTES = 16 * 1024;
 const SOUNDS_PREFIX = '/api/sounds/';
 const PLAYLISTS_PREFIX = '/api/playlists/';
+const TRACKS_PREFIX = '/api/tracks/';
 
 /**
  * @param {RouterContext} context
@@ -75,6 +76,11 @@ async function route(request, response, { library, settings, editor, publicDir }
 		allowMethods(request, ['PATCH']);
 		const body = /** @type {OptionChanges} */ (await readJsonBody(request));
 		sendJson(response, 200, toPlaylistJson(await editItem(pathname, PLAYLISTS_PREFIX, (id) => editor.updatePlaylist(id, body))));
+	} else if (pathname.startsWith(TRACKS_PREFIX)) {
+		allowMethods(request, ['PATCH']);
+		const body = /** @type {OptionChanges} */ (await readJsonBody(request));
+		// Decoding the whole rest of the path keeps literal slashes, so ids encoded whole or per segment both work.
+		sendJson(response, 200, toFileJson(await editItem(pathname, TRACKS_PREFIX, (id) => editor.updateTrack(id, body))));
 	} else if (pathname.startsWith('/api/')) {
 		throw new HttpError(404, 'Not found');
 	} else if (isMediaPath(pathname)) {
@@ -123,7 +129,7 @@ async function editItem(pathname, prefix, edit) {
 	try {
 		return await edit(id);
 	} catch (error) {
-		if (error instanceof UnknownSoundError || error instanceof UnknownPlaylistError) {
+		if (error instanceof UnknownSoundError || error instanceof UnknownPlaylistError || error instanceof UnknownTrackError) {
 			throw new HttpError(404, error.message);
 		}
 		if (error instanceof ValidationError) {
