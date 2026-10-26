@@ -637,6 +637,88 @@ describe('PlaylistPlayer', () => {
 		});
 	});
 
+	describe('fade in and fade out', () => {
+		it('fades in when the playlist starts, also from a jump while idle', () => {
+			const { player, engine } = setup({ rules: { fadeIn: 3 } });
+			player.play();
+			assert.deepEqual(engine.voices[0].gainRamps, [[0, 0], [1, 3]]);
+			player.stop('instant');
+			player.jumpTo(1);
+			assert.deepEqual(engine.voices[1].gainRamps, [[0, 0], [1, 3]]);
+		});
+
+		it('does not fade in on an instant start', () => {
+			const { player, engine } = setup({ rules: { fadeIn: 3 } });
+			player.play('instant');
+			assert.deepEqual(engine.voices[0].gainRamps, []);
+		});
+
+		it('fades out on stop, but never for longer than the track has left', () => {
+			const { player, engine, advance } = setup({ rules: { fadeOut: 5 } });
+			player.play();
+			advance(8.1);
+			player.stop();
+			assert.equal(player.state, 'idle');
+			assert.deepEqual(engine.voices[0].gainRamps, [[0, 2]]);
+		});
+
+		it('fades out from wherever a fade-in had got to', () => {
+			const { player, engine, advance } = setup({ rules: { fadeIn: 4, fadeOut: 2 } });
+			player.play();
+			advance(1.1);
+			player.stop();
+			assert.deepEqual(engine.voices[0].gainRamps, [[0, 0], [1, 4], [0, 2]]);
+		});
+
+		it('lets a track fading out from a crossfade carry on when stopped, and fades the new one out', () => {
+			const { player, engine, advance } = setup({ rules: { crossfade: 2, fadeOut: 3 } });
+			player.play();
+			advance(8.2);
+			const [old, fresh] = engine.voices;
+			player.stop();
+			assert.equal(old.stopped, false);
+			assert.deepEqual(old.gainRamps, [[0, 2]], 'its crossfade is left as it was');
+			assert.deepEqual(fresh.gainRamps.at(-1), [0, 3]);
+			advance(4.1);
+			assert.equal(engine.liveVoices.length, 0);
+		});
+
+		it('leaves a fade-out alone when the playlist is played again', () => {
+			const { player, engine, advance } = setup({ rules: { fadeIn: 1, fadeOut: 3 } });
+			player.play();
+			advance(2);
+			player.stop();
+			player.play();
+			const [old, fresh] = engine.voices;
+			assert.equal(old.stopped, false);
+			assert.deepEqual(fresh.gainRamps, [[0, 0], [1, 1]]);
+			advance(4.1);
+			assert.equal(old.stopped, true);
+			assert.equal(fresh.stopped, false);
+		});
+
+		it('cuts every fade on an instant stop or start', () => {
+			const { player, engine, advance } = setup({ rules: { fadeOut: 3 } });
+			player.play();
+			advance(2);
+			player.stop();
+			player.play('instant');
+			assert.equal(engine.voices[0].stopped, true);
+			player.stop('instant');
+			assert.equal(engine.liveVoices.length, 0);
+		});
+
+		it('ends a fade-in when paused, so it resumes at full volume', () => {
+			const { player, engine, advance } = setup({ rules: { fadeIn: 4 } });
+			player.play();
+			advance(1.1);
+			player.pause();
+			assert.deepEqual(engine.voices[0].gainRamps.at(-1), [1, 0]);
+			player.resume();
+			assert.deepEqual(engine.voices[0].gainRamps.at(-1), [1, 0], 'resuming does not fade');
+		});
+	});
+
 	describe('fades (future rules)', () => {
 		it('uses new rules from the next change of track', () => {
 			const { player, engine, advance } = setup();

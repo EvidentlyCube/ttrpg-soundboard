@@ -138,7 +138,10 @@ export class PlaylistPlayer {
 			return;
 		}
 		this.#generation++;
-		this.#retireCurrent(resolveTransition('stop', transition, this.#rules));
+		const timing = resolveTransition('stop', transition, this.#rules);
+		const current = this.#current;
+		// A fade-out longer than what is left would be cut off by the end of the track anyway.
+		this.#retireCurrent(current ? { ...timing, fadeOutSeconds: Math.min(timing.fadeOutSeconds, this.#timeLeft(current)) } : timing);
 		this.#stopProgress();
 		this.#cancelCrossfade();
 		this.#setState('idle');
@@ -208,12 +211,16 @@ export class PlaylistPlayer {
 		this.#planCrossfade();
 	}
 
-	/** Pausing means silence, so a track still fading out from a crossfade is stopped too. */
+	/**
+	 * Pausing is immediate and means silence, so a track still fading out from a crossfade is stopped too. A fade-in in
+	 * progress ends at full level, so resuming never has to know about fades.
+	 */
 	pause() {
 		if (!this.#current || (this.#state !== 'playing' && this.#state !== 'loading')) {
 			return;
 		}
 		this.#current.voice.pause();
+		this.#current.voice.rampGain(1, 0);
 		this.#stopProgress();
 		this.#cancelCrossfade();
 		this.#finishAllRetiring();
