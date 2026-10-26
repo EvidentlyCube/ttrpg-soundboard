@@ -29,38 +29,7 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## Proposals
 
-### 4. Playlist fade in and fade out
-
-**Goal.** A playlist can fade in when it starts and fade out when it stops, each with its own duration set in the Customize dialog. The plain "Play" and "Stop" (tile clicks, the footer's stop button, the menu items) use them; "Play (Instant)" and "Stop (Instant)" keep cutting at once.
-
-**Already decided** (backlog): stopping during a crossfade lets the fading-out track carry on and fades the incoming one out from its current level over the full fade-out. There is no `stopping` state: a stop marks the playlist idle at once and the fades finish in the background. Playing again during those fades starts a new playback and leaves them alone.
-
-**Design changes.**
-
-- **§2.3, §5.1, §5.2.** Playlist options gain `fadeIn` and `fadeOut`: seconds, `0` to `30`, default `0`, rounded to 2 decimals, validated like `crossfade`. They are part of `Playlist`, `/api/library` and `PATCH /api/playlists/<id>`.
-- **§6.1, §6.2.** `customizePlaylist(playlistId, { …, fadeIn?, fadeOut? })`; `playlist.changed` carries them. `resolvePlaybackRules` reads them (§8.2).
-- **§8 PlaylistPlayer:**
-  - **Fade-in** on a `'default'` play, and on a jump from idle: the first voice ramps from silence over `fadeIn`.
-  - **Fade-out** on a `'default'` stop: the current voice, if audible, moves to the retiring set and ramps to silence from its *current* level over `fadeOut`, cut to the time the track has left. Thanks to the fade-ramp fix, an interrupted fade-in continues down from where it had got to. A paused or still-loading voice is stopped at once, as today.
-  - **Retiring voices** keep fading after a stop and after a new play. Only `'instant'` cuts them, as today. The rule that a stop without a fade-out cuts them (`killRetiring` when `fadeOut` is 0) stays, so with fade-out off, Stop still means silence.
-  - **Pause** is immediate and ignores the fade settings. It still stops voices that are fading out from a crossfade at once, and it ends a fade-in in progress by setting the voice to full level, so Resume (also immediate) continues at full volume. Pause and resume never need to know about fades.
-  - **Invariant (§8 rule 4):** while idle, no voice is *audible*; voices may still be fading out until their deadline (fade + 1 s). After that, nothing is left.
-- **§9.7.** The playlist dialog gets **Fade in** and **Fade out** sections. They reuse the Crossfade control, generalized into a seconds control: a slider from 0 to 10 s and a typed value up to 30 s, with no limit from track lengths.
-
-**Owner's decisions (review round 1).**
-1. Resume after a pause is immediate.
-2. Pause is immediate.
-3. Pause and resume always ignore the fade settings. Tracks retiring from a crossfade are stopped at once on pause. This replaces the earlier backlog note that pausing would no longer cut a crossfade.
-4. No extra limit on the fade-in for short tracks; the fade-out is cut to the time left.
-5. Picking a track while the playlist is stopped acts like starting it: it fades in.
-6. Pausing during a fade-in ends the fade-in. After Resume the track plays at full volume.
-
-**Plan.**
-
-1. **Settings.** `fadeIn` and `fadeOut` in validation, `Playlist`, `/api/library`, the playlist `PATCH`, `LibraryModel`, the facade, `OptionsSync` and `resolvePlaybackRules`. *Tests:* as for `crossfade`.
-2. **Player.** Fade-in on play, fade-out on stop from the current level and cut to the time left, retiring voices surviving stop, play and pause, the invariant updated. *Tests:* each case on the fake engine, stop during a crossfade (both voices), play again during a fade-out, `'instant'` still cutting everything, and the randomized invariant.
-3. **UI.** The shared seconds control and the two sections. *Tests:* the control's helpers, the manual checklist and a headless Chromium run, including measuring the real gain levels of a fade-in and a fade-out.
-4. **Design update.** `DESIGN.md` in its own commit; then this proposal and its backlog entry are removed.
+None yet.
 
 ---
 
@@ -71,17 +40,6 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 These are the next features, in roughly the order they will be built. Each will get its own proposal when its turn comes. **Decided** lists the owner's answers already given; the notes list what else is known and the questions still to settle.
 
 **Decided for all of them.** Customization changes apply immediately and are saved with a 500 ms debounce, as the sound Customize dialog does (DESIGN.md §6.4, §9.7). Re-sorting on screen waits until the dialog closes. Playback state is never remembered across a page reload, so F5 always gives a clean start.
-
-#### 4. Playlist fade in and fade out
-
-A fade-in used only when the playlist starts, and a fade-out used only when it stops.
-
-- **Seam:** `PlaybackRules.fadeIn` / `fadeOut` (DESIGN.md §8.2).
-- **Decided:**
-  - Stopping during a crossfade: the track that was fading out carries on fading out; the track that was fading in stops its fade-in and fades out from its current level over the normal fade-out duration.
-  - Pausing during a crossfade no longer cuts the track that is fading out, and a `'default'` stop lets it carry on (today both cut it: `pause()` and `killRetiring` in `resolveTransition`, DESIGN.md §8.1).
-  - There is **no `stopping` state.** A stop marks the playlist idle at once; the fading voices just finish in the background (the retiring set). Playing it again while they fade starts a new, separate playback and leaves those fades alone.
-- **Notes:** "(Instant)" commands still cut retiring voices, as today (§6.1). Open: does resuming after a pause fade in? Likely not.
 
 #### 5. Track list in the playlist dialog
 

@@ -120,15 +120,17 @@ Playlist options (`Combat.json`)
 	"title": "Combat",
 	"gain": 0.8,
 	"crossfade": 2.5,
+	"fadeIn": 1,
+	"fadeOut": 3,
 	"includedSubdirectories": ["Boss", "Boss/Phase 2"]
 }
 ```
 - `gain` means the same as for sounds and tracks, and applies to the whole playlist.
-- `crossfade` is in seconds, `0` (the default, off) to `30`, rounded to 2 decimals (§8.4).
+- `crossfade` (§8.4), `fadeIn` and `fadeOut` (§8.5) are in seconds, `0` (the default, off) to `30`, rounded to 2 decimals.
 - `includedSubdirectories` lists paths relative to the playlist directory, using `/`. Every depth is listed explicitly.
 - Listed directories that no longer exist are ignored. They are not removed.
 
-**Validation (fatal).** Any options file or `.soundboard` that fails `JSON.parse`, is not an object, or has the wrong type for a known key (`title` must be a non-empty string, `gain` must be a number from `0` to `4`, `crossfade` a number from `0` to `30`, `duration` a non-negative number or `null` and present together with a well-formed `measuredFrom`, `includedSubdirectories` must be an array of strings, `version` must be a positive integer, `volumes.*` must be numbers in `0..1`) is an error. Bootstrap gathers **all** such errors, prints them in red with their paths, and exits with code `1` **before asking any questions or writing anything**. The user must fix or delete those files. Options files of empty playlists are validated too.
+**Validation (fatal).** Any options file or `.soundboard` that fails `JSON.parse`, is not an object, or has the wrong type for a known key (`title` must be a non-empty string, `gain` must be a number from `0` to `4`, `crossfade`, `fadeIn` and `fadeOut` numbers from `0` to `30`, `duration` a non-negative number or `null` and present together with a well-formed `measuredFrom`, `includedSubdirectories` must be an array of strings, `version` must be a positive integer, `volumes.*` must be numbers in `0..1`) is an error. Bootstrap gathers **all** such errors, prints them in red with their paths, and exits with code `1` **before asking any questions or writing anything**. The user must fix or delete those files. Options files of empty playlists are validated too.
 
 **Unknown keys are preserved.** Whenever the app rewrites a file, it reads it again, merges, and writes back the whole object, so keys from future versions survive.
 
@@ -231,7 +233,7 @@ A file whose duration can't be read is stored as `"duration": null` with its `me
 
 ```js
 Library   { root, playlists: Playlist[], sounds: AudioFile[], files: Map<id, AudioFile> }
-Playlist  { id, title, gain, crossfade, tracks: AudioFile[], includedSubdirectories: string[] }
+Playlist  { id, title, gain, crossfade, fadeIn, fadeOut, tracks: AudioFile[], includedSubdirectories: string[] }
 AudioFile { id /* root-relative POSIX path */, title, format: 'mp3'|'ogg', size, gain, duration /* seconds or null */, absolutePath }
 Settings  { volumes: { master, music, sfx } }   // held by SettingsStore, saved to .soundboard
 ```
@@ -239,7 +241,7 @@ Settings  { volumes: { master, music, sfx } }   // held by SettingsStore, saved 
 - `playlists` contains only non-empty playlists, sorted by title; `sounds` are sorted by title; tracks keep path order (§2.2).
 - `files` indexes every sound and track by id. It is the only list of files the server may stream.
 - `LibraryEditor` changes the library while the app runs. `updateSound(id, { title?, gain? })` validates the change with the options file rules (§2.3), rejects unknown keys, trims the title, and rounds the gain. It then merges the change into the sound's options file (read, merge, atomic write, unknown keys kept), and only once that succeeded updates the `AudioFile` in place and sorts `sounds` again. Writes to one options file run one after another in the order they were requested, so the file always ends with the newest values; a failed write doesn't block later ones. An id that isn't a sound (including a track id) is an `UnknownSoundError`.
-- `updatePlaylist(id, { title?, gain?, crossfade? })` does the same for a playlist's options file (`<directory>.json` in the root), leaving its `includedSubdirectories` alone, and sorts `playlists` again after a rename. `crossfade` is accepted only here, not for sounds. An unknown id is an `UnknownPlaylistError`.
+- `updatePlaylist(id, { title?, gain?, crossfade?, fadeIn?, fadeOut? })` does the same for a playlist's options file (`<directory>.json` in the root), leaving its `includedSubdirectories` alone, and sorts `playlists` again after a rename. The timings are accepted only here, not for sounds. An unknown id is an `UnknownPlaylistError`.
 - `SettingsStore` keeps the settings in memory and writes them back to `.soundboard` with the same read-merge-write and atomic rename as the options files (§2.3). Writes are **serialized**: one in flight at a time, and changes made meanwhile are written together by one follow-up write, so the file always ends with the newest values.
 
 ### 5.2 HTTP API (`src/http/`, built on `node:http`)
@@ -253,7 +255,7 @@ The server knows nothing about playback state.
 | GET | `/api/settings` | `{ "volumes": { "master": 1, "music": 0.8, "sfx": 1 } }` |
 | PUT | `/api/settings/volumes` | Body `{ master?, music?, sfx? }` (numbers in `0..1`). Merged into the settings and saved; returns the full settings. `400` for invalid JSON, a non-object, an out-of-range value or an unknown key. `413` for bodies over 16 KB. |
 | PATCH | `/api/sounds/<encoded id>` | Body `{ title?, gain? }`. Saved through `LibraryEditor` (§5.1); returns the updated sound in the `/api/library` format. `400` for invalid JSON, a non-object, an unknown key, an empty title or an out-of-range gain. `404` when the id isn't a sound. `413` for bodies over 16 KB. |
-| PATCH | `/api/playlists/<encoded id>` | The same for a playlist, with body `{ title?, gain?, crossfade? }` (`LibraryEditor.updatePlaylist`); returns the playlist with its tracks in the `/api/library` format. |
+| PATCH | `/api/playlists/<encoded id>` | The same for a playlist, with body `{ title?, gain?, crossfade?, fadeIn?, fadeOut? }` (`LibraryEditor.updatePlaylist`); returns the playlist with its tracks in the `/api/library` format. |
 | GET, HEAD | `/media/<encoded id>` | The audio file, streamed |
 
 - API responses are JSON with `Cache-Control: no-store`. Errors are `{ "error": "message" }`.
@@ -264,7 +266,7 @@ The server knows nothing about playback state.
 {
 	"version": 1,
 	"playlists": [
-		{ "id": "Combat", "title": "Combat", "gain": 0.8, "crossfade": 2.5, "tracks": [
+		{ "id": "Combat", "title": "Combat", "gain": 0.8, "crossfade": 2.5, "fadeIn": 1, "fadeOut": 3, "tracks": [
 			{ "id": "Combat/01 Battle.mp3", "title": "Battle", "format": "mp3", "size": 4194304, "gain": 1, "duration": 213.47, "url": "/media/Combat/01%20Battle.mp3" }
 		] }
 	],
@@ -339,7 +341,7 @@ jumpToTrack(playlistId, trackIndex, { transition })
 seek(playlistId, seconds)
 pausePlaylist(playlistId)
 resumePlaylist(playlistId)
-customizePlaylist(playlistId, { title?, gain?, crossfade? })  // applies at once; saves 500 ms later
+customizePlaylist(playlistId, { title?, gain?, crossfade?, fadeIn?, fadeOut? })  // applies at once; saves 500 ms later
 flushPlaylistOptions(playlistId)          // save that playlist's pending change now (its dialog closed)
 
 // volume (value is the slider position, 0..1, clamped)
@@ -357,7 +359,7 @@ on(type, handler) → unsubscribe, off(type, handler)
 
 **Transitions** are a deliberate two-way choice, not a list of effects:
 
-- **`'default'`** asks the playlist's `PlaybackRules` (§8.2) what to do: play → fade in, next → crossfade, stop → fade out. All rule values are currently `0`, so `'default'` behaves like `'instant'`. When fades are configured, only the rules change; callers stay the same.
+- **`'default'`** asks the playlist's `PlaybackRules` (§8.2) what to do: play → fade in, next → crossfade, stop → fade out (§8.4, §8.5). With all of them off (the defaults), `'default'` behaves like `'instant'`, except that it doesn't cut voices already fading out.
 - **`'instant'`** ignores the rules completely. It starts or stops **everything** for that playlist right now, including tracks still fading out (§8). It is the panic button: a guaranteed immediate start or silence.
 
 ### 6.2 Events
@@ -373,7 +375,7 @@ on(type, handler) → unsubscribe, off(type, handler)
 | `sound.changed` | `{ sound }`, the sound with its new title or gain, right after `customizeSound` |
 | `sound.saved` | `{ soundId }`, once every change to that sound has been saved |
 | `sound.saveFailed` | `{ soundId, message }`; the change stays in effect and is saved again with the next one |
-| `playlist.changed` | `{ playlist }`, the playlist (with its tracks) with its new title, gain or crossfade, right after `customizePlaylist` |
+| `playlist.changed` | `{ playlist }`, the playlist (with its tracks) with its new title, gain or timings, right after `customizePlaylist` |
 | `playlist.saved` | `{ playlistId }`, once every change to that playlist has been saved |
 | `playlist.saveFailed` | `{ playlistId, message }`, as for sounds |
 | `playlist.stateChanged` | `{ playlistId, state, trackIndex, track, duration, crossfadeFrom }` |
@@ -464,7 +466,7 @@ This is where the race-condition risk sits. The design rules:
    - **Any `'instant'` command stops every retiring voice immediately**, as well as replacing or stopping the current one.
    - Each retiring voice has a **hard deadline** (fade duration + 1 s), after which `stop()` is forced. No sound can play forever.
    - The retiring set holds at most 4 voices; the oldest is stopped when it would grow larger. This covers someone mashing "Next" while crossfades are on.
-4. **Invariant**, checked by a randomized test over 400 command sequences, with and without crossfades and fades: while active, at most one live voice is not fading out, and the fading ones stay within the cap; when idle, no voice and no timer is left. After a final stop and enough time for any fade, nothing is left either.
+4. **Invariant**, checked by a randomized test over 400 command sequences, with and without crossfades and fades: while active, at most one live voice is not fading out, and the fading ones stay within the cap. While idle, voices may still be fading out after a stop (§8.5); once their fades and deadlines are over, no voice and no timer is left. After a final stop and enough time for any fade, nothing is left either.
 5. **Clock timers are bound too.** The crossfade timer (§8.4) is cancelled whenever the track changes, the playlist stops or pauses, and it also checks that its voice is still current before acting.
 
 ### 8.1 States
@@ -479,7 +481,7 @@ This is where the race-condition risk sits. The design rules:
 
 - `play` is ignored unless idle. `jumpTo` works in any state; from idle it starts the playlist at that track.
 - `next`, `previous` and `jumpTo` from `paused` start the new track **playing**. `pause` in `loading` keeps the track paused once it loads; `resume` before loading goes back to `loading`.
-- `pause` means silence: it also stops voices still fading out from a crossfade. A `'default'` stop without a fade-out does the same (`killRetiring`), so Stop means silence too.
+- `pause` and `resume` are immediate and ignore the fade settings. `pause` means silence: it also stops voices still fading out from a crossfade, and it ends a fade-in in progress by setting the voice to full level, so `resume` never has to know about fades. A `'default'` stop without a fade-out also stops retiring voices (`killRetiring`), so Stop means silence too; with a fade-out they carry on (§8.5).
 - `seek` works in `loading`, `playing` and `paused`, clamped to the track, and with a crossfade coming, to the crossfade point (§8.4). While loading it is applied, and clamped, once the track has loaded.
 - `previous`: past **3 s** into the track, or when there is no previous track, it restarts the current track (seek to 0, and resume if paused). Otherwise it goes to the previous track, following the order strategy.
 - `next` past the last track without looping stops the playlist.
@@ -490,7 +492,7 @@ This is where the race-condition risk sits. The design rules:
 
 ### 8.2 Extension points
 
-Each is a single seam that the planned features in the [roadmap](ROADMAP.md) fill in. `crossfade` is the only rule read from the playlist so far; the others are the defaults.
+Each is a single seam that the planned features in the [roadmap](ROADMAP.md) fill in. `crossfade`, `fadeIn` and `fadeOut` are read from the playlist; `order` and `loop` are still the defaults.
 
 ```js
 // Resolved per playlist by resolvePlaybackRules(playlist); PlaylistPlayer.setRules replaces them while playing.
@@ -535,8 +537,15 @@ With a non-zero `crossfade` rule, one track gives way to the next by fading out 
 - **Seeking** never goes past the crossfade point: a seek beyond it lands on it, so the whole crossfade plays (starting at once when playing) instead of being squeezed into the last moment. The player enforces this, whoever asks to seek.
 - **Manual changes.** Next, Previous and jumps with `'default'` use the same overlap, if the old track is audible. `'instant'` cuts over and stops every voice still fading out.
 - **One track, looping.** The track crossfades into a new start of itself.
-- **Stop and pause** silence both tracks (§8.1).
+- **Pause** silences both tracks (§8.1). **Stop** does too without a fade-out; with one, the old track finishes its crossfade while the new one fades out (§8.5).
 - **For display**, snapshots and the `playlist.stateChanged` and `playlist.progress` events carry `crossfadeFrom`: the position in the current track where the crossfade into the next will start, `duration − overlap`. It is `null` when there won't be one (no crossfade, an unknown duration, or no next track). `setRules` sends a progress event at once, so the display follows a new setting even while paused.
+
+### 8.5 Fade in and fade out
+
+- **Fade-in.** A `'default'` start (a tile click, Play, or a jump to a track while idle) ramps the first voice from silence over `fadeIn`. `'instant'` starts at full level.
+- **Fade-out.** A `'default'` stop marks the playlist idle at once; there is no "stopping" state. The current voice, if audible, moves to the retiring set and ramps to silence over `fadeOut`, cut to the time the track has left. The ramp starts from the voice's current level (§6.3), so a fade-in that was still going turns round smoothly. A paused or still-loading voice is stopped at once.
+- **Fades carry on.** Voices already fading out, from an earlier stop or a crossfade, keep fading after a stop and after a new start, which plays over them. Only `'instant'` commands, pause, and a stop without a fade-out cut them. Their deadlines (fade + 1 s) still apply.
+- **Short tracks.** The fade-in has no extra limit; a crossfade or the track's end takes over from wherever it had got to.
 
 ---
 
@@ -624,7 +633,7 @@ One shared `Overlay` shows the context menus and the track list popover; opening
 | Stop (Instant) | `stopPlaylist('instant')`; enabled only while active |
 | Customize | opens the playlist's Customize dialog (§9.7) |
 
-"Active" means `loading`, `playing` or `paused`. With the current all-zero rules, each plain item behaves exactly like its "(Instant)" twin. Separators divide the groups.
+"Active" means `loading`, `playing` or `paused`. The plain items follow the playlist's fades and crossfade; with those off, each behaves like its "(Instant)" twin, except for cutting voices already fading out. Separators divide the groups.
 
 ### 9.4 Components and DOM helpers
 
@@ -670,10 +679,10 @@ UI components extend `Component` (`ui/component.js`): `render()` builds the elem
 
 **The playlist dialog** (`ui/playlist-editor.js`), opened from the playlist menu: the title (hint: `Folder: <directory>`), the volume, Play / Stop (`togglePlaylist`, like a tile click; it follows `playlist.stateChanged`) and the status (`playlist.saved`, `playlist.saveFailed`). Later playlist settings add their sections here.
 
-**Crossfade section** (`ui/crossfade-control.js`), in the playlist dialog:
-- A slider in 0.5 s steps and a readout (`Off`, `2.5 s`) that turns into a text field when clicked, like the gain widget's. Typed values accept `,` as the decimal point, an `s` suffix and `off`.
-- The limits come from the playlist's tracks with a known duration (`crossfadeLimits` in `ui/crossfade-scale.js`). The text field allows up to `min(30 s, half the shortest track)`, and longer typed values are clamped to that. The slider stops at `min(10 s, that limit)`, rounded down to a step.
-- A note below says what limits it ("Up to 15.1 s, half the shortest track."). A stored value above the limit, for example after a shorter track was added, is shown as stored, with a note that short tracks use at most half their length; the player clamps it anyway (§8.4).
+**Fade in, Crossfade and Fade out sections** in the playlist dialog, in that order, each a seconds control (`ui/seconds-control.js`):
+- A slider in 0.5 s steps and a readout (`Off`, `2.5 s`) that turns into a text field when clicked, like the gain widget's. Typed values accept `,` as the decimal point, an `s` suffix and `off`, and are clamped to the control's limit. An optional note sits below.
+- **Fade in and fade out** allow up to 10 s on the slider and 30 s typed (`SECONDS_LIMITS` in `ui/seconds-scale.js`), with no note.
+- **Crossfade** limits come from the playlist's tracks with a known duration (`crossfadeLimits`). The text field allows up to `min(30 s, half the shortest track)`, and the slider stops at `min(10 s, that limit)`, rounded down to a step. The note says what limits it ("Up to 15.1 s, half the shortest track."). A stored value above the limit, for example after a shorter track was added, is shown as stored, with a note that short tracks use at most half their length; the player clamps it anyway (§8.4).
 
 **Gain widget** (`ui/gain-control.js`), used in the dialogs and for the header volumes. It looks like the volume control of many media players, `h-8` tall:
 ```
@@ -722,7 +731,7 @@ public/
 		            splash.js  overlay.js  context-menu.js  track-list.js  tile-grid.js
 		            playlist-tile.js  sound-tile.js  player-dock.js  player-bar.js  volume-controls.js
 		            dialog.js  customize-parts.js  sound-editor.js  playlist-editor.js  gain-control.js  gain-scale.js
-		            crossfade-control.js  crossfade-scale.js
+		            seconds-control.js  seconds-scale.js
 test/
 	backend/    cli/  http/  library/  metadata/
 	frontend/   logic tests, backend-api.test.js, ui/ (pure UI helpers)
