@@ -102,9 +102,15 @@ All sorting uses `Intl.Collator('en', { numeric: true, sensitivity: 'base' })`, 
 
 Sound or track options (`Explosion.mp3.json`)
 ```json
-{ "title": "Big Explosion", "gain": 0.5957 }
+{
+	"title": "Big Explosion",
+	"gain": 0.5957,
+	"duration": 4.21,
+	"measuredFrom": { "size": 48213, "modified": "2026-10-24T16:41:00.000Z", "sha1": "3f786850e387550fdab836ed7e6dc881de23001b" }
+}
 ```
 - `title` is optional; without it the default title is used (§2.4).
+- `duration` (seconds, 2 decimals, or `null` when it can't be read) and `measuredFrom` (the file's size, modification time and SHA-1 at that moment) are written by bootstrap (§3.5), never by hand. They always come together.
 - `gain` is optional and defaults to `1`. It is the item's own volume as the linear multiplier a Web Audio `GainNode` takes: `1` plays the file as recorded, `2` doubles the amplitude (about +6 dB), `0` is silent. The UI shows it in decibels (§6.4). It is deliberately not called `volume`, because the volumes in `.soundboard` are slider positions, a different thing. A track's `gain` is applied together with its playlist's (§6.4); there is no UI for it yet ([roadmap](ROADMAP.md)).
 - The app writes `gain` rounded to 4 decimal places.
 
@@ -113,14 +119,16 @@ Playlist options (`Combat.json`)
 {
 	"title": "Combat",
 	"gain": 0.8,
+	"crossfade": 2.5,
 	"includedSubdirectories": ["Boss", "Boss/Phase 2"]
 }
 ```
 - `gain` means the same as for sounds and tracks, and applies to the whole playlist.
+- `crossfade` is in seconds, `0` (the default, off) to `30`, rounded to 2 decimals (§8.4).
 - `includedSubdirectories` lists paths relative to the playlist directory, using `/`. Every depth is listed explicitly.
 - Listed directories that no longer exist are ignored. They are not removed.
 
-**Validation (fatal).** Any options file or `.soundboard` that fails `JSON.parse`, is not an object, or has the wrong type for a known key (`title` must be a non-empty string, `gain` must be a number from `0` to `4`, `includedSubdirectories` must be an array of strings, `version` must be a positive integer, `volumes.*` must be numbers in `0..1`) is an error. Bootstrap gathers **all** such errors, prints them in red with their paths, and exits with code `1` **before asking any questions or writing anything**. The user must fix or delete those files. Options files of empty playlists are validated too.
+**Validation (fatal).** Any options file or `.soundboard` that fails `JSON.parse`, is not an object, or has the wrong type for a known key (`title` must be a non-empty string, `gain` must be a number from `0` to `4`, `crossfade` a number from `0` to `30`, `duration` a non-negative number or `null` and present together with a well-formed `measuredFrom`, `includedSubdirectories` must be an array of strings, `version` must be a positive integer, `volumes.*` must be numbers in `0..1`) is an error. Bootstrap gathers **all** such errors, prints them in red with their paths, and exits with code `1` **before asking any questions or writing anything**. The user must fix or delete those files. Options files of empty playlists are validated too.
 
 **Unknown keys are preserved.** Whenever the app rewrites a file, it reads it again, merges, and writes back the whole object, so keys from future versions survive.
 
@@ -144,7 +152,7 @@ Bootstrap runs before the HTTP server starts. The decision logic is the domain s
 ### 3.1 Steps common to both modes
 
 1. Parse arguments. On a usage error (missing directory, extra arguments, unknown option, invalid port) or a path that is not a directory, print the reason and the usage line to stderr and exit `1`.
-2. **Scan** the tree (§2.1). Scanning reads directory listings and file sizes only, never file contents.
+2. **Scan** the tree (§2.1). Scanning reads directory listings and file sizes and modification times only, never file contents.
 3. **Validate** every existing options file and `.soundboard` (§2.3). Any error is fatal.
 4. **Report warnings**: unsupported audio files, orphan options files, symlinks, empty playlists. These never stop the app.
 
@@ -176,11 +184,21 @@ Bootstrap reports how many options files it created or updated and how many play
 
 **Extension point:** the library is built once at startup. Rescanning while running would reuse `BootstrapService` and the scanner ([roadmap](ROADMAP.md)).
 
+### 3.5 Durations
+
+In both modes, after the questions and without asking anything, bootstrap makes sure every sound and track has a current `duration` (§2.3). The decision is `measureIfNeeded` in `src/library/durations.js`:
+
+- **No `duration` yet:** hash the whole file (SHA-1, `node:crypto`), read its duration (§4.3), and store both.
+- **Same size and modification time as `measuredFrom`:** nothing is read.
+- **Otherwise:** hash the whole file. If the hash is the same, only `size` and `modified` in `measuredFrom` are refreshed, because the file was merely copied or touched. If it differs, the file was replaced, so the duration is read again.
+
+A file whose duration can't be read is stored as `"duration": null` with its `measuredFrom`, so it isn't read again on every start. New options files get their duration in the same write as their title; existing ones are merged as usual (§2.3), and each counts as updated in the report. Before any file is read, bootstrap prints `Measuring the duration of N audio files…`. The first run therefore reads every file once; later runs only read files that look changed.
+
 ---
 
 ## 4. Metadata extraction
 
-`readTitle(filePath) → Promise<string | null>` in `src/metadata/` picks the parser by extension (`.mp3`, `.ogg`, case-insensitive). It returns `null` for missing or malformed tags and only throws for file system errors. It reads through a file handle with bounded reads and never loads the whole file. No third-party code is involved.
+`readTitle(filePath) → Promise<string | null>` and `readDuration(filePath) → Promise<number | null>` in `src/metadata/` pick the parser by extension (`.mp3`, `.ogg`, case-insensitive). They return `null` for missing or malformed data and only throw for file system errors. They read through a file handle with bounded reads and never load the whole file. No third-party code is involved.
 
 ### 4.1 MP3: ID3v2, falling back to ID3v1
 
@@ -197,6 +215,14 @@ Bootstrap reports how many options files it created or updated and how many play
 - Recognize Vorbis (`\x01vorbis` / `\x03vorbis`) and Opus (`OpusHead` / `OpusTags`). Parse the vendor string, then the comment list. The value of the first non-empty `TITLE=` entry (key matched case-insensitively) is the title, decoded as UTF-8.
 - Other codecs in an Ogg container return `null`.
 
+### 4.3 Durations
+
+- **MP3** (`mpeg.js`, MPEG-1, -2 and -2.5 Layer III). Skip the ID3v2 tag (and its footer, if flagged) and look for the first frame header within 64 KB. A header only counts if another one follows at the frame length it implies, or the file ends there, so stray bytes are skipped.
+  - With a `Xing` or `Info` header (after the side information: 32 or 17 bytes for MPEG-1 stereo or mono, 17 or 9 for MPEG-2/2.5) whose frame count flag is set, or a `VBRI` header (32 bytes after the frame header): `frames × samples per frame ÷ sample rate`, with 1152 samples per frame for MPEG-1 and 576 otherwise.
+  - Otherwise, as constant bitrate: `audio bytes × 8 ÷ bitrate`. The audio bytes run from the first frame to the end of the file, minus a trailing 128-byte ID3v1 tag.
+- **Ogg** (`ogg.js`). The first packet of the first stream gives the clock: a Vorbis sample rate, or 48 kHz minus the pre-skip for Opus. The last page of that stream in the final 128 KB (a page is at most about 64 KB) with a granule position other than `-1` gives the length in samples: `(granule − pre-skip) ÷ sample rate`.
+- Anything else, or data that doesn't fit these shapes, returns `null`.
+
 ---
 
 ## 5. Backend
@@ -205,15 +231,15 @@ Bootstrap reports how many options files it created or updated and how many play
 
 ```js
 Library   { root, playlists: Playlist[], sounds: AudioFile[], files: Map<id, AudioFile> }
-Playlist  { id, title, gain, tracks: AudioFile[], includedSubdirectories: string[] }
-AudioFile { id /* root-relative POSIX path */, title, format: 'mp3'|'ogg', size, gain, absolutePath }
+Playlist  { id, title, gain, crossfade, tracks: AudioFile[], includedSubdirectories: string[] }
+AudioFile { id /* root-relative POSIX path */, title, format: 'mp3'|'ogg', size, gain, duration /* seconds or null */, absolutePath }
 Settings  { volumes: { master, music, sfx } }   // held by SettingsStore, saved to .soundboard
 ```
 
 - `playlists` contains only non-empty playlists, sorted by title; `sounds` are sorted by title; tracks keep path order (§2.2).
 - `files` indexes every sound and track by id. It is the only list of files the server may stream.
 - `LibraryEditor` changes the library while the app runs. `updateSound(id, { title?, gain? })` validates the change with the options file rules (§2.3), rejects unknown keys, trims the title, and rounds the gain. It then merges the change into the sound's options file (read, merge, atomic write, unknown keys kept), and only once that succeeded updates the `AudioFile` in place and sorts `sounds` again. Writes to one options file run one after another in the order they were requested, so the file always ends with the newest values; a failed write doesn't block later ones. An id that isn't a sound (including a track id) is an `UnknownSoundError`.
-- `updatePlaylist(id, { title?, gain? })` does the same for a playlist's options file (`<directory>.json` in the root), leaving its `includedSubdirectories` alone, and sorts `playlists` again after a rename. An unknown id is an `UnknownPlaylistError`.
+- `updatePlaylist(id, { title?, gain?, crossfade? })` does the same for a playlist's options file (`<directory>.json` in the root), leaving its `includedSubdirectories` alone, and sorts `playlists` again after a rename. `crossfade` is accepted only here, not for sounds. An unknown id is an `UnknownPlaylistError`.
 - `SettingsStore` keeps the settings in memory and writes them back to `.soundboard` with the same read-merge-write and atomic rename as the options files (§2.3). Writes are **serialized**: one in flight at a time, and changes made meanwhile are written together by one follow-up write, so the file always ends with the newest values.
 
 ### 5.2 HTTP API (`src/http/`, built on `node:http`)
@@ -227,7 +253,7 @@ The server knows nothing about playback state.
 | GET | `/api/settings` | `{ "volumes": { "master": 1, "music": 0.8, "sfx": 1 } }` |
 | PUT | `/api/settings/volumes` | Body `{ master?, music?, sfx? }` (numbers in `0..1`). Merged into the settings and saved; returns the full settings. `400` for invalid JSON, a non-object, an out-of-range value or an unknown key. `413` for bodies over 16 KB. |
 | PATCH | `/api/sounds/<encoded id>` | Body `{ title?, gain? }`. Saved through `LibraryEditor` (§5.1); returns the updated sound in the `/api/library` format. `400` for invalid JSON, a non-object, an unknown key, an empty title or an out-of-range gain. `404` when the id isn't a sound. `413` for bodies over 16 KB. |
-| PATCH | `/api/playlists/<encoded id>` | The same for a playlist (`LibraryEditor.updatePlaylist`); returns the playlist with its tracks in the `/api/library` format. |
+| PATCH | `/api/playlists/<encoded id>` | The same for a playlist, with body `{ title?, gain?, crossfade? }` (`LibraryEditor.updatePlaylist`); returns the playlist with its tracks in the `/api/library` format. |
 | GET, HEAD | `/media/<encoded id>` | The audio file, streamed |
 
 - API responses are JSON with `Cache-Control: no-store`. Errors are `{ "error": "message" }`.
@@ -238,12 +264,12 @@ The server knows nothing about playback state.
 {
 	"version": 1,
 	"playlists": [
-		{ "id": "Combat", "title": "Combat", "gain": 0.8, "tracks": [
-			{ "id": "Combat/01 Battle.mp3", "title": "Battle", "format": "mp3", "size": 4194304, "gain": 1, "url": "/media/Combat/01%20Battle.mp3" }
+		{ "id": "Combat", "title": "Combat", "gain": 0.8, "crossfade": 2.5, "tracks": [
+			{ "id": "Combat/01 Battle.mp3", "title": "Battle", "format": "mp3", "size": 4194304, "gain": 1, "duration": 213.47, "url": "/media/Combat/01%20Battle.mp3" }
 		] }
 	],
 	"sounds": [
-		{ "id": "Explosion.mp3", "title": "Big Explosion", "format": "mp3", "size": 48213, "gain": 0.5957, "url": "/media/Explosion.mp3" }
+		{ "id": "Explosion.mp3", "title": "Big Explosion", "format": "mp3", "size": 48213, "gain": 0.5957, "duration": 4.21, "url": "/media/Explosion.mp3" }
 	]
 }
 ```
@@ -284,7 +310,7 @@ UI layer (DOM)  ──commands──▶  Soundboard (logic facade)  ──▶  A
   - a `Logger` (`warn`, `error`).
 
   Node imports and tests this code directly; the type-checker and ESLint enforce the boundary (§10.1).
-- The UI calls only the facade's methods and listens to its events. It never reads logic internals. The one exception is stateless helpers with no state of their own: the UI imports `MAX_GAIN`, `gainToDb`, `dbToGain` and `sliderToGain` from `logic/volume.js`, so the gain range and the volume math exist only once.
+- The UI calls only the facade's methods and listens to its events. It never reads logic internals. The one exception is stateless helpers with no state of their own: the UI imports `MAX_GAIN`, `gainToDb`, `dbToGain` and `sliderToGain` from `logic/volume.js`, and `MAX_CROSSFADE` from `logic/playback-rules.js`, so the ranges and the volume math exist only once.
 - **Commands and events are plain, serializable objects.** Each facade method builds a command (`{ type: 'playlist.next', playlistId, transition: 'instant' }`) and passes it to `dispatch(command)`, which validates it first. Events are `{ type, ...payload }` and contain only JSON-safe values: an unknown duration is `null`, never `NaN`. **Extension point:** a remote control could forward commands and events over a connection unchanged ([roadmap](ROADMAP.md)).
 - A UI event handler that throws never stops other handlers or leaves playback half-updated; the error is passed to the logger.
 
@@ -313,7 +339,7 @@ jumpToTrack(playlistId, trackIndex, { transition })
 seek(playlistId, seconds)
 pausePlaylist(playlistId)
 resumePlaylist(playlistId)
-customizePlaylist(playlistId, { title?, gain? })  // applies at once, also to playing and fading tracks; saves 500 ms later
+customizePlaylist(playlistId, { title?, gain?, crossfade? })  // applies at once; saves 500 ms later
 flushPlaylistOptions(playlistId)          // save that playlist's pending change now (its dialog closed)
 
 // volume (value is the slider position, 0..1, clamped)
@@ -347,7 +373,7 @@ on(type, handler) → unsubscribe, off(type, handler)
 | `sound.changed` | `{ sound }`, the sound with its new title or gain, right after `customizeSound` |
 | `sound.saved` | `{ soundId }`, once every change to that sound has been saved |
 | `sound.saveFailed` | `{ soundId, message }`; the change stays in effect and is saved again with the next one |
-| `playlist.changed` | `{ playlist }`, the playlist (with its tracks) with its new title or gain, right after `customizePlaylist` |
+| `playlist.changed` | `{ playlist }`, the playlist (with its tracks) with its new title, gain or crossfade, right after `customizePlaylist` |
 | `playlist.saved` | `{ playlistId }`, once every change to that playlist has been saved |
 | `playlist.saveFailed` | `{ playlistId, message }`, as for sounds |
 | `playlist.stateChanged` | `{ playlistId, state, trackIndex, track, duration }` |
@@ -433,11 +459,12 @@ This is where the race-condition risk sits. The design rules:
 2. **Generation tokens.** Each playlist has a `generation` integer, incremented whenever the *current voice* changes or the playlist stops. Every callback from a voice (`loaded`, `ended`, `error`) is bound to the voice and generation it was created under. **A callback from a replaced or stopped voice is ignored**, even if the engine delivers it after `stop()`. A late `ended` from a skipped track can therefore never advance or restart the playlist.
 3. **One current voice, plus a retiring set.**
    - At most one voice is *current*. A replaced voice moves to the *retiring* set, where it fades out.
-   - Only an audible (`playing`) voice is faded. A voice that is paused or still loading, or whose track ended or failed, is stopped at once. With the current all-zero rules, every replaced voice is stopped at once.
+   - Only an audible (`playing`) voice is faded. A voice that is paused or still loading, or whose track ended or failed, is stopped at once. Without a crossfade, every replaced voice is stopped at once.
    - **Any `'instant'` command stops every retiring voice immediately**, as well as replacing or stopping the current one.
    - Each retiring voice has a **hard deadline** (fade duration + 1 s), after which `stop()` is forced. No sound can play forever.
    - The retiring set holds at most 4 voices; the oldest is stopped when it would grow larger. This covers someone mashing "Next" while crossfades are on.
-4. **Invariant**, checked by a randomized test over 400 command sequences: once enough time has passed for all fades to finish, the playlist owns at most one live voice when active and none when idle, with no timers left running.
+4. **Invariant**, checked by a randomized test over 400 command sequences, with and without crossfades and fades: while active, at most one live voice is not fading out, and the fading ones stay within the cap; when idle, no voice and no timer is left. After a final stop and enough time for any fade, nothing is left either.
+5. **Clock timers are bound too.** The crossfade timer (§8.4) is cancelled whenever the track changes, the playlist stops or pauses, and it also checks that its voice is still current before acting.
 
 ### 8.1 States
 
@@ -451,20 +478,21 @@ This is where the race-condition risk sits. The design rules:
 
 - `play` is ignored unless idle. `jumpTo` works in any state; from idle it starts the playlist at that track.
 - `next`, `previous` and `jumpTo` from `paused` start the new track **playing**. `pause` in `loading` keeps the track paused once it loads; `resume` before loading goes back to `loading`.
+- `pause` means silence: it also stops voices still fading out from a crossfade. A `'default'` stop without a fade-out does the same (`killRetiring`), so Stop means silence too.
 - `seek` works in `loading`, `playing` and `paused`, clamped to the track. While loading it is applied once the track has loaded.
 - `previous`: past **3 s** into the track, or when there is no previous track, it restarts the current track (seek to 0, and resume if paused). Otherwise it goes to the previous track, following the order strategy.
 - `next` past the last track without looping stops the playlist.
-- Track ends naturally: advance to the next track. With the default `loop: true` it wraps to the first track. If the strategy returns no next track, the playlist stops.
+- Track ends naturally: advance to the next track. With the default `loop: true` it wraps to the first track. If the strategy returns no next track, the playlist stops. With a crossfade the next track has usually started already (§8.4); `ended` is the fallback.
 - Track error (404, decode failure, rejected `play()`), or a track in a format this browser cannot play: send `playlist.error` and skip to the next track. Unplayable tracks get no voice at all. After `tracks.length` errors in a row (reset whenever a track loads), the playlist stops instead of looping over broken files.
 - Starting a playlist always begins at the strategy's first track.
 - Volume: each voice starts at `playlist gain × track gain`. `setGain(gain)` applies a new playlist gain to the current voice and to the retiring ones, each with its own track's gain. Fades use a separate gain stage (§6.3), so this never disturbs one.
 
 ### 8.2 Extension points
 
-The defaults are hard-coded today. Each is a single seam that the planned features in the [roadmap](ROADMAP.md) fill in.
+Each is a single seam that the planned features in the [roadmap](ROADMAP.md) fill in. `crossfade` is the only rule read from the playlist so far; the others are the defaults.
 
 ```js
-// Resolved per playlist by resolvePlaybackRules(playlist); currently always the defaults.
+// Resolved per playlist by resolvePlaybackRules(playlist); PlaylistPlayer.setRules replaces them while playing.
 PlaybackRules {
 	order: 'sequential',   // name of an order strategy
 	loop: true,
@@ -474,7 +502,8 @@ PlaybackRules {
 }
 
 // The single place where a transition becomes concrete timings.
-// 'instant' → all zeros and retiring voices are killed; 'default' → taken from the rules.
+// 'instant' → all zeros and retiring voices are killed; 'default' → taken from the rules
+// (a stop without a fade-out also kills retiring voices).
 resolveTransition(action /* 'play'|'stop'|'change' */, transition, rules)
 	→ { fadeInSeconds, fadeOutSeconds, killRetiring }
 
@@ -495,6 +524,16 @@ planTrack(track, rules) → { startAt, endAt }
 ### 8.3 Progress
 
 While a playlist is `playing`, a clock interval sends `playlist.progress` every 250 ms. The interval is cleared on pause, on stop, and whenever the track changes.
+
+### 8.4 Crossfade
+
+With a non-zero `crossfade` rule, one track gives way to the next by fading out while the next fades in. Both fades start at once when the change happens.
+
+- **Overlap.** A crossfade from track A to track B lasts `min(crossfade, A's duration ÷ 2, B's duration ÷ 2)`. A's duration is the one its voice reports, or the stored one (§3.5) until then; B's is the stored one; unknown durations don't limit it. A's fade-out is cut to the time A has left, so it never ends mid-fade. B fades in over the whole overlap.
+- **At a natural end.** While a track is `playing`, a clock timer fires at `time left − overlap` and starts the next track with that timing. It is planned when the track starts playing (`loaded`, `resume`) and planned again on `seek` and `setRules`. Pause, stop and every change of track cancel it. From within the last `overlap` seconds (after a seek, say), the crossfade starts at once. A track whose duration is unknown has no timer, and `ended` advances as without a crossfade, with the next track fading in.
+- **Manual changes.** Next, Previous and jumps with `'default'` use the same overlap, if the old track is audible. `'instant'` cuts over and stops every voice still fading out.
+- **One track, looping.** The track crossfades into a new start of itself.
+- **Stop and pause** silence both tracks (§8.1).
 
 ---
 
@@ -628,6 +667,11 @@ UI components extend `Component` (`ui/component.js`): `render()` builds the elem
 
 **The playlist dialog** (`ui/playlist-editor.js`), opened from the playlist menu: the title (hint: `Folder: <directory>`), the volume, Play / Stop (`togglePlaylist`, like a tile click; it follows `playlist.stateChanged`) and the status (`playlist.saved`, `playlist.saveFailed`). Later playlist settings add their sections here.
 
+**Crossfade section** (`ui/crossfade-control.js`), in the playlist dialog:
+- A slider in 0.5 s steps and a readout (`Off`, `2.5 s`) that turns into a text field when clicked, like the gain widget's. Typed values accept `,` as the decimal point, an `s` suffix and `off`.
+- The limits come from the playlist's tracks with a known duration (`crossfadeLimits` in `ui/crossfade-scale.js`). The text field allows up to `min(30 s, half the shortest track)`, and longer typed values are clamped to that. The slider stops at `min(10 s, that limit)`, rounded down to a step.
+- A note below says what limits it ("Up to 15.1 s, half the shortest track."). A stored value above the limit, for example after a shorter track was added, is shown as stored, with a note that short tracks use at most half their length; the player clamps it anyway (§8.4).
+
 **Gain widget** (`ui/gain-control.js`), used in the dialogs and for the header volumes. It looks like the volume control of many media players, `h-8` tall:
 ```
 ▁ ▂ ▃ ▄ ▅ ▆ ▇ █ █ █  ┌──────┐
@@ -657,8 +701,8 @@ scripts/        mutate.js                checks that tests fail when code is bro
 src/
 	cli/        main.js  args.js  prompter.js  reporter.js  colors.js
 	library/    bootstrap-service.js  scanner.js  classify.js  sort.js  validate.js  errors.js
-	            options-store.js  settings-store.js  library.js  library-editor.js
-	metadata/   index.js  id3.js  ogg.js  binary-reader.js
+	            options-store.js  settings-store.js  library.js  library-editor.js  durations.js
+	metadata/   index.js  id3.js  ogg.js  mpeg.js  binary-reader.js
 	http/       server.js  router.js  responses.js  static-files.js  media.js  range.js  mime.js  request-log.js
 public/
 	index.html  favicon.svg
@@ -675,6 +719,7 @@ public/
 		            splash.js  overlay.js  context-menu.js  track-list.js  tile-grid.js
 		            playlist-tile.js  sound-tile.js  player-dock.js  player-bar.js  volume-controls.js
 		            dialog.js  customize-parts.js  sound-editor.js  playlist-editor.js  gain-control.js  gain-scale.js
+		            crossfade-control.js  crossfade-scale.js
 test/
 	backend/    cli/  http/  library/  metadata/
 	frontend/   logic tests, backend-api.test.js, ui/ (pure UI helpers)
