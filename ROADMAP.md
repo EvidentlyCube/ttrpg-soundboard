@@ -29,7 +29,39 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## Proposals
 
-None yet.
+### 3. Playlist crossfade
+
+**Goal.** A playlist can have a crossfade, set in its Customize dialog. When one track gives way to the next, whether it ended on its own or Next, Previous or a pick from the track list moved on, the old track fades out while the new one fades in over that time. The "(Instant)" commands still cut over at once.
+
+**Design changes.**
+
+- **§2.3, §5.1, §5.2.** Playlist options gain `crossfade`: seconds, a number from `0` to `30`, default `0` (no crossfade). Validation is fatal at startup like the other keys. It is part of `Playlist`, `/api/library` and `PATCH /api/playlists/<id>`; `PATCH /api/sounds/<id>` keeps rejecting it.
+- **§6.1, §6.2.** `customizePlaylist(playlistId, { title?, gain?, crossfade? })`; `playlist.changed` carries it. A new value takes effect at once: on the next change of track, and on the end of the track playing now.
+- **§8.2 Extension points.** `resolvePlaybackRules(playlist)` reads `crossfade` from the playlist instead of always returning the defaults. `PlaylistPlayer.setRules(rules)` replaces the rules of a playing playlist.
+- **§8 PlaylistPlayer**, the core of the feature:
+  - **At a natural end.** Once a track has loaded and plays, the player sets a clock timer, tied to the current generation, for `duration − position − crossfade`. When it fires, the next track starts and the two fade across. Seek, pause, resume and a change of the setting re-plan the timer; leaving `playing` cancels it. If the duration is unknown or the timer is late, `ended` still advances as today (then the new track only fades in).
+  - **When the fades start.** Both fades begin when the new track actually starts playing (`loaded`), not when it is requested. Until then the old track plays on at full volume, so no part of the crossfade is spent waiting for the file. The old track's fade-out is shortened to the time it has left, so it never stops mid-fade.
+  - **Manual changes.** Next, Previous and jumps with `'default'` crossfade the same way, if the old track is audible. A paused or still-loading old track is stopped at once, as today.
+  - **Short tracks.** The crossfade used for a track is at most half its length, so a short track still plays on its own for a while.
+  - **One track, looping.** A playlist with one track crossfades into a new start of the same track.
+  - The retiring set, its deadline (fade + 1 s) and its cap of 4 already cover a crossfade, as does `'instant'` cutting every fading voice.
+- **§9.7.** The playlist dialog gets a **Crossfade** section: a slider from 0 to 10 s in 0.5 s steps and a number field next to it for exact values up to 30 s, shown as `2.5 s`; `0` reads "Off".
+
+**Open questions.**
+
+1. **Stopping during a crossfade.** The owner's note says a stop while the next track fades in "should stop immediately". *Recommended: until fade-out exists (feature 4), a `'default'` stop also cuts the track that is fading out*, so Stop always means silence. Feature 4 then changes it to "the fading-out track carries on", as already decided there.
+2. **Pausing during a crossfade.** *Recommended: Pause also stops the track that is fading out*, so Pause means silence and Resume continues only the new track. The alternative is letting the old track finish its fade while the new one is paused, which sounds odd.
+3. **Range.** *Recommended: 0 to 30 s stored; the slider covers 0 to 10 s*, which is where nearly all crossfades are, and the number field allows longer ones.
+4. **Short tracks.** *Recommended: at most half the track's length*, as above. The alternative is skipping the crossfade entirely for tracks shorter than twice its length.
+5. **Fades start on `loaded`.** *Recommended*, as above. The simpler alternative starts both fades at the request; with a local server the difference is a few hundred milliseconds, but Safari may take longer to start a stream.
+
+**Plan.**
+
+1. **Format.** `crossfade` in playlist validation, `Playlist`, `/api/library` and the playlist `PATCH` (and not the sound one). *Tests:* validation and messages, bootstrap, the editor keeping other keys, the API.
+2. **Rules at runtime.** `resolvePlaybackRules` reads the playlist; `PlaylistPlayer.setRules`; `customizePlaylist` and `OptionsSync` carry `crossfade`; `LibraryModel` validates it. *Tests:* rules resolution, commands and the facade.
+3. **Crossfading in the player.** Fades that start on `loaded` with the old track's fade-out shortened to its time left; the natural-end timer and its re-planning on seek, pause, resume and rule changes; the short-track limit; stop and pause cutting fading voices (per questions 1 and 2). *Tests:* each case on the fake clock and engine, stale timers from replaced tracks ignored, and the randomized invariant extended with crossfades and natural ends.
+4. **UI.** The Crossfade section in the playlist dialog. *Tests:* formatting and parsing of seconds; the manual checklist and a headless Chromium run.
+5. **Design update.** `DESIGN.md` in its own commit; then this proposal and its backlog entry are removed.
 
 ---
 
