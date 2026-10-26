@@ -31,64 +31,67 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ### 1. Customize dialog for sound effects
 
-**Goal.** "Customize" in a sound's context menu opens a dialog where the sound can be renamed and given its own volume, including a boost above its original loudness. The volume has a slider and a number field, both in decibels. Moving the slider is heard straight away on the sound if it is playing; **Save** writes both values to the sound's options file, and **Cancel** puts everything back.
+**Goal.** "Customize" in a sound's context menu opens a dialog where the sound can be renamed and given its own volume, including a boost above its original loudness. There is no Save button: every change takes effect at once (the tile's title, the loudness of the sound, even while it plays) and is saved to the sound's options file shortly after.
 
-**Why decibels.** 0 dB means "as recorded"; each 6 dB roughly doubles or halves the loudness. That reads the same at every level, while a percentage beyond 100 % does not say much ("is 180 % twice as loud?"). The gain is `10 ** (dB / 20)`, so +6 dB ≈ 2× and +12 dB ≈ 4× the amplitude. The slider is linear in dB, which is also linear in how loud it sounds.
+**Owner's decisions (review round 1).**
+- Volume range −30 to +12 dB in 0.5 dB steps. Clipping is allowed, with a warning in the dialog.
+- Every change applies immediately and is saved with a 500 ms debounce. Sorting by the new title waits until the dialog closes.
+- An empty title is never saved: the last valid title stays in effect, and closing the dialog with an empty field restores it.
+- A play/stop button in the dialog.
+- Store the volume in the form the browser's audio API uses; convert to decibels only for display.
 
 **Design changes.**
 
-- **§2.3 File formats.** Sound options gain an optional `volumeDb`:
+- **§2.3 File formats.** Sound options gain an optional `gain`:
   ```json
-  { "title": "Big Explosion", "volumeDb": -4.5 }
+  { "title": "Big Explosion", "gain": 0.5957 }
   ```
-  Missing means `0`. Validation (still fatal at startup): a finite number from **−30 to +12**.
-- **§5.1 Domain model.** `AudioFile` gains `volumeDb`. The server's `Library` becomes changeable at runtime: a sound's title and volume can be updated, and `sounds` is sorted again after a rename.
+  - `gain` is the linear multiplier a Web Audio `GainNode` takes: `1` plays the file as recorded, `2` doubles the amplitude. Missing means `1`.
+  - Validation (still fatal at startup): a finite number from **0 to 4**. 4 is just above +12 dB; values below the slider's range are accepted and the slider shows them at its bottom end.
+  - Written rounded to 4 decimal places, so files stay readable and converting back to dB gives the same 0.5 dB step.
+  - It is deliberately not called `volume`: the volumes in `.soundboard` are slider positions (§6.4), a different thing.
+- **§5.1 Domain model.** `AudioFile` gains `gain`. The server's `Library` becomes changeable at runtime: a sound's title and gain can be updated, and `sounds` is sorted again after a rename.
 - **§5.2 HTTP API.**
-  - `/api/library` includes `volumeDb` for each sound (and track, so the format does not need to change again for per-track volume).
-  - New: `PATCH /api/sounds/<encoded id>` with the body `{ title?, volumeDb? }`. The title is trimmed. The same validation as the options file applies; unknown keys, an empty title or an out-of-range volume give `400`, an unknown sound `404`. The change is merged into the options file (read, merge, atomic write, unknown keys kept, §2.3), the in-memory library is updated, and the response is the updated sound. Writes to one file are serialized like the settings writes.
+  - `/api/library` includes `gain` for each sound and each track, so the format doesn't change again for per-track volume.
+  - New: `PATCH /api/sounds/<encoded id>` with the body `{ title?, gain? }`. The title is trimmed. The same validation as the options file applies; unknown keys, an empty title or an out-of-range gain give `400`, an unknown sound `404`. The change is merged into the options file (read, merge, atomic write, unknown keys kept, §2.3) and the in-memory library is updated. The response is the updated sound. Writes to one file are serialized like the settings writes.
 - **§6.1 Facade API.**
-  - `customizeSound(soundId, { title, volumeDb })` sends the change to the server. Like every command it returns at once; the outcome arrives as an event.
-  - `previewSoundVolume(soundId, volumeDb | null)` changes the volume in memory only, for playing and newly started instances. `null` ends the preview and goes back to the saved value. Nothing is sent to the server.
+  - `customizeSound(soundId, { title?, gain? })` applies the change in memory **at once**: playing instances change loudness and new ones start at the new gain. An empty or whitespace-only title is an `InvalidCommandError`; the UI never sends one.
+  - The save is debounced per sound, 500 ms after the last change, with one request in flight per sound, so saves can't arrive out of order. This reuses the pattern of the volume save (`SettingsSync`, §6.4), and `flushSettings()` on `pagehide` flushes these too.
+  - The facade's library is kept sorted, so `getLibrary()` is always correct. *When* the screen re-sorts is the UI's choice (below).
   - `BackendApi` gains `saveSoundOptions(soundId, changes)`.
 - **§6.2 Events.**
-  - `library.changed` `{ library }` after a save succeeds. The page receives the whole re-sorted library, which is simplest for the UI and rare enough to be cheap.
-  - `sound.customizeFailed` `{ soundId, message }`.
-- **§6.3 AudioEngine port.** Each voice gets a second gain stage for its own volume, separate from the existing one used for fades. That way a playlist fading a track never has to know the track's volume, and the later per-playlist and per-track volumes fit the same slot:
-  - `createStreamVoice({ url, bus, volume })` and `createBufferVoice({ buffer, bus, volume })`, where `volume` is a linear gain that defaults to `1`;
-  - `voice.setVolume(gain)`, smoothed like the bus gains, so dragging the slider never clicks.
+  - `sound.changed` `{ sound }` right after each accepted change.
+  - `sound.saveFailed` `{ soundId, message }`. The change stays in effect in memory, and the next change retries with the full set of values.
+- **§6.3 AudioEngine port.** Each voice gets a second gain stage for its own volume, separate from the one used for fades. A playlist fading a track then never needs to know the track's volume, and the later playlist and track volumes fit the same slot:
+  - `createStreamVoice({ url, bus, gain })` and `createBufferVoice({ buffer, bus, gain })`, where `gain` defaults to `1`;
+  - `voice.setGain(gain)`, smoothed like the bus gains (`setTargetAtTime`), so dragging the slider never clicks.
 
-  The graph becomes `source → voice volume → voice fade → bus → master`.
-- **§6.4 Volume.** A section on item volumes: the dB range, `dbToGain()`, and the fact that a boost above 0 dB can clip on files that are already loud (see the open questions).
-- **§7 SoundPlayer.** New instances start at the sound's volume (or the preview value); a volume change or preview is applied to the instances already playing.
+  The graph becomes `source → voice gain → voice fade → bus → master`.
+- **§6.4 Volume.** A section on item volumes: stored as linear gain, shown as decibels (`dB = 20 · log10(gain)`, `gain = 10^(dB / 20)`), the −30 to +12 dB range of the controls, and clipping above 0 dB.
+- **§7 SoundPlayer.** New instances start at the sound's gain; a change is applied to the instances already playing.
 - **§9.3 Context menus.** "Customize" in the sound menu is enabled. The playlist one stays a stub until feature 2.
-- **New §9.7 Dialogs.** A shared, centered modal `Dialog` component, reused by every later Customize dialog:
-  - it has a title, a body, and Cancel and Save buttons; Enter saves and Esc cancels;
-  - a click on the backdrop does **nothing**, so a stray click never loses edits;
-  - while saving, the buttons are disabled; a failure shows the message inside the dialog and keeps it open;
-  - opening it closes any open popup. If the system suspends audio while it is open, the resume splash covers it and the dialog stays.
+- **New §9.7 Dialogs.** A shared, centered modal `Dialog` component, which every later Customize dialog reuses:
+  - It has a title, a body, and a close button (×). Esc and a click on the backdrop close it too; nothing can be lost, since every change is already applied.
+  - Closing it flushes any pending save at once.
+  - A small status line shows "Saving…", "Saved" or the error from `sound.saveFailed`.
+  - Opening it closes any open popup. If the system suspends audio while it is open, the resume splash covers it and the dialog stays.
 - **The sound dialog** contains:
-  - **Title:** a text field, focused on open. The file name is shown below it for reference. Save is disabled while it is empty.
-  - **Volume:** a slider from −30 to +12 dB in 0.5 dB steps with a mark at 0 dB, and a number field next to it, kept in sync. Values are shown as `+3.0 dB`, `0 dB` and `−12.5 dB`. Double-clicking the slider resets it to 0 dB.
-  - **A play/stop button** to hear the sound while adjusting it.
+  - **Title:** a text field, focused on open, with the file name shown below it for reference. Each edit is sent as you type. While the field is empty it is marked invalid and nothing is sent; the tile keeps the last valid title, and closing the dialog puts that title back in the field.
+  - **Volume:** a slider from −30 to +12 dB in 0.5 dB steps with a mark at 0 dB, and a number field next to it, kept in sync. Values are shown as `+3.0 dB`, `0 dB` and `−12.5 dB`. Double-clicking the slider resets it to 0 dB. Above 0 dB a warning reads "Boosting can distort loud sounds."
+  - **A play/stop button**, using `playSound` and `stopSound`, to hear the sound while adjusting it.
+- **Sorting on screen.** While the dialog is open, the tile's title updates in place. When the dialog closes, the sound grid is redrawn in the library's sorted order, so the tile moves only then.
 
-**Open questions.**
-
-1. **Volume range.** *Recommended: −30 to +12 dB, in 0.5 dB steps.* −30 dB is about 3 % amplitude, quiet enough for a background sound; +12 dB is 4× amplitude, which is plenty to rescue a quiet recording. A wider range only makes the slider coarser.
-2. **Clipping.** A boosted loud file distorts. *Recommended: accept it for now, and say so in a small hint under the slider when the value is above 0 dB.* A limiter on the master bus (a `DynamicsCompressorNode`) would prevent it but colors the sound of everything. It could be a later preference.
-3. **Live preview of the volume.** *Recommended: yes, as described above.* Without it, tuning a sound means saving, closing, playing, and reopening. The title is applied only on Save, because sounds are sorted by title and the tile would jump around while you type.
-4. **Play button in the dialog.** *Recommended: yes.* It reuses `playSound` and `stopSound`; the tile's stop button keeps working as usual.
-5. **Clearing the title.** *Recommended: not allowed, Save stays disabled.* A "Reset to file name" button could be added later if wanted.
-6. **Storing dB rather than a gain.** *Recommended: `volumeDb`, as above.* It is what the UI shows, round numbers stay round in the file, and the unit is in the key name for anyone editing the file by hand.
+**Open questions.** None left from round 1. One small point to confirm: the browser needs its own copy of the title sort (the same collator as §2.2), because it can't load files from `src/`. *Recommended:* a few lines in `public/app/logic/`, plus a test that checks both sorts agree.
 
 **Plan.**
 
-1. **Options file and library format.** `volumeDb` in validation (range, type, error messages), in the server's `AudioFile` and in `/api/library`. *Tests:* validation messages, bootstrap rejecting an out-of-range value, the library JSON with and without `volumeDb`.
-2. **Write API.** `PATCH /api/sounds/<id>`: validation, merging into the options file with unknown keys kept, re-sorting after a rename, serialized writes to one file, and the status codes listed above. *Tests:* against the real server and a temp copy of the fixture, including two overlapping saves to the same sound ending with the newer values.
-3. **Voice volume in the engine port.** The `volume` option and `setVolume` on the port, in `FakeAudioEngine` (which records them) and in `WebAudioEngine` (the extra gain node, smoothed). `dbToGain()` in `logic/volume.js`. *Tests:* `dbToGain`, and the fake recording volumes; `WebAudioEngine` goes on the manual checklist.
-4. **Sound volume in playback.** `SoundPlayer` starts instances at the sound's volume and applies changes and previews to playing instances. *Tests:* new and playing instances, ending the preview, a sound without `volumeDb`.
-5. **Facade.** `customizeSound` and `previewSoundVolume` commands with validation, `saveSoundOptions` in the `BackendApi` port, `HttpBackendApi` and the fake, then `library.changed` and `sound.customizeFailed`. *Tests:* command validation, success and failure events, the library re-sorted after a rename, the preview never reaching the server, `HttpBackendApi` against the real server.
-6. **UI.** The shared `Dialog`, a reusable dB volume control (slider and number field), the sound dialog, the enabled menu item, and the sound grid re-rendering on `library.changed`. dB formatting and parsing go in `ui/format.js`. *Tests:* formatting and parsing of dB values; the rest goes on the manual checklist in `TESTING.md`.
-7. **Design update.** `DESIGN.md` in its own commit, then this proposal is removed.
+1. **Options file and library format.** `gain` in validation (type, range, messages), in the server's `AudioFile` and in `/api/library`. *Tests:* validation messages, bootstrap rejecting an out-of-range value, the library JSON with and without `gain`.
+2. **Write API.** `PATCH /api/sounds/<id>`: validation, rounding, merging into the options file with unknown keys kept, re-sorting after a rename, serialized writes to one file, and the status codes listed above. *Tests:* against the real server and a temp copy of the fixture, including two overlapping saves to the same sound ending with the newer values.
+3. **Voice gain in the engine port.** The `gain` option and `setGain()` on the port, in `FakeAudioEngine` (which records them) and in `WebAudioEngine` (the extra smoothed gain node). `gainToDb()` and `dbToGain()` in `logic/volume.js`. *Tests:* the conversions, and the fake recording gains. `WebAudioEngine` goes on the manual checklist.
+4. **Sound gain in playback.** `SoundPlayer` starts instances at the sound's gain and applies changes to playing instances. *Tests:* new and playing instances, buffered and streamed, a sound without `gain`.
+5. **Facade and saving.** The `customizeSound` command with validation; the library kept sorted with the browser-side sort; `sound.changed`; the debounced per-sound save with one request in flight, flushing, and `sound.saveFailed`; `saveSoundOptions` in the `BackendApi` port, `HttpBackendApi` and the fake. *Tests:* immediate effect, empty titles rejected, the debounce and merging of changes, out-of-order protection, failures and retry, flush, the sort agreeing with the server's, and `HttpBackendApi` against the real server.
+6. **UI.** The shared `Dialog`, a reusable dB volume control (slider, number field, warning), the sound dialog, the enabled menu item, tile titles updating in place, and the grid re-sorting when the dialog closes. dB formatting and parsing go in `ui/format.js`. *Tests:* formatting and parsing of dB values. The rest goes on the manual checklist in `TESTING.md`.
+7. **Design update.** `DESIGN.md` in its own commit; then this proposal is removed.
 
 ---
 
@@ -96,14 +99,16 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ### Planned, in the owner's order
 
-These are the next features, in roughly the order they will be built. Each will get its own proposal when its turn comes. The notes list what is already known and the questions to settle at that point.
+These are the next features, in roughly the order they will be built. Each will get its own proposal when its turn comes. **Decided** lists the owner's answers already given; the notes list what else is known and the questions still to settle.
+
+**Decided for all of them.** Customization changes apply immediately and are saved with a 500 ms debounce, as in feature 1. Re-sorting on screen waits until the dialog closes. Playback state is never remembered across a page reload, so F5 always gives a clean start.
 
 #### 2. Customize dialog for playlists
 
 Rename the playlist and set its volume, using the dialog and dB control from feature 1.
 
 - **Seam:** the shared `Dialog` and volume control, the `PATCH` pattern (`PATCH /api/playlists/<id>`, written to `<dir>.json`), and the per-voice volume slot from feature 1.
-- **Notes:** the playlist volume can simply be added into each voice's volume (`playlist dB + track dB`), with no extra gain node per playlist. Changing it while playing updates the current voice and any voices fading out.
+- **Notes:** the playlist gain can simply be multiplied into each voice's gain (`playlist gain × track gain`), with no extra gain node per playlist. Changing it while playing updates the current voice and any voices fading out. Tracks are sorted by path, not title (§2.2), so renaming a track never moves it.
 
 #### 3. Playlist crossfade
 
@@ -120,10 +125,10 @@ A crossfade duration in the playlist dialog, used when one track gives way to th
 A fade-in used only when the playlist starts, and a fade-out used only when it stops.
 
 - **Seam:** `PlaybackRules.fadeIn` / `fadeOut` (DESIGN.md §8.2).
-- **Notes:**
-  - Stopping during a crossfade, as the owner described: the track that was fading out simply carries on fading out; the track that was fading in stops its fade-in and fades out from its current level.
-  - Open: is the fade-out from a partial level the full fade-out duration, or shortened in proportion? Does resuming after a pause fade in?
-  - A fade-out probably wants a visible `stopping` state between `playing` and `idle`, so the tile and the bar show that the playlist is on its way out. Pressing the tile again while it is stopping needs a rule: cancel the stop, or start over.
+- **Decided:**
+  - Stopping during a crossfade: the track that was fading out carries on fading out; the track that was fading in stops its fade-in and fades out from its current level over the normal fade-out duration.
+  - There is **no `stopping` state.** A stop marks the playlist idle at once; the fading voices just finish in the background (the retiring set). Playing it again while they fade starts a new, separate playback and leaves those fades alone.
+- **Notes:** "(Instant)" commands still cut retiring voices, as today (§6.1). Open: does resuming after a pause fade in? Likely not.
 
 #### 5. Track list in the playlist dialog
 
@@ -147,17 +152,19 @@ Radio buttons in the playlist dialog:
 - **Shuffle:** a shuffled list of all tracks is played through; then a new shuffled list is made whose first track is not the one that just played.
 
 - **Seam:** the order strategy registry (`order-strategies.js`, DESIGN.md §8.2) and `PlaybackRules.order`. Random strategies take a seeded random number generator so they stay testable.
-- **Notes on Next, Previous and choosing a track** (to settle in the proposal):
-  - *Previous* goes back through the tracks actually played (a history), in every mode. For Shuffle that is the same as stepping back in the list.
-  - *Choosing a track* from the track list plays it. In Shuffle it is then treated as played: it is moved to the current position of the list, so it won't come up again until the next round.
+- **Decided: Previous and Next work like undo and redo.** The playlist keeps a list of the tracks it has played and a cursor in it. *Previous* steps back through it and *Next* steps forward again, replaying the same tracks in the same order. Only when *Next* goes past the end of the list does the order strategy pick a new track, which is appended. Ordered and Shuffle can generate the upcoming tracks in advance; Random picks each one when it is needed.
+- **Notes** (to settle in the proposal):
+  - *Choosing a track* from the track list plays it and is probably appended like a new pick, dropping anything after the cursor (as typing does after an undo). In Shuffle it then counts as played for that round.
+  - The 3-second rule for *Previous* (restart the current track) stays.
   - The track list always shows the alphabetical order, with the current track marked.
-  - Changing the order while the playlist plays takes effect from the next track.
+  - Changing the order while the playlist plays takes effect from the next new pick.
 
 #### 8. Track looping
 
 A checkbox: the current track repeats until the user moves to another one. That track then repeats in turn.
 
-- **Notes:** the existing `PlaybackRules.loop` means "wrap from the last track to the first". It should be renamed (for example `wrap`) when this is built, to avoid two meanings of "loop". With a crossfade, does a looping track crossfade into itself, or loop seamlessly? Seamless is the expected answer; it interacts with start and end points (feature 11).
+- **Decided:** the existing `PlaybackRules.loop` ("wrap from the last track to the first") is renamed `playlistLooping`. It stays `true` and is not customizable. The new option is `trackLooping`.
+- **Notes:** with a crossfade, does a looping track crossfade into itself, or loop seamlessly? Seamless is the expected answer; it interacts with start and end points (feature 11).
 
 #### 9. What "stop" does
 
@@ -168,7 +175,8 @@ Radio buttons in the playlist dialog:
 - **Reset playlist:** forget everything; playing again starts as if for the first time. This is today's behavior, and the likely default.
 
 - **Seam:** `PlaylistPlayer` (DESIGN.md §8). Starting a playlist currently always begins at the order strategy's first track.
-- **Notes:** "stopped but remembering" is a new state for the tile (an idle tile that shows it will resume). Does "Stop (Instant)" follow the setting too? Probably yes, since "instant" is about fades, not about forgetting. Is the remembered position kept across a page reload? Probably not at first. In Shuffle, the remembered list is kept as well.
+- **Decided:** nothing is remembered across a page reload.
+- **Notes:** "stopped but remembering" is a new look for the idle tile, showing that it will resume. Does "Stop (Instant)" follow the setting too? Probably yes, since "instant" is about fades, not about forgetting. The played-tracks list from feature 7 is kept or cleared along with the position.
 
 #### 10. Test playback in the track list
 
@@ -181,19 +189,28 @@ A play/stop button next to each track in the playlist dialog, which starts or st
 As for sounds (feature 6), per track, shown on or below the track's progress bar.
 
 - **Seam:** `planTrack(track, rules) → { startAt, endAt }` (DESIGN.md §8.2). `startAt` is already applied by seeking after loading.
-- **Notes:** `endAt` needs a clock timer bound to the current generation that treats reaching `endAt` like `ended`; a crossfade then starts at `endAt − crossfade`. Open: do the footer's time and progress bar show the whole file, or only the part between the start and end points?
+- **Decided:** the selected range *is* the track as far as playback is concerned. The footer's time, the progress bar and seeking all cover only the part between the start and end points.
+- **Notes:** `endAt` needs a clock timer bound to the current generation that treats reaching `endAt` like `ended`; a crossfade then starts at `endAt − crossfade`. The track dialog's own editor still shows the whole file, since that is where the points are chosen.
 
 #### 12. Track volume
 
 Per-track volume in the track's accordion.
 
-- **Seam:** the per-voice volume from feature 1, added to the playlist volume from feature 2.
+- **Seam:** the per-voice gain from feature 1, multiplied by the playlist gain from feature 2.
 
 #### 13. Waveform
 
 The track's waveform drawn above its progress bar and start/end points.
 
-- **Notes:** the waveform has to come from decoding the audio, and only the browser can decode without a third-party library. Fully decoded, a 5-minute stereo track takes about 100 MB, so tracks should be decoded one at a time, reduced to a small set of peaks (a few thousand numbers), and the full decode dropped at once. The peaks could be cached by the server in a hidden file, so each track is only decoded once. To be settled in the proposal.
+- **Decided:** waveforms are generated in the browser, which is the only place that can decode audio without a third-party library.
+  - Once the splash closes, the page asks the server which waveforms are missing and generates them one at a time in the background.
+  - The header shows that this is happening, with progress and a button to stop it.
+  - Each finished waveform is sent to the server, which stores it, so a track is only ever decoded once.
+- **Research for the proposal:** the storage format and drawing method that keep memory low.
+  - A fully decoded 5-minute stereo track is about 100 MB, so each decode must be reduced to peaks straight away and the decoded audio dropped before the next one starts.
+  - The likely answer is a fixed number of min/max pairs per track stored as bytes, which is a few KB each, in a hidden directory such as `.soundboard-cache/`. They would be fetched only when a dialog shows them and drawn on a `<canvas>`.
+  - The work must not starve playback on the 8 GB MacBook. Decoding at a low sample rate with an `OfflineAudioContext` may help.
+  - Open: do sounds get waveforms too, for their start and end points (feature 6)?
 
 ### Later, unordered
 
