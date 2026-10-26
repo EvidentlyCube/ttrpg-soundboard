@@ -29,36 +29,7 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## Proposals
 
-### 5. Track list in the playlist dialog
-
-**Goal.** The playlist dialog lists every track as an accordion, with only one open at a time. An open track shows its title field, so tracks can be renamed like sounds and playlists: at once, saved 500 ms later. Later features (10 to 13) add test playback, a progress bar, start and end points, volume and a waveform to the open track.
-
-**Design changes.**
-
-- **§5.1.** `LibraryEditor.updateTrack(trackId, { title })` merges into the track's options file (`<file>.json` next to it), with the same validation, trimming, unknown-key rule and per-file write queue as sounds. Only `title` is accepted for now; `gain` follows with feature 12. Tracks keep their path order (§2.2), so a rename never moves one. An unknown id is an `UnknownTrackError`.
-- **§5.2.** `PATCH /api/tracks/<encoded id>` with body `{ title }`, returning the track in the `/api/library` format. Track ids contain `/`. The server decodes each segment and joins them with `/`, so both `Combat%2F1.mp3` and `Combat/1.mp3` work; the browser sends the first, like the other routes.
-- **§6.1, §6.2.** `customizeTrack(trackId, { title })` and `flushTrackOptions(trackId)`. `BackendApi.saveTrackOptions`. `OptionsSync` gets a third kind, `track`. A rename is announced as `playlist.changed` with the playlist holding the renamed track, so everything that shows track titles keeps working from one event. Saving is reported per track: `track.saved` `{ trackId }` and `track.saveFailed` `{ trackId, message }`.
-- **§8.** `PlaylistPlayer.setPlaylist(playlist)` takes the changed playlist (same tracks, same order, new titles) and sends `playlist.stateChanged` again if it is active. The footer then shows the current track's new title at once.
-- **§9.2.** The player bar keeps the newest playlist from `playlist.changed`, so its track list popover shows new titles too.
-- **§9.7.**
-  - The playlist dialog gets two **tabs**, "Playlist" (title, volume, fades, crossfade) and "Tracks". Play / Stop and the save status sit in a row below both, so they stay visible on either tab. The dialog always opens on "Playlist". The tabs follow the usual pattern: `role="tablist"`, the left and right arrow keys move between them, and only the active tab's panel is shown.
-  - The **Tracks** tab lists every track as an accordion. Each header row shows the number, the title and the duration (`m:ss`, `--:--` when unknown). Clicking a row opens it and closes any other; clicking the open one closes it. Rows are buttons with `aria-expanded`.
-  - The open track shows the shared title field (hint: `File: Combat/01 Battle.mp3`), with the empty-title rule.
-  - The dialog's save status covers track saves too.
-  - The dialog gets a maximum height of 90 % of the window. Its body scrolls under a fixed header, so long track lists stay usable.
-  - Closing the dialog flushes the tracks renamed in it.
-
-**Owner's decisions (review round 1).**
-1. A track rename is announced with `playlist.changed`; the heavier event is fine, since renames are rare. Saving is reported per track.
-2. The list goes in its own **Tracks tab**, separate from the playlist's settings.
-3. Header rows show number, title and duration.
-
-**Plan.**
-
-1. **Server.** `LibraryEditor.updateTrack` and `PATCH /api/tracks/<id>`. *Tests:* the editor (options kept, path order kept, unknown ids, sound ids rejected) and the route with both encodings, spaces and non-ASCII.
-2. **Logic.** The `track.customize` command, `LibraryModel.updateTrack`, `PlaylistPlayer.setPlaylist`, the `track` kind in `OptionsSync`, `saveTrackOptions` in the port, `HttpBackendApi` and the fake, the events and `flushTrackOptions`. *Tests:* immediate effect on the library and the player's state, debounced saving and its events, a track and a sound with the same id saving independently, and `HttpBackendApi` against the real server.
-3. **UI.** The tabs, the accordion list, the scrolling dialog, and titles updating in the footer and the popover. *Tests:* the manual checklist and a headless Chromium run.
-4. **Design update.** `DESIGN.md` in its own commit; then this proposal and its backlog entry are removed.
+None yet.
 
 ---
 
@@ -69,13 +40,6 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 These are the next features, in roughly the order they will be built. Each will get its own proposal when its turn comes. **Decided** lists the owner's answers already given; the notes list what else is known and the questions still to settle.
 
 **Decided for all of them.** Customization changes apply immediately and are saved with a 500 ms debounce, as the sound Customize dialog does (DESIGN.md §6.4, §9.7). Re-sorting on screen waits until the dialog closes. Playback state is never remembered across a page reload, so F5 always gives a clean start.
-
-#### 5. Track list in the playlist dialog
-
-Every track as an accordion, with one open at a time. The only setting for now is the track's title.
-
-- **Seam:** the playlist dialog (DESIGN.md §9.7) and `PATCH /api/tracks/<id>`; track ids contain `/`, so the whole rest of the path is the id, encoded per segment as the media URLs already are.
-- **Notes:** tracks are sorted by path, not title (§2.2), so renaming a track never moves it.
 
 #### 6. Sound start and end points
 
@@ -137,7 +101,7 @@ As for sounds (feature 6), per track, shown on or below the track's progress bar
 
 Per-track volume in the track's accordion.
 
-- **Seam:** only UI is needed: a track's `gain` from its options file is already applied, multiplied by the playlist's (DESIGN.md §6.4). Saving it needs the track write API from feature 5.
+- **Seam:** only UI is needed: a track's `gain` from its options file is already applied, multiplied by the playlist's (DESIGN.md §6.4). Saving it means accepting `gain` in `LibraryEditor.updateTrack` and `customizeTrack` (DESIGN.md §5.1), and the control goes in the open row of the track accordion (§9.7).
 
 #### 13. Waveform
 
