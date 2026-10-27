@@ -2,6 +2,10 @@ import { Component } from './component.js';
 import { playToggle, saveStatus, sectionLabel, titleField } from './customize-parts.js';
 import { h } from './dom.js';
 import { GainControl } from './gain-control.js';
+import { RangeControl } from './range-control.js';
+import { fromStored, toStoredEnd } from './range-scale.js';
+import { SecondsControl } from './seconds-control.js';
+import { SECONDS_LIMITS } from './seconds-scale.js';
 
 /** @typedef {import('../logic/ports.js').AudioFileJson} AudioFileJson */
 /** @typedef {import('../logic/soundboard.js').Soundboard} Soundboard */
@@ -51,6 +55,48 @@ export class SoundEditor extends Component {
 		gain.mount(gainSlot);
 		this.own(() => gain.destroy());
 
+		const { duration } = this.#sound;
+		// Every sound should have a measured duration; until that is guaranteed, one without leaves the range out (ROADMAP.md).
+		const durationMs = duration === null ? null : Math.round(duration * 1000);
+		/** @type {RangeControl | null} */
+		let range = null;
+		const rangeSlot = h('div');
+		if (durationMs !== null) {
+			const control = new RangeControl({
+				...fromStored(this.#sound, durationMs),
+				durationMs,
+				onChange: (startMs, endMs) => {
+					status.show('saving');
+					soundboard.customizeSound(id, { startAt: startMs / 1000, endAt: toStoredEnd(endMs, durationMs) });
+				},
+			});
+			control.mount(rangeSlot);
+			this.own(() => control.destroy());
+			range = control;
+		}
+
+		/**
+		 * @param {'fadeIn' | 'fadeOut'} key
+		 * @param {string} label
+		 */
+		const fade = (key, label) => {
+			const control = new SecondsControl({
+				value: this.#sound[key],
+				name: key,
+				label,
+				limits: SECONDS_LIMITS,
+				onChange: (value) => {
+					status.show('saving');
+					soundboard.customizeSound(id, { [key]: value });
+				},
+			});
+			const slot = h('div');
+			control.mount(slot);
+			this.own(() => control.destroy());
+			return { control, element: h('div', { class: 'space-y-1.5' }, sectionLabel(label), slot) };
+		};
+		const fades = { fadeIn: fade('fadeIn', 'Fade in'), fadeOut: fade('fadeOut', 'Fade out') };
+
 		const play = playToggle(() => (soundboard.isSoundActive(id) ? soundboard.stopSound(id) : soundboard.playSound(id)));
 		play.show(soundboard.isSoundActive(id));
 
@@ -62,6 +108,11 @@ export class SoundEditor extends Component {
 		this.own(soundboard.on('sound.changed', (event) => {
 			if (event.sound.id === id) {
 				gain.update(event.sound.gain);
+				if (range && durationMs !== null) {
+					range.update(fromStored(event.sound, durationMs));
+				}
+				fades.fadeIn.control.update(event.sound.fadeIn);
+				fades.fadeOut.control.update(event.sound.fadeOut);
 			}
 		}));
 		this.own(soundboard.on('sound.saved', (event) => {
@@ -78,6 +129,9 @@ export class SoundEditor extends Component {
 		return h('div', { class: 'space-y-5' },
 			title.element,
 			h('div', { class: 'space-y-1.5' }, sectionLabel('Volume'), gainSlot),
+			range && h('div', { class: 'space-y-1.5' }, sectionLabel('Start and end'), rangeSlot),
+			fades.fadeIn.element,
+			fades.fadeOut.element,
 			h('div', { class: 'flex items-center justify-between gap-4' }, play.element, status.element));
 	}
 
