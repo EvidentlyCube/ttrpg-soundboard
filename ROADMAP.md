@@ -29,7 +29,39 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## Proposals
 
-None yet.
+### 8. Track looping
+
+**Goal.** A checkbox in the playlist dialog makes the current track repeat until the user moves on (Next, Previous, a track from the list). The track moved to then repeats in turn. Like the other settings, it applies at once, also to the track playing, and is saved 500 ms later.
+
+**Decided** (from the backlog): the option is `trackLooping`; the existing `PlaybackRules.loop` becomes `playlistLooping`, stays `true` and is not customizable; seamless looping is the expected answer for crossfades.
+
+**How a track loops.** The player can't loop a track by starting it again: every start makes a new media element, which has to load before it plays, so a streamed track would fall silent for a moment at every loop. The loop therefore belongs to the voice itself, which the browser can do without a gap: a media element's `loop`, and `AudioBufferSourceNode.loop` with `loopStart` and `loopEnd` for buffers. While a voice loops it never fires `ended`.
+
+**Design changes.**
+
+- **§2.3, §5.1, §5.2.** Playlist options files may hold `trackLooping` (`true` or `false`, default `false`). `Playlist`, `updatePlaylist`, `PATCH /api/playlists/<id>` and `/api/library` carry it.
+- **§6.1.** `customizePlaylist(playlistId, { …, trackLooping? })`; `savePlaylistOptions` sends it too.
+- **§6.3.** Voices get `setLooping(looping)`. A looping voice starts over at its start point (`startAt`) when it reaches its end, without a gap, and doesn't fire `ended`; `position` jumps back accordingly. Turning looping off lets the current pass play to the end and fire `ended` as usual. `FakeAudioEngine` models it.
+- **§8.1, §8.2.** `PlaybackRules` gets `trackLooping` (read from the playlist), and `loop` is renamed `playlistLooping`. Every new voice gets `setLooping(rules.trackLooping)`; `setRules` applies a change to the current voice at once. Next, Previous and choosing a track work as before, following the play history and the order.
+- **§8.4.** While the current track loops, there is no crossfade at its end: no crossfade timer and no crossfade marker on the progress bar (`crossfadeFrom` is `null`). Crossfades still happen when the user moves to another track.
+- **§9.2.** The progress bar and time jump back to the start at each loop, since the position does.
+- **§9.7.** A checkbox in the Playback order card, below the radio buttons: "Repeat the current track", with the description "It plays again until you move to another track." A shared `checkbox()` part goes in `customize-parts.js` next to `radioGroup`, for the next features.
+
+**Open questions.**
+
+1. **Crossfade at the loop point.** *Recommended: no crossfade; loop seamlessly,* as the backlog expected. Music made to loop then sounds unbroken, and a track that wasn't made to loop has an audible seam either way. The alternative, crossfading into a new start of itself, would reuse the crossfade setting but needs a second element loading in the background before every loop.
+2. **Toggling while a track plays.** *Recommended: at once.* Turning it on makes the playing track loop at its end; turning it off lets it finish and moves on in the usual order.
+3. **Where the checkbox goes.** *Recommended: inside the Playback order card,* since both decide what plays next. The alternative is a card of its own.
+4. **Gapless MP3s.** Browsers decide how seamless an MP3 loop is: MP3 files carry a few milliseconds of padding, and only some browsers read the encoder's gapless information. *Recommended: accept what the browser does,* and check it by hand in Safari, Chrome and Firefox. Ogg files loop cleanly.
+5. **Start and end points later (feature 11).** Media elements loop the whole file, so when tracks get start and end points the stream voice will need its own loop between them (seeking back from the end-point timer it already has). *Recommended: leave that to feature 11,* and note it there.
+
+**Plan.**
+
+1. **Server.** `trackLooping` in validation, `Playlist`, `/api/library`, `updatePlaylist` and `PATCH /api/playlists/<id>`. *Tests:* valid and invalid values, the default, saving.
+2. **Engine port.** `setLooping` in the port, `FakeAudioEngine` and `WebAudioEngine`. *Tests:* the fake engine wraps the position and never fires `ended` while looping, and fires it once looping is turned off. `WebAudioEngine` is checked in headless Chromium.
+3. **Player and facade.** Rename `loop` to `playlistLooping`; `trackLooping` in the rules, set on every new voice and changed at once by `setRules`; no crossfade timer or marker while looping; `customizePlaylist` accepts it. *Tests:* a looping track plays past its end without moving on; Next moves on and the new track loops; turning looping off mid-track moves on at the end; crossfades still apply to manual changes; saving and validation; the randomized invariant test with looping on in some runs.
+4. **UI.** The `checkbox()` part and the checkbox in the Playback order card, plus checks in `TESTING.md`. Checked with the manual checklist and a headless Chromium run.
+5. **Design update.** `DESIGN.md` in its own commit. Then this proposal and its backlog entry are removed.
 
 ---
 
