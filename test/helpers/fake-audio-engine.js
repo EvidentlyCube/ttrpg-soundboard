@@ -97,8 +97,8 @@ export class FakeAudioEngine {
 	}
 
 	/** @param {import('../../public/app/logic/ports.js').VoiceOptions & { url: string }} options */
-	createStreamVoice({ url, bus, gain = 1 }) {
-		return this.#addVoice(new FakeVoice(this.#clock, url, bus, 'stream', this.#scriptFor(url), gain));
+	createStreamVoice({ url, bus, gain = 1, startAt = 0, endAt = null }) {
+		return this.#addVoice(new FakeVoice(this.#clock, url, bus, 'stream', this.#scriptFor(url), gain, { startAt, endAt }));
 	}
 
 	/** @param {string} url */
@@ -117,9 +117,9 @@ export class FakeAudioEngine {
 	}
 
 	/** @param {import('../../public/app/logic/ports.js').VoiceOptions & { buffer: import('../../public/app/logic/ports.js').BufferHandle }} options */
-	createBufferVoice({ buffer, bus, gain = 1 }) {
+	createBufferVoice({ buffer, bus, gain = 1, startAt = 0, endAt = null }) {
 		const { url } = /** @type {{ url: string }} */ (/** @type {unknown} */ (buffer));
-		return this.#addVoice(new FakeVoice(this.#clock, url, bus, 'buffer', { ...this.#scriptFor(url), loadDelay: 0 }, gain));
+		return this.#addVoice(new FakeVoice(this.#clock, url, bus, 'buffer', { ...this.#scriptFor(url), loadDelay: 0 }, gain, { startAt, endAt }));
 	}
 
 	/** @param {FakeVoice} voice */
@@ -161,15 +161,19 @@ export class FakeVoice {
 	 * @param {'stream' | 'buffer'} kind
 	 * @param {VoiceScript} script
 	 * @param {number} gain
+	 * @param {{ startAt: number, endAt: number | null }} [clip]
 	 */
-	constructor(clock, url, bus, kind, script, gain) {
+	constructor(clock, url, bus, kind, script, gain, clip = { startAt: 0, endAt: null }) {
 		this.#clock = clock;
 		this.url = url;
 		this.bus = bus;
 		this.kind = kind;
 		/** The voice's own volume, as last set. */
 		this.gain = gain;
+		this.startAt = clip.startAt;
+		this.endAt = clip.endAt;
 		this.#script = script;
+		this.#position = clip.startAt;
 		this.#later(() => (script.loadError ? this.#fail(script.loadError) : this.#load()), script.loadDelay ?? 0);
 	}
 
@@ -189,7 +193,12 @@ export class FakeVoice {
 		if (!this.#playing || !this.#loaded) {
 			return this.#position;
 		}
-		return Math.min(this.duration, this.#position + (this.#clock.now() - this.#startedAt) / 1000);
+		return Math.min(this.#end, this.#position + (this.#clock.now() - this.#startedAt) / 1000);
+	}
+
+	/** Where playback stops: the end point, or the end of the file. */
+	get #end() {
+		return Math.min(this.duration, this.endAt ?? Number.POSITIVE_INFINITY);
 	}
 
 	play() {
@@ -295,10 +304,10 @@ export class FakeVoice {
 
 	#scheduleEnd() {
 		this.#clearEnd();
-		const remaining = Math.max(0, this.duration - this.#position);
+		const remaining = Math.max(0, this.#end - this.#position);
 		this.#endTimer = this.#clock.setTimeout(() => {
 			this.#endTimer = null;
-			this.#position = this.duration;
+			this.#position = Math.max(this.#position, this.#end);
 			this.#playing = false;
 			if (!this.#ended) {
 				this.#ended = true;

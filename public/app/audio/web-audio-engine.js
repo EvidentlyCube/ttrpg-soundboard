@@ -15,6 +15,11 @@ const MIME_TYPES = { mp3: 'audio/mpeg', ogg: 'audio/ogg' };
 /** Short enough to feel immediate, long enough to avoid clicks when a slider moves. */
 const GAIN_SMOOTHING_SECONDS = 0.015;
 
+/** A streamed voice this close to its end point counts as having reached it. */
+const END_TOLERANCE_SECONDS = 0.005;
+
+/** @typedef {{ startAt: number, endAt: number | null }} Clip the part of the file a voice plays, in seconds */
+
 /**
  * Plays audio through the Web Audio API (DESIGN.md §6.3). The graph is voice gain → voice fade → bus gain → master gain
  * → speakers.
@@ -70,9 +75,9 @@ export class WebAudioEngine {
 	}
 
 	/** @param {VoiceOptions & { url: string }} options */
-	createStreamVoice({ url, bus, gain = 1 }) {
+	createStreamVoice({ url, bus, gain = 1, startAt = 0, endAt = null }) {
 		const { context, buses } = this.#unlocked();
-		return new StreamVoice(new VoiceOutput(context, buses[bus], gain), url);
+		return new StreamVoice(new VoiceOutput(context, buses[bus], gain), url, { startAt, endAt });
 	}
 
 	/**
@@ -90,12 +95,12 @@ export class WebAudioEngine {
 	}
 
 	/** @param {VoiceOptions & { buffer: BufferHandle }} options */
-	createBufferVoice({ buffer, bus, gain = 1 }) {
+	createBufferVoice({ buffer, bus, gain = 1, startAt = 0, endAt = null }) {
 		const { context, buses } = this.#unlocked();
 		if (!(buffer instanceof DecodedBuffer)) {
 			throw new TypeError('createBufferVoice needs a buffer from loadBuffer');
 		}
-		return new BufferVoice(new VoiceOutput(context, buses[bus], gain), buffer.audioBuffer);
+		return new BufferVoice(new VoiceOutput(context, buses[bus], gain), buffer.audioBuffer, { startAt, endAt });
 	}
 
 	#createContext() {
@@ -275,24 +280,40 @@ class StreamVoice {
 	#output;
 	#element;
 	#source;
+	#endAt;
 	#events = new VoiceEvents();
 	#listeners = new AbortController();
+	/** @type {number | null} */
+	#endTimer = null;
 
 	/**
 	 * @param {VoiceOutput} output
 	 * @param {string} url
+	 * @param {Clip} clip
 	 */
-	constructor(output, url) {
+	constructor(output, url, { startAt, endAt }) {
 		this.#output = output;
+		this.#endAt = endAt;
 		this.#element = new Audio();
 		this.#element.preload = 'auto';
 		this.#source = output.context.createMediaElementSource(this.#element);
 		this.#source.connect(output.input);
 
 		const { signal } = this.#listeners;
-		this.#element.addEventListener('loadedmetadata', () => this.#events.loaded(), { signal });
+		this.#element.addEventListener('loadedmetadata', () => {
+			// Playback can't begin before the metadata is in, so seeking here means no audio before the start point.
+			if (startAt > 0) {
+				this.#element.currentTime = startAt;
+			}
+			this.#events.loaded();
+		}, { signal });
 		this.#element.addEventListener('ended', () => this.#events.ended(), { signal });
 		this.#element.addEventListener('error', () => this.#events.error(describeMediaError(this.#element.error)), { signal });
+		if (endAt !== null) {
+			this.#element.addEventListener('playing', () => this.#planEnd(), { signal });
+			this.#element.addEventListener('seeked', () => this.#planEnd(), { signal });
+			this.#element.addEventListener('pause', () => this.#cancelEnd(), { signal });
+		}
 		this.#element.src = url;
 	}
 
@@ -354,6 +375,7 @@ class StreamVoice {
 			return;
 		}
 		this.#events.stopped = true;
+		this.#cancelEnd();
 		this.#listeners.abort();
 		this.#element.pause();
 		this.#source.disconnect();
@@ -361,6 +383,32 @@ class StreamVoice {
 		// Clearing the source and reloading is what makes the browser drop its buffers and close the connection.
 		this.#element.removeAttribute('src');
 		this.#element.load();
+	}
+
+	/**
+	 * Media elements have no end point of their own, so a timer stops playback there. Timers can fire a little early or,
+	 * in a background tab, late; an early one just waits again for the time still left.
+	 */
+	#planEnd() {
+		this.#cancelEnd();
+		const endAt = /** @type {number} */ (this.#endAt);
+		if (this.#element.paused) {
+			return;
+		}
+		const left = endAt - this.#element.currentTime;
+		if (left <= END_TOLERANCE_SECONDS) {
+			this.#element.pause();
+			this.#events.ended();
+			return;
+		}
+		this.#endTimer = window.setTimeout(() => this.#planEnd(), (left / this.#element.playbackRate) * 1000);
+	}
+
+	#cancelEnd() {
+		if (this.#endTimer !== null) {
+			window.clearTimeout(this.#endTimer);
+			this.#endTimer = null;
+		}
 	}
 }
 
@@ -372,20 +420,24 @@ class BufferVoice {
 	#output;
 	#context;
 	#buffer;
+	#endAt;
 	#events = new VoiceEvents();
 	/** @type {AudioBufferSourceNode | null} */
 	#source = null;
-	#offset = 0;
+	#offset;
 	#startedAt = 0;
 
 	/**
 	 * @param {VoiceOutput} output
 	 * @param {AudioBuffer} buffer
+	 * @param {Clip} clip
 	 */
-	constructor(output, buffer) {
+	constructor(output, buffer, { startAt, endAt }) {
 		this.#output = output;
 		this.#context = output.context;
 		this.#buffer = buffer;
+		this.#offset = Math.min(startAt, buffer.duration);
+		this.#endAt = endAt;
 		// The duration is known right away; announce it asynchronously, like a media element would.
 		queueMicrotask(() => this.#events.loaded());
 	}
@@ -394,11 +446,16 @@ class BufferVoice {
 		if (!this.#source) {
 			return this.#offset;
 		}
-		return Math.min(this.duration, this.#offset + this.#context.currentTime - this.#startedAt);
+		return Math.min(this.#end, this.#offset + this.#context.currentTime - this.#startedAt);
 	}
 
 	get duration() {
 		return this.#buffer.duration;
+	}
+
+	/** Where playback stops: the end point, or the end of the buffer. */
+	get #end() {
+		return Math.min(this.duration, this.#endAt ?? Number.POSITIVE_INFINITY);
 	}
 
 	play() {
@@ -411,11 +468,12 @@ class BufferVoice {
 		source.addEventListener('ended', () => {
 			if (this.#source === source) {
 				this.#source = null;
-				this.#offset = this.duration;
+				this.#offset = this.#end;
 				this.#events.ended();
 			}
 		});
-		source.start(0, this.#offset);
+		// Giving the length lets the audio thread stop at the end point to the sample.
+		source.start(0, this.#offset, Math.max(0, this.#end - this.#offset));
 		this.#startedAt = this.#context.currentTime;
 		this.#source = source;
 	}
