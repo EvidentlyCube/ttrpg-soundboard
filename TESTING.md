@@ -111,6 +111,12 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] The dialog opens on the "Playlist" tab. The arrow keys and clicks switch to "Tracks (N)" and back; Play and the save status stay visible on both.
 - [ ] On "Tracks", each row shows number, title and duration. One row opens at a time; clicking the open row closes it.
 - [ ] Renaming a track updates its row, the footer (if it is playing) and the footer's track list while typing, without moving any track. It survives a reload.
+- [ ] Each row has a play button before its number. Pressing it starts that track at once (no fade), without opening or closing the row, and the button turns into a stop button. Pressing another row's button switches to that track.
+- [ ] Pressing the stop button stops the playlist at once. The playlist's stop mode applies: with Pause, playing it from the tile continues there.
+- [ ] A track started from the tile, the footer or its next button shows as playing in the dialog, and the row follows when the playlist moves on to the next track by itself.
+- [ ] A paused track shows the play button; pressing it resumes the track rather than restarting it.
+- [ ] An open row has a progress bar and nothing else with it. It is disabled (dim cursor, ignores presses) when the track isn't the current one, and fills while it plays. Pressing it seeks, as in the footer, also while paused.
+- [ ] Opening the dialog while a track is already playing shows its button and bar in the right state at once.
 - [ ] A playlist with many tracks scrolls inside the dialog, with the tabs and the Play row staying in place.
 
 **Crossfade**
