@@ -10,7 +10,7 @@
  */
 /**
  * @typedef {{ title?: string, gain?: number, crossfade?: number, fadeIn?: number, fadeOut?: number,
- * 	order?: PlaybackOrder, includedSubdirectories?: string[] }} PlaylistOptions
+ * 	order?: PlaybackOrder, trackLooping?: boolean, includedSubdirectories?: string[] }} PlaylistOptions
  */
 /** @typedef {typeof PLAYBACK_ORDERS[number]} PlaybackOrder */
 /** @typedef {{ master: number, music: number, sfx: number }} Volumes */
@@ -88,6 +88,9 @@ export function validatePlaylistOptions(value) {
 	const problems = [...checkTitle(value), ...checkGain(value), ...checkSeconds(value, ['crossfade', 'fadeIn', 'fadeOut'])];
 	if ('order' in value && !(/** @type {readonly unknown[]} */ (PLAYBACK_ORDERS)).includes(value.order)) {
 		problems.push('"order" must be "ordered", "random" or "shuffle"');
+	}
+	if ('trackLooping' in value && typeof value.trackLooping !== 'boolean') {
+		problems.push('"trackLooping" must be true or false');
 	}
 	if (
 		'includedSubdirectories' in value

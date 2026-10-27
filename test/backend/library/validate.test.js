@@ -142,6 +142,14 @@ describe('validatePlaylistOptions', () => {
 		}
 	});
 
+	it('accepts track looping as true or false and rejects anything else', () => {
+		assert.deepEqual(validatePlaylistOptions({ trackLooping: true }), []);
+		assert.deepEqual(validatePlaylistOptions({ trackLooping: false }), []);
+		for (const trackLooping of ['true', 1, null]) {
+			assert.deepEqual(validatePlaylistOptions({ trackLooping }), ['"trackLooping" must be true or false'], String(trackLooping));
+		}
+	});
+
 	it('accepts a crossfade from 0 to 30 seconds and rejects others', () => {
 		for (const crossfade of [0, 2.5, 30]) {
 			assert.deepEqual(validatePlaylistOptions({ crossfade }), [], String(crossfade));
