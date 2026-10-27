@@ -84,7 +84,7 @@ export class TrackAccordion extends Component {
 			h('span', { class: 'shrink-0 tabular-nums text-muted' }, formatTime(track.duration)),
 			icon('chevronDown', 'size-4 shrink-0 text-muted transition-transform group-aria-expanded:rotate-180'));
 
-			const fill = h('div', { class: 'h-full rounded-full bg-music', style: 'width: 0%' });
+			const fill = h('div', { class: 'h-full rounded-full bg-music', style: { width: '0%' } });
 			const bar = h('div', {
 				'class': 'flex items-center py-2 data-[enabled=false]:cursor-not-allowed data-[enabled=true]:cursor-pointer',
 				'data-track-progress': track.id,
