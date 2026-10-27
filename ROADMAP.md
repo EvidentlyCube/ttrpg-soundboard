@@ -29,7 +29,30 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## Proposals
 
-None yet.
+### Test playback in the track list
+
+**Goal.** In the playlist dialog's track list, each track has a play / stop button that starts or stops it right away. The open track shows a progress bar you can seek on. Everything shows the playlist's real state: a track started from the footer shows as playing in the dialog, and when a track ends the playlist carries on as usual.
+
+**Design changes.** No facade, event or logic changes are needed; the existing commands and events cover it. Only UI changes.
+- §9.7 (playlist dialog, track accordion): each row gets a play / stop button before the number. The open row gets a progress bar below the title field. A playing row is marked with `data-playing` (blue number and title through a `data-*` variant, §9.6).
+- §9.2: nothing changes, but the footer's bar and the dialog's bar are two views of the same `playlist.progress` events.
+- `TESTING.md`: new manual checks.
+
+**Open questions.**
+1. **What the button does.** On a track that isn't the current one (or when the playlist is idle): `jumpToTrack(id, i, { transition: 'instant' })`, so it is audible at once and a fresh history starts at that track, as a click in the footer's track list does. On the current track: `stopPlaylist(id, { transition: 'instant' })`. *Recommended: yes, both instant, since this is for testing a track, not for performing.*
+2. **Which track counts as playing.** The one at `trackIndex` while the playlist is `loading`, `playing` or `paused`. A paused track shows the play icon, and pressing it calls `resumePlaylist` rather than restarting it. *Recommended: yes.*
+3. **Stop remembers.** Stopping from the dialog follows the playlist's stop mode like any other stop (§8.1), so with Pause, playing it again from the tile continues there. *Recommended: yes, no special case.*
+4. **The progress bar.** The same look and seeking as the footer's, shown only in the open row, and only while that track is the current one; otherwise it sits empty at 0 and pressing it does nothing. It follows `playlist.progress` using inline styles only (§9.6), and the footer's crossfade band is left out. *Recommended: yes.*
+5. **Clicking the bar of a track that isn't playing.** Does nothing; it doesn't start the track. *Recommended: yes.*
+6. **Time readout.** `1:23 / 3:45` beside the bar, text only. *Recommended: yes.*
+7. **Row click vs. button.** The button is a sibling of the row's toggle button, not inside it, so pressing it doesn't open or close the row. *Recommended: yes.*
+8. **Unplayable tracks.** A track in a format this browser can't play (`app.ready`'s `unplayable`) gets a disabled button. *Recommended: yes.*
+
+**Plan.**
+1. A pure helper `ui/track-playback.js`: given a snapshot's `state` and `trackIndex`, which row is playing, paused or neither, and the position-to-fraction mapping for the bar — unit tests.
+2. The row's play / stop button, following `playlist.stateChanged`, with the initial state from `getPlaylistSnapshot`; manual checks in `TESTING.md`.
+3. The progress bar and seeking in the open row, following `playlist.progress`; manual checks.
+4. `DESIGN.md` update.
 
 ---
 
