@@ -177,6 +177,7 @@ describe('BootstrapService', () => {
 				['Music Mix', ['Piece by Piece', 'Intro']],
 				['Music MP3', ['Piece by Piece', 'Intro']],
 				['Music Ogg', ['Piece by Piece', 'Intro']],
+				['Music Order', ['Order 1', 'Order 2', 'Order 3', 'Order 4', 'Order 5', 'Order 6']],
 			]);
 
 			const second = await bootstrap(copy.root);
@@ -299,8 +300,8 @@ describe('BootstrapService', () => {
 			assert.ok(Math.abs(options.duration - 4.95) < 0.1, String(options.duration));
 			assert.deepEqual({ ...options.measuredFrom, sha1: options.measuredFrom.sha1.length }, { size, modified: mtime.toISOString(), sha1: 40 });
 			assert.equal(readyLibrary(outcome).sounds.find((sound) => sound.id === SOUND)?.duration, options.duration);
-			assert.ok(readyLibrary(outcome).playlists.every((playlist) => playlist.tracks.every((track) => (track.duration ?? 0) > 29)));
-			assert.deepEqual(reporter.callsTo('measuringDurations'), [10]);
+			assert.ok(readyLibrary(outcome).playlists.every((playlist) => playlist.tracks.every((track) => (track.duration ?? 0) > 9.9)));
+			assert.deepEqual(reporter.callsTo('measuringDurations'), [16]);
 		});
 
 		it('reads nothing again on a later run when nothing changed', async () => {

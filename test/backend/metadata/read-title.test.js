@@ -55,6 +55,7 @@ describe('readTitle', () => {
 			['Music Ogg/Song 2 OGG with title tag.ogg', 'Intro'],
 			['Music Mix/Song 1 MP3 with title tag.mp3', 'Piece by Piece'],
 			['Music Mix/Song 2 OGG with title tag.ogg', 'Intro'],
+			...[1, 2, 3, 4, 5, 6].map((n) => /** @type {[string, string]} */ ([`Music Order/Order ${n}.mp3`, `Order ${n}`])),
 		];
 		for (const [file, title] of expected) {
 			it(`reads ${JSON.stringify(title)} from ${file}`, async () => {

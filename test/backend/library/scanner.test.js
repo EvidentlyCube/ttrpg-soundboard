@@ -134,6 +134,7 @@ describe('scanAudioDirectory', () => {
 				['Music Mix', 2],
 				['Music MP3', 2],
 				['Music Ogg', 2],
+				['Music Order', 6],
 			]);
 			assert.deepEqual(fixture.warnings, []);
 		} finally {

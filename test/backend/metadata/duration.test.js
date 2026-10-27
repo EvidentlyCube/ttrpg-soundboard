@@ -169,6 +169,8 @@ describe('readDuration', () => {
 			['Music MP3/Song 2 MP3 with title tag.mp3', 30.080],
 			['Music Mix/Song 2 OGG with title tag.ogg', 30.225],
 			['Music Ogg/Song 1 OGG with title tag.ogg', 30.250],
+			['Music Order/Order 1.mp3', 10.000],
+			['Music Order/Order 6.mp3', 10.000],
 		];
 		for (const [file, seconds] of expected) {
 			const duration = await readDuration(join(FIXTURE, file));
