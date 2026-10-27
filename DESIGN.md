@@ -105,11 +105,18 @@ Sound or track options (`Explosion.mp3.json`)
 {
 	"title": "Big Explosion",
 	"gain": 0.5957,
+	"startAt": 0.25,
+	"endAt": 3.8,
+	"fadeIn": 0.05,
+	"fadeOut": 0.5,
 	"duration": 4.21,
 	"measuredFrom": { "size": 48213, "modified": "2026-10-24T16:41:00.000Z", "sha1": "3f786850e387550fdab836ed7e6dc881de23001b" }
 }
 ```
 - `title` is optional; without it the default title is used (§2.4).
+- `startAt` and `endAt` choose the part of a sound that plays (§7), in seconds. `startAt` defaults to `0`; `endAt` defaults to `null`, the end of the file. The app writes both rounded to 3 decimals, so whole milliseconds survive. They are not checked against `duration`, which is only an estimate for some MP3s.
+- `fadeIn` and `fadeOut` fade a sound in from its start point and out to its end point (§7), in seconds, `0` (the default, off) to `30`, rounded to 2 decimals.
+- Track files accept `startAt`, `endAt`, `fadeIn` and `fadeOut` too, but tracks ignore them for now ([roadmap](ROADMAP.md)).
 - `duration` (seconds, 2 decimals, or `null` when it can't be read) and `measuredFrom` (the file's size, modification time and SHA-1 at that moment) are written by bootstrap (§3.5), never by hand. They always come together.
 - `gain` is optional and defaults to `1`. It is the item's own volume as the linear multiplier a Web Audio `GainNode` takes: `1` plays the file as recorded, `2` doubles the amplitude (about +6 dB), `0` is silent. The UI shows it in decibels (§6.4). It is deliberately not called `volume`, because the volumes in `.soundboard` are slider positions, a different thing. A track's `gain` is applied together with its playlist's (§6.4); there is no UI for it yet ([roadmap](ROADMAP.md)).
 - The app writes `gain` rounded to 4 decimal places.
@@ -130,7 +137,7 @@ Playlist options (`Combat.json`)
 - `includedSubdirectories` lists paths relative to the playlist directory, using `/`. Every depth is listed explicitly.
 - Listed directories that no longer exist are ignored. They are not removed.
 
-**Validation (fatal).** Any options file or `.soundboard` that fails `JSON.parse`, is not an object, or has the wrong type for a known key (`title` must be a non-empty string, `gain` must be a number from `0` to `4`, `crossfade`, `fadeIn` and `fadeOut` numbers from `0` to `30`, `duration` a non-negative number or `null` and present together with a well-formed `measuredFrom`, `includedSubdirectories` must be an array of strings, `version` must be a positive integer, `volumes.*` must be numbers in `0..1`) is an error. Bootstrap gathers **all** such errors, prints them in red with their paths, and exits with code `1` **before asking any questions or writing anything**. The user must fix or delete those files. Options files of empty playlists are validated too.
+**Validation (fatal).** Any options file or `.soundboard` that fails `JSON.parse`, is not an object, or has the wrong type for a known key (`title` must be a non-empty string, `gain` must be a number from `0` to `4`, `crossfade`, `fadeIn` and `fadeOut` numbers from `0` to `30`, `startAt` a non-negative number, `endAt` a non-negative number or `null` and, when both points are numbers, at least 10 ms (`MIN_CLIP_MS`) after `startAt`, `duration` a non-negative number or `null` and present together with a well-formed `measuredFrom`, `includedSubdirectories` must be an array of strings, `version` must be a positive integer, `volumes.*` must be numbers in `0..1`) is an error. Bootstrap gathers **all** such errors, prints them in red with their paths, and exits with code `1` **before asking any questions or writing anything**. The user must fix or delete those files. Options files of empty playlists are validated too.
 
 **Unknown keys are preserved.** Whenever the app rewrites a file, it reads it again, merges, and writes back the whole object, so keys from future versions survive.
 
@@ -234,14 +241,15 @@ A file whose duration can't be read is stored as `"duration": null` with its `me
 ```js
 Library   { root, playlists: Playlist[], sounds: AudioFile[], files: Map<id, AudioFile> }
 Playlist  { id, title, gain, crossfade, fadeIn, fadeOut, tracks: AudioFile[], includedSubdirectories: string[] }
-AudioFile { id /* root-relative POSIX path */, title, format: 'mp3'|'ogg', size, gain, duration /* seconds or null */, absolutePath }
+AudioFile { id /* root-relative POSIX path */, title, format: 'mp3'|'ogg', size, gain, duration /* seconds or null */,
+            startAt, endAt /* seconds or null */, fadeIn, fadeOut, absolutePath }
 Settings  { volumes: { master, music, sfx } }   // held by SettingsStore, saved to .soundboard
 ```
 
 - `playlists` contains only non-empty playlists, sorted by title; `sounds` are sorted by title; tracks keep path order (§2.2).
 - `files` indexes every sound and track by id. It is the only list of files the server may stream.
-- `LibraryEditor` changes the library while the app runs. `updateSound(id, { title?, gain? })` validates the change with the options file rules (§2.3), rejects unknown keys, trims the title, and rounds the gain. It then merges the change into the sound's options file (read, merge, atomic write, unknown keys kept), and only once that succeeded updates the `AudioFile` in place and sorts `sounds` again. Writes to one options file run one after another in the order they were requested, so the file always ends with the newest values; a failed write doesn't block later ones. An id that isn't a sound (including a track id) is an `UnknownSoundError`.
-- `updatePlaylist(id, { title?, gain?, crossfade?, fadeIn?, fadeOut? })` does the same for a playlist's options file (`<directory>.json` in the root), leaving its `includedSubdirectories` alone, and sorts `playlists` again after a rename. The timings are accepted only here, not for sounds. An unknown id is an `UnknownPlaylistError`.
+- `LibraryEditor` changes the library while the app runs. `updateSound(id, { title?, gain?, startAt?, endAt?, fadeIn?, fadeOut? })` validates the change with the options file rules (§2.3), rejects unknown keys, trims the title, and rounds the numbers. The points are checked again after merging with the sound's current ones, so a change to one point must still fit the other. It then merges the change into the sound's options file (read, merge, atomic write, unknown keys kept), and only once that succeeded updates the `AudioFile` in place and sorts `sounds` again. Writes to one options file run one after another in the order they were requested, so the file always ends with the newest values; a failed write doesn't block later ones. An id that isn't a sound (including a track id) is an `UnknownSoundError`.
+- `updatePlaylist(id, { title?, gain?, crossfade?, fadeIn?, fadeOut? })` does the same for a playlist's options file (`<directory>.json` in the root), leaving its `includedSubdirectories` alone, and sorts `playlists` again after a rename. The crossfade is accepted only here, and the points only for sounds. An unknown id is an `UnknownPlaylistError`.
 - `updateTrack(id, { title })` does the same for a track's options file (`<file>.json` next to it). Only `title` is accepted. Tracks keep their path order (§2.2), so nothing is sorted again. An id that isn't a track (including a sound id) is an `UnknownTrackError`.
 - `SettingsStore` keeps the settings in memory and writes them back to `.soundboard` with the same read-merge-write and atomic rename as the options files (§2.3). Writes are **serialized**: one in flight at a time, and changes made meanwhile are written together by one follow-up write, so the file always ends with the newest values.
 
@@ -255,7 +263,7 @@ The server knows nothing about playback state.
 | GET | `/api/library` | JSON (below) |
 | GET | `/api/settings` | `{ "volumes": { "master": 1, "music": 0.8, "sfx": 1 } }` |
 | PUT | `/api/settings/volumes` | Body `{ master?, music?, sfx? }` (numbers in `0..1`). Merged into the settings and saved; returns the full settings. `400` for invalid JSON, a non-object, an out-of-range value or an unknown key. `413` for bodies over 16 KB. |
-| PATCH | `/api/sounds/<encoded id>` | Body `{ title?, gain? }`. Saved through `LibraryEditor` (§5.1); returns the updated sound in the `/api/library` format. `400` for invalid JSON, a non-object, an unknown key, an empty title or an out-of-range gain. `404` when the id isn't a sound. `413` for bodies over 16 KB. |
+| PATCH | `/api/sounds/<encoded id>` | Body `{ title?, gain?, startAt?, endAt?, fadeIn?, fadeOut? }`. Saved through `LibraryEditor` (§5.1); returns the updated sound in the `/api/library` format. `400` for invalid JSON, a non-object, an unknown key, an empty title, an out-of-range value, or points less than 10 ms apart. `404` when the id isn't a sound. `413` for bodies over 16 KB. |
 | PATCH | `/api/playlists/<encoded id>` | The same for a playlist, with body `{ title?, gain?, crossfade?, fadeIn?, fadeOut? }` (`LibraryEditor.updatePlaylist`); returns the playlist with its tracks in the `/api/library` format. |
 | PATCH | `/api/tracks/<encoded id>` | The same for a track, with body `{ title }` (`LibraryEditor.updateTrack`); returns the track. The id contains `/`: the rest of the path is decoded as a whole, which keeps literal slashes, so `Combat%2F1.mp3` and `Combat/1.mp3` both work. The browser sends the first. |
 | GET, HEAD | `/media/<encoded id>` | The audio file, streamed |
@@ -269,11 +277,13 @@ The server knows nothing about playback state.
 	"version": 1,
 	"playlists": [
 		{ "id": "Combat", "title": "Combat", "gain": 0.8, "crossfade": 2.5, "fadeIn": 1, "fadeOut": 3, "tracks": [
-			{ "id": "Combat/01 Battle.mp3", "title": "Battle", "format": "mp3", "size": 4194304, "gain": 1, "duration": 213.47, "url": "/media/Combat/01%20Battle.mp3" }
+			{ "id": "Combat/01 Battle.mp3", "title": "Battle", "format": "mp3", "size": 4194304, "gain": 1, "duration": 213.47,
+			  "startAt": 0, "endAt": null, "fadeIn": 0, "fadeOut": 0, "url": "/media/Combat/01%20Battle.mp3" }
 		] }
 	],
 	"sounds": [
-		{ "id": "Explosion.mp3", "title": "Big Explosion", "format": "mp3", "size": 48213, "gain": 0.5957, "duration": 4.21, "url": "/media/Explosion.mp3" }
+		{ "id": "Explosion.mp3", "title": "Big Explosion", "format": "mp3", "size": 48213, "gain": 0.5957, "duration": 4.21,
+		  "startAt": 0.25, "endAt": 3.8, "fadeIn": 0.05, "fadeOut": 0.5, "url": "/media/Explosion.mp3" }
 	]
 }
 ```
@@ -310,11 +320,11 @@ UI layer (DOM)  ──commands──▶  Soundboard (logic facade)  ──▶  A
 - `public/app/logic/**` **never touches** `window`, `document`, audio APIs or Node APIs. Everything it needs is injected through ports, whose types live in `public/app/logic/ports.js`:
   - the `AudioEngine` (§6.3);
   - a `Clock` (`setTimeout`, `clearTimeout`, `setInterval`, `clearInterval`);
-  - a `BackendApi` (`fetchLibrary()`, `fetchSettings()`, `saveVolumes(volumes, { keepalive })`, `saveSoundOptions(soundId, { title, gain }, { keepalive })`, `savePlaylistOptions(playlistId, { title, gain, crossfade, fadeIn, fadeOut }, { keepalive })`, `saveTrackOptions(trackId, { title }, { keepalive })`);
+  - a `BackendApi` (`fetchLibrary()`, `fetchSettings()`, `saveVolumes(volumes, { keepalive })`, `saveSoundOptions(soundId, { title, gain, startAt, endAt, fadeIn, fadeOut }, { keepalive })`, `savePlaylistOptions(playlistId, { title, gain, crossfade, fadeIn, fadeOut }, { keepalive })`, `saveTrackOptions(trackId, { title }, { keepalive })`);
   - a `Logger` (`warn`, `error`).
 
   Node imports and tests this code directly; the type-checker and ESLint enforce the boundary (§10.1).
-- The UI calls only the facade's methods and listens to its events. It never reads logic internals. The one exception is stateless helpers with no state of their own: the UI imports `MAX_GAIN`, `gainToDb`, `dbToGain` and `sliderToGain` from `logic/volume.js`, and `MAX_CROSSFADE` from `logic/playback-rules.js`, so the ranges and the volume math exist only once.
+- The UI calls only the facade's methods and listens to its events. It never reads logic internals. The one exception is stateless helpers with no state of their own: the UI imports `MAX_GAIN`, `gainToDb`, `dbToGain` and `sliderToGain` from `logic/volume.js`, `MAX_CROSSFADE` from `logic/playback-rules.js`, and `MIN_CLIP_MS` from `logic/clip.js`, so the ranges and the volume math exist only once.
 - **Commands and events are plain, serializable objects.** Each facade method builds a command (`{ type: 'playlist.next', playlistId, transition: 'instant' }`) and passes it to `dispatch(command)`, which validates it first. Events are `{ type, ...payload }` and contain only JSON-safe values: an unknown duration is `null`, never `NaN`. **Extension point:** a remote control could forward commands and events over a connection unchanged ([roadmap](ROADMAP.md)).
 - A UI event handler that throws never stops other handlers or leaves playback half-updated; the error is passed to the logger.
 
@@ -330,7 +340,8 @@ flushSettings()                           // save pending volume, sound and play
 // sounds (no transitions; sounds have no rules)
 playSound(soundId)
 stopSound(soundId)                        // stops all instances of that sound, instantly
-customizeSound(soundId, { title?, gain? }) // applies at once, saves 500 ms later (§6.4)
+customizeSound(soundId, { title?, gain?, startAt?, endAt?, fadeIn?, fadeOut? })  // applies at once, saves 500 ms later (§6.4)
+                                          // points and fades only reach later presses (§7)
 flushSoundOptions(soundId)                // save that sound's pending change now (its dialog closed)
 
 // playlists; transition is 'default' (follow the playlist's rules) or 'instant'. Omitted means 'default'.
@@ -376,7 +387,7 @@ on(type, handler) → unsubscribe, off(type, handler)
 | `audio.resumed` | `{}`, sent when it runs again after a suspension |
 | `sound.activeChanged` | `{ soundId, active }`, sent when the instance count goes from 0 to ≥1 or back |
 | `sound.error` | `{ soundId, message }`: decoding or playback failed, or the browser cannot play the format |
-| `sound.changed` | `{ sound }`, the sound with its new title or gain, right after `customizeSound` |
+| `sound.changed` | `{ sound }`, the sound with its new title, gain, points or fades, right after `customizeSound` |
 | `sound.saved` | `{ soundId }`, once every change to that sound has been saved |
 | `sound.saveFailed` | `{ soundId, message }`; the change stays in effect and is saved again with the next one |
 | `playlist.changed` | `{ playlist }`, the playlist (with its tracks) with its new title, gain or timings, right after `customizePlaylist`, or with a renamed track, right after `customizeTrack` |
@@ -397,9 +408,11 @@ engine.unlock()                      // creates (first call) or resumes the Audi
 engine.on('suspended' | 'resumed', handler)
 engine.canPlay(format)               → boolean
 engine.setBusGain(bus, gain)         // 'master' | 'music' | 'sfx'
-engine.createStreamVoice({ url, bus, gain? }) → Voice          // streamed through a media element
+engine.createStreamVoice({ url, bus, gain?, startAt?, endAt? }) → Voice      // streamed through a media element
 engine.loadBuffer(url)               → Promise<BufferHandle>   // fetch + decodeAudioData; { memoryBytes }
-engine.createBufferVoice({ buffer, bus, gain? }) → Voice      // gain: the voice's own volume, default 1
+engine.createBufferVoice({ buffer, bus, gain?, startAt?, endAt? }) → Voice  // gain: the voice's own volume, default 1
+                                     // startAt/endAt: the part of the file it plays, in seconds (default 0 and null,
+                                     // the end of the file); reaching endAt stops it and fires 'ended'
 
 Voice:
 	play()  pause()  stop()          // play() failures arrive as an error event; stop() releases everything
@@ -418,11 +431,14 @@ Voice:
 - `VoiceOutput` remembers the fade it last scheduled (`fade-ramp.js`) and starts every new fade from that fade's level at the current time. It never reads `AudioParam.value`, which only catches up once the audio thread has run. A fade-in scheduled straight after a jump to silence therefore really starts from silence, and an interrupted fade continues from wherever it had got to.
 - **Stream voices** are `Audio` elements (`preload = 'auto'`) feeding `createMediaElementSource`. `loaded` is the element's `loadedmetadata`. `stop()` pauses, disconnects the nodes, removes `src` and calls `load()`, so the browser drops the connection and its buffers. A rejected `play()` becomes an `error` event, except `AbortError`, which only means a pause or stop interrupted the start.
 - **Buffer voices** use an `AudioBufferSourceNode` per play; pausing remembers the offset. `loaded` is announced asynchronously right away. `memoryBytes` is `length × channels × 4`.
+- **Start and end points.** `position` stays in file time.
+  - A buffer voice starts at `startAt` and passes the length left to `endAt` to `AudioBufferSourceNode.start(0, offset, length)`, so the audio thread stops it at the exact sample.
+  - A stream voice seeks to `startAt` on `loadedmetadata`, before any audio plays. Media elements have no end point, so a timer, set on `playing` and `seeked` and cleared on `pause` and `stop`, pauses it within 5 ms of `endAt` and fires `ended`; a timer that fires early waits again for the time left. That is accurate to a few milliseconds while the window is in front. Safari slows timers down in background tabs, so a streamed sound can run past its end there.
 - `canPlay` uses `canPlayType` and caches the answer per format.
 - Bus gains and voice volumes change with `setTargetAtTime` (15 ms), so moving a slider never clicks; fades use ramps. No per-frame JavaScript loops.
 - `suspended` is only reported for a context that was running, so the short suspended state right after creation is not mistaken for an interruption. Safari's `interrupted` state counts as suspended.
 
-**FakeAudioEngine** (`test/helpers/`) runs on a fake clock and models how media elements behave: loading takes time, `play()` before loading waits for it, position only advances while playing, `ended` fires once. Errors, durations and "leaky" voices that keep firing events after `stop()` can be scripted per URL. It records every voice, with its current `gain`, so tests can check that none is left behind.
+**FakeAudioEngine** (`test/helpers/`) runs on a fake clock and models how media elements behave: loading takes time, `play()` before loading waits for it, position only advances while playing, `ended` fires once. A voice's position starts at its `startAt`, and `ended` fires when it reaches its `endAt`. Errors, durations and "leaky" voices that keep firing events after `stop()` can be scripted per URL. It records every voice, with its current `gain`, so tests can check that none is left behind.
 
 ### 6.4 Volume
 
@@ -455,6 +471,13 @@ Volumes are saved in `.soundboard` (§2.3), so they survive reloads and restarts
 - **Buffer cache.** An LRU cache with a **64 MB** budget, measured as `memoryBytes`. Entries are evicted, least recently used first, when the budget is exceeded. A buffer that is playing is never evicted, and neither is one that has just finished decoding, since its caller is about to play it.
 - **First press on an uncached small sound.** Decoding is asynchronous. Pressing the sound again while it decodes shares the same pending load. **Race guard:** each sound has an `epoch` counter that `stopSound` increments. A pending start captures the epoch and is dropped if it has changed by the time decoding finishes, so "Stop All" also cancels starts that haven't happened yet.
 - **Volume.** Every instance starts at the sound's gain (§6.4). `setGain(soundId, gain)` applies a new gain to the instances playing and remembers it for later ones, including a press still waiting for its decode.
+- **Start and end points.** Every instance plays the part of the file between the sound's `startAt` and `endAt` (§2.3), which the voice handles (§6.3); reaching the end point ends the instance like the end of the file. A start point at or past the real end of the file ends it right away.
+  - `customizeSound` rounds the points to whole milliseconds and checks them after merging with the current ones (`checkClip` in `logic/clip.js`): both non-negative, and the end at least `MIN_CLIP_MS` (10 ms) after the start. Anything else is an `InvalidCommandError`.
+- **Fades.** They work like a playlist's (§8.5), using the voice's fade stage (§6.3).
+  - With `fadeIn`, an instance starts silent and ramps up over `fadeIn` as it starts.
+  - With `fadeOut`, a clock timer bound to the instance, planned once the voice has loaded, starts the ramp down `fadeOut` before the end point (or the end of the file). The fade is cut to the time the sound has, so it always ends where playback ends, and it starts from wherever a fade-in had got to.
+  - **Stop All** and a ninth press replacing the oldest stay instant. Removing an instance clears its timer.
+- **Changes only reach later presses.** An instance keeps the points and fades it started with, so dragging a handle never makes a playing sound jump or cut off. Volume is the exception, as it can't make anything jump.
 - When a voice ends or fails, its instance is removed and its resources released, and `sound.activeChanged` is sent when the count reaches 0.
 - Errors: a decode or playback failure, or a format the browser can't play, sends `sound.error`. A failed decode is forgotten, so the next press tries again.
 
@@ -530,6 +553,7 @@ planTrack(track, rules) → { startAt, endAt }
 
 - A non-zero `fadeIn` ramps the new voice's gain from 0; a non-zero fade-out ramps the old voice to 0 in the retiring set. Both are covered by tests with non-zero rules.
 - A non-zero `startAt` is applied by seeking once the track has loaded.
+- **Extension point:** voices already take `startAt` and `endAt` (§6.3), as sounds use them (§7), so track start and end points can pass `planTrack`'s plan to the voice ([roadmap](ROADMAP.md)).
 
 ### 8.3 Progress
 
@@ -684,7 +708,15 @@ UI components extend `Component` (`ui/component.js`): `render()` builds the elem
 - **Status.** In the corner, without text: a spinner after a change, a checkmark once saved. A failure is shown as a red message.
 - **Tabs.** A tab bar over panels (`role="tablist"`, `tab`, `tabpanel`), the first selected. The left and right arrow keys move between tabs, and only the selected panel is shown. The bar stays at the top while the dialog scrolls.
 
-**The sound dialog** (`ui/sound-editor.js`), opened from the sound menu: the title (hint: the file name), the volume, Play / Stop (`playSound`, or stopping all instances; it follows `sound.activeChanged`, so it also reflects presses on the tile) and the status (`sound.saved`, `sound.saveFailed`).
+**The sound dialog** (`ui/sound-editor.js`), opened from the sound menu: the title (hint: the file name), the volume, the Start and end section (below), Fade in and Fade out (seconds controls with the playlist fades' limits, below), Play / Stop (`playSound`, or stopping all instances; it follows `sound.activeChanged`, so it also reflects presses on the tile) and the status (`sound.saved`, `sound.saveFailed`). A sound without a measured duration has no Start and end section ([roadmap](ROADMAP.md)).
+
+**Start and end section** (`ui/range-control.js`), in whole milliseconds. Every change sends both points with `customizeSound`, and `sound.changed` updates the control unless a handle is being dragged.
+- **Slider.** It spans the sound's stored duration. Two handles (`role="slider"`, "Start point" and "End point") never cross and stay at least `MIN_CLIP_MS` apart. Dragging a handle moves it; pressing the bar moves the nearer handle there (the start on a tie) and keeps dragging it. The part between the handles is amber (`bg-sfx`) on a dim bar. Handle and bar positions are inline styles (§9.6).
+- **Keyboard.** On a handle, the arrow keys step 10 ms and Shift + arrow 100 ms; Home and End go to the handle's limits.
+- **Fields.** "Start" and "End" take whole milliseconds (`1250`, `1,250`, `1 250 ms`) and apply on Enter or when the field loses focus; values out of range are clamped. On Enter, text that can't be read marks the field red; leaving the field drops it. Esc restores the field without closing the dialog. A field being typed in isn't overwritten by updates.
+- **Readout and Reset.** "Plays 1,250 ms of 4,210 ms", and a Reset button that goes back to the whole file.
+- **The end of the file is stored as `null`.** An end point at the duration is sent as `endAt: null`, so a longer replacement file still plays to its end. Stored points are fitted into the duration for display.
+- The clamping, mapping, key steps, formatting and parsing are pure functions in `ui/range-scale.js`, with unit tests.
 
 **The playlist dialog** (`ui/playlist-editor.js`), opened from the playlist menu, always on its first tab:
 - **"Playlist" tab:** the title (hint: `Folder: <directory>`), the volume, and the Fade in, Crossfade and Fade out sections (below). Later playlist settings add their sections here.
@@ -693,7 +725,7 @@ UI components extend `Component` (`ui/component.js`): `render()` builds the elem
   - An open track shows its title field (hint: `File: <track id>`), sent with `customizeTrack`. Row headers follow `playlist.changed`, while the open field is left alone, so it keeps its focus while typing. Later track settings go in the open row.
 - **Below both tabs**, staying in view while either scrolls: Play / Stop (`togglePlaylist`, like a tile click; it follows `playlist.stateChanged`) and the status, which follows the playlist's saves (`playlist.saved`, `playlist.saveFailed`) and its tracks' (`track.saved`, `track.saveFailed`).
 
-**Fade in, Crossfade and Fade out sections** in the playlist dialog, in that order, each a seconds control (`ui/seconds-control.js`):
+**Fade in, Crossfade and Fade out sections** in the playlist dialog, in that order, and Fade in and Fade out in the sound dialog, each a seconds control (`ui/seconds-control.js`):
 - A slider in 0.5 s steps and a readout (`Off`, `2.5 s`) that turns into a text field when clicked, like the gain widget's. Typed values accept `,` as the decimal point, an `s` suffix and `off`, and are clamped to the control's limit. An optional note sits below.
 - **Fade in and fade out** allow up to 10 s on the slider and 30 s typed (`SECONDS_LIMITS` in `ui/seconds-scale.js`), with no note.
 - **Crossfade** limits come from the playlist's tracks with a known duration (`crossfadeLimits`). The text field allows up to `min(30 s, half the shortest track)`, and the slider stops at `min(10 s, that limit)`, rounded down to a step. The note says what limits it ("Up to 15.1 s, half the shortest track."). A stored value above the limit, for example after a shorter track was added, is shown as stored, with a note that short tracks use at most half their length; the player clamps it anyway (§8.4).
@@ -738,7 +770,7 @@ public/
 		logic/                          no DOM, audio or Node APIs
 			ports.js  soundboard.js  commands.js  errors.js  event-emitter.js  library-model.js
 			playlist-player.js  playback-rules.js  transitions.js  order-strategies.js
-			sound-player.js  buffer-cache.js  volume.js  settings-sync.js  options-sync.js  sort.js
+			sound-player.js  buffer-cache.js  clip.js  volume.js  settings-sync.js  options-sync.js  sort.js
 		audio/      web-audio-engine.js  fade-ramp.js
 		api/        backend-api.js
 		ui/         app.js  component.js  dom.js  icons.js  format.js  menus.js  position.js
@@ -746,7 +778,7 @@ public/
 		            playlist-tile.js  sound-tile.js  player-dock.js  player-bar.js  volume-controls.js
 		            dialog.js  customize-parts.js  sound-editor.js  playlist-editor.js  track-accordion.js
 		            gain-control.js  gain-scale.js
-		            seconds-control.js  seconds-scale.js
+		            seconds-control.js  seconds-scale.js  range-control.js  range-scale.js
 test/
 	backend/    cli/  http/  library/  metadata/
 	frontend/   logic tests, backend-api.test.js, ui/ (pure UI helpers)

@@ -29,54 +29,7 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## Proposals
 
-### 6. Sound start and end points, with fades
-
-**Goal.** In a sound's Customize dialog, choose the part of the file that plays: a start point and an end point, set with a two-handle range slider or typed in milliseconds. A fade-in and a fade-out, set like a playlist's, soften the cut points. Every press of the sound then plays only that part. Like the other settings, a change applies at once and is saved 500 ms later.
-
-**Decided** (the owner's answers):
-1. The points are stored in seconds, like every other time in the options files: `startAt` and `endAt`, with 3 decimals so that whole milliseconds survive. The dialog shows milliseconds.
-2. Only later presses use changed points or fades; a playing instance keeps what it started with. Track start and end points (feature 11) must work the same way.
-3. Every sound has a known `duration`. What to do about files that can't be measured is a separate roadmap item; until then the dialog leaves the Start and end section out for such a sound.
-4. Sounds get `fadeIn` and `fadeOut` settings that work the way a playlist's do (DESIGN.md §8.5), so the cuts can be made click-free in the same feature. **Stop All stays instant**, whatever the fade-out.
-5. The end point is at least 10 ms after the start point.
-
-**Design changes.**
-
-- **§2.3.** Sound and track options files may hold:
-  - `startAt` (seconds, default `0`) and `endAt` (seconds, or `null` for the end of the file, which is the default). The app writes them rounded to 3 decimals. Validation: `startAt` is a number ≥ 0, `endAt` is a number or `null`, and when both are numbers `endAt` is at least 0.01 s after `startAt`. The points are not checked against `duration`, which is only an estimate for some MP3s.
-  - `fadeIn` and `fadeOut`, with the playlist rules: seconds from `0` (off, the default) to `30`, 2 decimals.
-  - Track files accept these keys, but tracks ignore them until feature 11.
-- **§5.1.** `AudioFile` gets `startAt`, `endAt`, `fadeIn` and `fadeOut`. `LibraryEditor.updateSound(id, { title?, gain?, startAt?, endAt?, fadeIn?, fadeOut? })` validates the merged result, so moving only the start past the stored end is rejected. `updateTrack` still accepts only `title`.
-- **§5.2.** `PATCH /api/sounds/<id>` accepts the four new keys. `/api/library` includes them for every sound and track.
-- **§6, §6.1.** `customizeSound(soundId, { title?, gain?, startAt?, endAt?, fadeIn?, fadeOut? })`. Invalid values are an `InvalidCommandError`, and the points are checked against each other after merging. `saveSoundOptions` sends all of them as part of the sound's full editable options. Command validation gets a "number or `null`" field type for `endAt`.
-- **§6.3.** `createStreamVoice` and `createBufferVoice` take optional `startAt` and `endAt`. The voice starts at `startAt` and treats reaching `endAt` as its end: it stops and fires `ended`. `position` stays in file time.
-  - **Buffer voices** pass the range to `AudioBufferSourceNode.start(0, offset, endAt − offset)`, so the audio thread cuts at the exact sample.
-  - **Stream voices** seek to `startAt` on `loadedmetadata`, before any audio plays. They end through a timer that is set on `playing` from the time left and set again on `seek`; `pause` and `stop` clear it. This is accurate to a few tens of milliseconds while the window is in front. In a background tab Safari slows timers down, so a streamed sound can run past its end there.
-  - `FakeAudioEngine` models both: once loaded, a voice's position starts at `startAt`, and `ended` fires when it reaches `endAt`.
-- **§7.** `SoundPlayer` gets the clock.
-  - Each new instance gets the sound's current points.
-  - **Fade-in:** with `fadeIn` set, the instance starts silent and ramps up over `fadeIn` from the moment it starts playing, as a playlist's first track does.
-  - **Fade-out:** with `fadeOut` set, a clock timer bound to the instance starts the ramp down `fadeOut` before the end point (or the file's end), so the fade ends where playback ends. It is planned once the voice has loaded and is cut to the time left. A fade-out that begins during the fade-in starts from wherever the fade-in had got to (§6.3), so short sounds need no extra limits.
-  - **Stop All** and the ninth press replacing the oldest stay instant, and removing an instance clears its timer.
-  - A start point at or past the real end of the file ends the instance right away, like a file that ended.
-- **§9.7.** The sound dialog gets a **Start and end** section below the volume:
-  - **A range slider** (`ui/range-control.js`) over the sound's duration, with two handles that cannot cross and stay at least 10 ms apart. Dragging a handle moves it, and pressing the bar moves the nearer handle there. The part between the handles is lit in amber, and the rest is dimmed.
-  - **Handle keyboard:** each handle is a `role="slider"`. The arrow keys step 10 ms, Shift + arrow steps 100 ms, and Home and End go to the handle's limits.
-  - **Two number fields,** "Start" and "End", in whole milliseconds. Each applies its value on Enter or when it loses focus. A value out of range is clamped, and text that can't be read is marked red and not sent, like the gain readout.
-  - **A length readout** below, e.g. "Plays 1,250 ms of 4,210 ms", and **a Reset button** that sets the start to `0` and the end to `null`.
-  - **Dragging the end handle all the way right** stores `null`, so a replaced, longer file still plays to its end.
-  - The pure mapping and step functions live in `ui/range-scale.js`, with unit tests.
-  - Below it come **Fade in** and **Fade out** sections, using the playlist dialog's seconds control with the same limits (10 s on the slider, 30 s typed).
-- **§10.** The new files.
-
-**Plan.**
-
-1. **Server.** Validation of the four keys in options files, `AudioFile` and `/api/library`, `LibraryEditor.updateSound` and `PATCH /api/sounds/<id>`. *Tests:* valid and invalid values in files (bootstrap stops on them), rounding, a partial update checked against the stored other point, `null` clearing the end, `updateTrack` rejecting the keys, and the route's `400`s.
-2. **Engine port.** `startAt` and `endAt` on both voice factories in the port, `FakeAudioEngine` and `WebAudioEngine`. *Tests:* the fake engine's model (start position, `ended` at the end point, after pause and resume, after a seek). `WebAudioEngine` is checked in headless Chromium and by the manual checklist.
-3. **Logic: points.** The `sound.customize` command with the points and the nullable field type, `LibraryModel.updateSound`, `SoundPlayer` passing the points, and `OptionsSync` saving the new keys. *Tests:* validation (negative, crossed, too close, partial changes against the current points), new presses using new points while playing ones keep theirs, debounced saving of the full options, and `HttpBackendApi` against the real server.
-4. **Logic: fades.** `fadeIn` and `fadeOut` in the command, and the fade-in ramp and fade-out timer in `SoundPlayer`. *Tests:* the ramps the fake engine records, the fade-out ending at the end point and at the file's end, a fade-out longer than the sound, Stop All and the ninth press staying instant and clearing timers, and playing instances keeping their old fades.
-5. **UI.** `range-scale.js` and its tests, the range control, and the dialog's sections, plus new checks in `TESTING.md`. *Tests:* unit tests for the scale. The rest is checked with the manual checklist and a headless Chromium run.
-6. **Design update.** `DESIGN.md` in its own commit. Then this proposal and its backlog entry are removed.
+None yet.
 
 ---
 
@@ -95,13 +48,6 @@ None yet.
 These are the next features, in roughly the order they will be built. Each will get its own proposal when its turn comes. **Decided** lists the owner's answers already given; the notes list what else is known and the questions still to settle.
 
 **Decided for all of them.** Customization changes apply immediately and are saved with a 500 ms debounce, as the sound Customize dialog does (DESIGN.md §6.4, §9.7). Re-sorting on screen waits until the dialog closes. Playback state is never remembered across a page reload, so F5 always gives a clean start.
-
-#### 6. Sound start and end points
-
-A two-handle range slider plus two number fields, in milliseconds, in the sound dialog. Playback starts and stops at those points.
-
-- **Seam:** `planTrack()` (DESIGN.md §8.2) for playlists, and new start and end values for `SoundPlayer`. Every sound's `duration` is already known to the browser (§3.5), so the slider can show the whole length before the sound is played.
-- **Notes:** buffer voices can start and stop exactly (`AudioBufferSourceNode.start(when, offset, duration)`). Streamed voices seek after loading and need a timer for the end, which the port should hide behind one `createVoice({ startAt, endAt })` so `SoundPlayer` does not care which kind it has. Previewing uses the dialog's existing play button.
 
 #### 7. Playback order
 
@@ -146,11 +92,11 @@ A play/stop button next to each track in the playlist dialog, which starts or st
 
 #### 11. Track start and end points
 
-As for sounds (feature 6), per track, shown on or below the track's progress bar.
+As for sounds (DESIGN.md §7, §9.7), per track, shown on or below the track's progress bar.
 
 - **Seam:** `planTrack(track, rules) → { startAt, endAt }` (DESIGN.md §8.2). `startAt` is already applied by seeking after loading.
 - **Decided:** the selected range *is* the track as far as playback is concerned. The footer's time, the progress bar and seeking all cover only the part between the start and end points.
-- **Decided:** as for sounds, changed points take effect from the next time a track starts; a playing track keeps its range. The engine's `startAt` and `endAt` voice options from feature 6 can be reused.
+- **Decided:** as for sounds, changed points take effect from the next time a track starts; a playing track keeps its range. The voices' `startAt` and `endAt` options (DESIGN.md §6.3) and the dialog's range control can be reused. Track files already accept `startAt`, `endAt`, `fadeIn` and `fadeOut` (§2.3); tracks just ignore them so far.
 - **Notes:** `endAt` needs a clock timer bound to the current generation that treats reaching `endAt` like `ended`; a crossfade then starts at `endAt − crossfade`. The track dialog's own editor still shows the whole file, since that is where the points are chosen.
 
 #### 12. Track volume
@@ -171,7 +117,7 @@ The track's waveform drawn above its progress bar and start/end points.
   - A fully decoded 5-minute stereo track is about 100 MB, so each decode must be reduced to peaks straight away and the decoded audio dropped before the next one starts.
   - The likely answer is a fixed number of min/max pairs per track stored as bytes, which is a few KB each, in a hidden directory such as `.soundboard-cache/`. They would be fetched only when a dialog shows them and drawn on a `<canvas>`.
   - The work must not starve playback on the 8 GB MacBook. Decoding at a low sample rate with an `OfflineAudioContext` may help.
-  - Open: do sounds get waveforms too, for their start and end points (feature 6)?
+  - Open: do sounds get waveforms too, above their start and end slider (DESIGN.md §9.7)?
 
 ### Later, unordered
 
