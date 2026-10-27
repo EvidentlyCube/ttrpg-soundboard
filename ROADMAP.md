@@ -170,3 +170,30 @@ The UI and `WebAudioEngine` have been checked by driving the real page in headle
 #### Media element reuse for Safari (only if needed)
 
 New media elements are assumed to play in Safari once the audio context has been unlocked (DESIGN.md §12). If manual testing shows otherwise, `WebAudioEngine` could create a small pool of elements during a click and reuse them.
+
+### Finally: design the remaining features
+
+Once features 6–13 are done, write proposals for everything still open: the three items below and the "Later, unordered" entries above.
+
+#### Mobile design
+
+Make the page usable on a phone or tablet.
+
+- **Changes:** DESIGN.md §1.1 currently targets desktop browsers only, with "no special handling" for touch, and §9 lays the page out for a laptop screen.
+- **Notes:**
+  - The header's three volume controls collapse into a hamburger menu on narrow screens. Today they have a fixed width and make the page scroll sideways below about 1030 px.
+  - The footer's three bars per row, the tile grid and the dialogs need narrow layouts.
+  - Context menus need a touch gesture (see "Context menus on touch screens" above).
+  - Audio unlocking and playback in Safari on iOS need checking.
+
+#### Remote control
+
+A version of the app that controls another instance running elsewhere: a phone chooses what plays, while the PC does the playing. This expands "LAN access and phone remote control" above.
+
+- **Notes:**
+  - It is likely to be used mostly on a phone, so it builds on the mobile design.
+  - Open: whether the remote is a separate page or a role of the same page. Today every open tab is an independent player, so the proposal must say which tab is the player and what happens when a second player connects.
+
+#### Loose ends from earlier discussions
+
+- **Customizable playlist looping.** Feature 8 keeps `playlistLooping` always on "for now". An option could let a playlist stop after its last track instead.
