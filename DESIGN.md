@@ -115,7 +115,7 @@ Sound or track options (`Explosion.mp3.json`)
 ```
 - `title` is optional; without it the default title is used (§2.4).
 - `startAt` and `endAt` choose the part of a sound that plays (§7), in seconds. `startAt` defaults to `0`; `endAt` defaults to `null`, the end of the file. The app writes both rounded to 3 decimals, so whole milliseconds survive. They are not checked against `duration`, which is only an estimate for some MP3s.
-- `fadeIn` and `fadeOut` fade a sound in from its start point and out to its end point (§7), in seconds, `0` (the default, off) to `30`, rounded to 2 decimals.
+- `fadeIn` and `fadeOut` fade a sound in from its start point and out to its end point (§7), in seconds, `0` (the default, off) to `30`, rounded to 3 decimals.
 - Track files accept `startAt`, `endAt`, `fadeIn` and `fadeOut` too, but tracks ignore them for now ([roadmap](ROADMAP.md)).
 - `duration` (seconds, 2 decimals, or `null` when it can't be read) and `measuredFrom` (the file's size, modification time and SHA-1 at that moment) are written by bootstrap (§3.5), never by hand. They always come together.
 - `gain` is optional and defaults to `1`. It is the item's own volume as the linear multiplier a Web Audio `GainNode` takes: `1` plays the file as recorded, `2` doubles the amplitude (about +6 dB), `0` is silent. The UI shows it in decibels (§6.4). It is deliberately not called `volume`, because the volumes in `.soundboard` are slider positions, a different thing. A track's `gain` is applied together with its playlist's (§6.4); there is no UI for it yet ([roadmap](ROADMAP.md)).
@@ -133,7 +133,7 @@ Playlist options (`Combat.json`)
 }
 ```
 - `gain` means the same as for sounds and tracks, and applies to the whole playlist.
-- `crossfade` (§8.4), `fadeIn` and `fadeOut` (§8.5) are in seconds, `0` (the default, off) to `30`, rounded to 2 decimals.
+- `crossfade` (§8.4), `fadeIn` and `fadeOut` (§8.5) are in seconds, `0` (the default, off) to `30`, rounded to 3 decimals. Every time the app writes keeps whole milliseconds, which is what the dialogs show.
 - `includedSubdirectories` lists paths relative to the playlist directory, using `/`. Every depth is listed explicitly.
 - Listed directories that no longer exist are ignored. They are not removed.
 
@@ -688,6 +688,9 @@ UI components extend `Component` (`ui/component.js`): `render()` builds the elem
 - `public/vendor/tailwindcss-browser-<version>.js` is the unmodified `dist/index.global.js` from the npm package `@tailwindcss/browser`, with its MIT license next to it. `index.html` loads it with a plain `<script>`. It makes no network requests and uses no `eval`.
   - **Updating** means replacing the file, renaming it to the new version, and updating `index.html`.
 - Components style themselves with utility classes. App-wide tokens (colors, fonts) and base styles live in one `<style type="text/tailwindcss">` block in `index.html`, using `@theme`. A small plain `<style>` sets the page background before Tailwind runs, so the page never flashes white.
+  - `raised-dim` and `line-dim` are opaque colors halfway between `raised` / `line` and the dialog's `panel`, for cards at rest (§9.7). They are opaque so a pill drawn over a border never lets the border show through.
+  - `animate-warn` pulses a background between the app's red and a darker red twice a second, for settings that can't play out as set (§9.7).
+- Colors that a component picks at runtime (a dialog's accent) are looked up in small maps of complete class names (`ACCENTS`), because the browser build only generates classes it sees written out.
 - The browser build watches the DOM and generates CSS for class names as they first appear. Keeping that cheap:
   - Anything that changes several times a second (progress bars, time readouts) is updated through inline `style` or text, **never** by swapping classes.
   - State (active, playing, error) is a `data-*` attribute styled with Tailwind's `data-*` variants, so the full set of classes is already present when an element is created.
@@ -701,34 +704,52 @@ UI components extend `Component` (`ui/component.js`): `render()` builds the elem
 - It is at most 90 % of the window high; its body scrolls under the fixed header.
 - When a Customize dialog closes, the board saves its pending changes at once (`flushSoundOptions`, or the playlist dialog's `flushEdits`, which covers the playlist and every track renamed in it) and moves that kind of tile into sorted order.
 
+**Accent.** Each dialog has one accent color for everything that lights up: amber (`sfx`) in the sound dialog, blue (`music`) in the playlist dialog. The parts below take it as an `accent` option.
+
 **Shared parts** (`ui/customize-parts.js`), from which both dialogs are built:
-- **Title.** A text field, focused on open, with a hint below it. Every edit is sent at once. While the field is empty or only spaces, it is marked invalid, nothing is sent, the hint explains that the last title is kept, and the tile keeps it.
+- **Card** (`card(title, accent, ...children)`). Settings are grouped in raised cards with rounded corners, a soft shadow and the title as a small uppercase pill on the top border. At rest the card is dimmed (`bg-raised-dim`, `border-line-dim`) and the pill is drawn in the border's color, so it reads as part of the border. While the card is hovered or anything in it has focus, it lights up (`bg-raised`, `border-line`) and the pill takes the accent color, so it is clear which part of the dialog is being worked with. Pills stick out above their cards, so cards are spaced `space-y-8`.
+- **Labeled row** (`labeledRow`). Several settings in one card: a fixed-width label on the left, the control on the right.
+- **Title.** A filled field (below), focused on open, with the floating label "Title" and a hint below it. Every edit is sent at once. While the field is empty or only spaces, it is marked invalid (`aria-invalid` and `data-invalid`), nothing is sent, the hint explains that the last title is kept, and the tile keeps it.
 - **Volume.** The gain widget on `ITEM_SCALE`.
 - **Play / Stop.** A button showing whether the item is playing.
 - **Status.** In the corner, without text: a spinner after a change, a checkmark once saved. A failure is shown as a red message.
 - **Tabs.** A tab bar over panels (`role="tablist"`, `tab`, `tabpanel`), the first selected. The left and right arrow keys move between tabs, and only the selected panel is shown. The bar stays at the top while the dialog scrolls.
 
-**The sound dialog** (`ui/sound-editor.js`), opened from the sound menu: the title (hint: the file name), the volume, the Start and end section (below), Fade in and Fade out (seconds controls with the playlist fades' limits, below), Play / Stop (`playSound`, or stopping all instances; it follows `sound.activeChanged`, so it also reflects presses on the tile) and the status (`sound.saved`, `sound.saveFailed`). A sound without a measured duration has no Start and end section ([roadmap](ROADMAP.md)).
+**Filled field** (`ui/filled-field.js`, `filledField({ label?, unit?, accent, align, width, attributes })`), the one style for text fields in the dialogs:
+- A background (`bg-surface`) with rounded top corners and only a 2 px underline, no outline.
+- An optional **floating label**: small at the top of the field, or in its middle like a placeholder while the field is empty and unfocused. It works with styles only: the input has `placeholder=" "` and is a Tailwind `peer`, and the label follows `:placeholder-shown` and `:focus`.
+- An optional **unit** (`s`, `dB`) inside the field after the value, so the value itself is only ever what was typed.
+- On focus, underline, label and unit take the accent color; while the input has `data-invalid="true"`, they are red.
 
-**Start and end section** (`ui/range-control.js`), in whole milliseconds. Every change sends both points with `customizeSound`, and `sound.changed` updates the control unless a handle is being dragged.
+**The sound dialog** (`ui/sound-editor.js`), opened from the sound menu, in amber. Its cards:
+- **Sound:** the title (hint: the file name).
+- **Volume:** the gain widget.
+- **Start and end** (below). A sound without a measured duration has no such card ([roadmap](ROADMAP.md)).
+- **Fades:** Fade in and Fade out as labeled rows of seconds controls with the playlist fades' limits (below).
+
+Below the cards: Play / Stop (`playSound`, or stopping all instances; it follows `sound.activeChanged`, so it also reflects presses on the tile) and the status (`sound.saved`, `sound.saveFailed`).
+
+**Start and end section** (`ui/range-control.js`). It works in whole milliseconds and shows them as seconds with three decimals. Every change sends both points with `customizeSound`, and `sound.changed` updates the control unless a handle is being dragged.
 - **Slider.** It spans the sound's stored duration. Two handles (`role="slider"`, "Start point" and "End point") never cross and stay at least `MIN_CLIP_MS` apart. Dragging a handle moves it; pressing the bar moves the nearer handle there (the start on a tie) and keeps dragging it. The part between the handles is amber (`bg-sfx`) on a dim bar. Handle and bar positions are inline styles (§9.6).
-- **Keyboard.** On a handle, the arrow keys step 10 ms and Shift + arrow 100 ms; Home and End go to the handle's limits.
-- **Fields.** "Start" and "End" take whole milliseconds (`1250`, `1,250`, `1 250 ms`) and apply on Enter or when the field loses focus; values out of range are clamped. On Enter, text that can't be read marks the field red; leaving the field drops it. Esc restores the field without closing the dialog. A field being typed in isn't overwritten by updates.
-- **Readout and Reset.** "Plays 1,250 ms of 4,210 ms", and a Reset button that goes back to the whole file.
+- **Fades on the slider.** Inside the amber part, the fade-in is drawn in blue (`bg-music`) from the start handle and the fade-out up to the end handle, as shares of the part that plays (`fadeBands`). Where they overlap, that stretch pulses red (`animate-warn`, §9.6); when either fade is longer than the whole part, all of it does. The dialog passes the fades in with `showFades` whenever the sound changes.
+- **Keyboard.** On a handle, the arrow keys step 0.010 s and Shift + arrow 0.100 s; Home and End go to the handle's limits.
+- **Fields.** "Start" on the left and "End" on the right are filled fields with the unit `s`, showing three decimals (`1.250`). They take seconds (`1.25`, `1,25`, `1.25 s`), rounded to whole milliseconds, and apply on Enter or when the field loses focus; values out of range are clamped. On Enter, text that can't be read marks the field red; leaving the field drops it. Esc restores the field without closing the dialog. A field being typed in isn't overwritten by updates.
+- **Reset.** A bar in the fields' underline color joins the two fields, with a small Reset pill in its middle that goes back to the whole file.
+- **Readout.** Centered below, in small text: "Plays 0.670 s of 1.670 s".
 - **The end of the file is stored as `null`.** An end point at the duration is sent as `endAt: null`, so a longer replacement file still plays to its end. Stored points are fitted into the duration for display.
-- The clamping, mapping, key steps, formatting and parsing are pure functions in `ui/range-scale.js`, with unit tests.
+- The clamping, mapping, key steps, fade bands, formatting and parsing are pure functions in `ui/range-scale.js`, with unit tests.
 
-**The playlist dialog** (`ui/playlist-editor.js`), opened from the playlist menu, always on its first tab:
-- **"Playlist" tab:** the title (hint: `Folder: <directory>`), the volume, and the Fade in, Crossfade and Fade out sections (below). Later playlist settings add their sections here.
+**The playlist dialog** (`ui/playlist-editor.js`), opened from the playlist menu, in blue, always on its first tab:
+- **"Playlist" tab:** cards for the **Playlist** (the title, hint: `Folder: <directory>`), the **Volume**, and the **Fades**: Fade in, Crossfade and Fade out as labeled rows of seconds controls (below). Later playlist settings add their cards here.
 - **"Tracks (N)" tab:** the track accordion (`ui/track-accordion.js`).
   - One row per track: a button with `aria-expanded`, showing number, title and duration (`m:ss`, `--:--` when unknown). Clicking a row opens it and closes any other; clicking the open one closes it.
   - An open track shows its title field (hint: `File: <track id>`), sent with `customizeTrack`. Row headers follow `playlist.changed`, while the open field is left alone, so it keeps its focus while typing. Later track settings go in the open row.
 - **Below both tabs**, staying in view while either scrolls: Play / Stop (`togglePlaylist`, like a tile click; it follows `playlist.stateChanged`) and the status, which follows the playlist's saves (`playlist.saved`, `playlist.saveFailed`) and its tracks' (`track.saved`, `track.saveFailed`).
 
-**Fade in, Crossfade and Fade out sections** in the playlist dialog, in that order, and Fade in and Fade out in the sound dialog, each a seconds control (`ui/seconds-control.js`):
-- A slider in 0.5 s steps and a readout (`Off`, `2.5 s`) that turns into a text field when clicked, like the gain widget's. Typed values accept `,` as the decimal point, an `s` suffix and `off`, and are clamped to the control's limit. An optional note sits below.
+**Fade in, Crossfade and Fade out** in the playlist dialog, in that order, and Fade in and Fade out in the sound dialog, each a seconds control (`ui/seconds-control.js`):
+- A slider in 0.1 s steps, in the dialog's accent, and a readout with three decimals (`Off`, `2.500 s`) that turns into a filled field with the unit `s` when clicked, like the gain widget's. Typed values accept `,` as the decimal point, an `s` suffix and `off`, and are clamped to the control's limit. An optional note sits below.
 - **Fade in and fade out** allow up to 10 s on the slider and 30 s typed (`SECONDS_LIMITS` in `ui/seconds-scale.js`), with no note.
-- **Crossfade** limits come from the playlist's tracks with a known duration (`crossfadeLimits`). The text field allows up to `min(30 s, half the shortest track)`, and the slider stops at `min(10 s, that limit)`, rounded down to a step. The note says what limits it ("Up to 15.1 s, half the shortest track."). A stored value above the limit, for example after a shorter track was added, is shown as stored, with a note that short tracks use at most half their length; the player clamps it anyway (§8.4).
+- **Crossfade** limits come from the playlist's tracks with a known duration (`crossfadeLimits`). The text field allows up to `min(30 s, half the shortest track)`, and the slider stops at `min(10 s, that limit)`, rounded down to a step. The note says what limits it ("Up to 15.100 s, half the shortest track."). The slider limit is rounded down with a small tolerance, so floating-point noise never costs a whole step. A stored value above the limit, for example after a shorter track was added, is shown as stored, with a note that short tracks use at most half their length; the player clamps it anyway (§8.4).
 
 **Gain widget** (`ui/gain-control.js`), used in the dialogs and for the header volumes. It looks like the volume control of many media players, `h-8` tall:
 ```
@@ -743,7 +764,7 @@ UI components extend `Component` (`ui/component.js`): `render()` builds the elem
 - **Boost.** One wide rectangle covers gain 1 to 4. It fills in proportion and is **orange** (`--color-boost`).
 - **Line.** A thick line under the whole widget lights up to the same point, orange over the boost part.
 - **Pointer.** Pressing sets the value for that point, and dragging keeps setting it. Over the bars an item's gain is linear in the position (halfway is 0.5, −6 dB). There is no snapping. Double-clicking resets to 0 dB.
-- **Readout.** The dB value on the right (`+3.5 dB`, `0.0 dB`, `−12.0 dB`, `−∞ dB`), orange while the gain is above 1; that color is the only warning that boosting can distort. Clicking it swaps in a text field, focused and selected. Enter or leaving the field applies the value. Esc cancels only the edit, and a dialog around it stays open. Pressing Enter on unreadable text keeps the field open and marks it red; leaving the field discards it. Values above the scale's maximum are clamped; `-inf` or −60 dB and below mean silence. Signs, `,` as the decimal point and a `dB` suffix are accepted.
+- **Readout.** The dB value on the right (`+3.5 dB`, `0.0 dB`, `−12.0 dB`, `−∞ dB`), orange while the gain is above 1; that color is the only warning that boosting can distort. Clicking it swaps in a filled field with the unit `dB` (in the dialog's accent; blue in the header), focused and selected. Enter or leaving the field applies the value. Esc cancels only the edit, and a dialog around it stays open. Pressing Enter on unreadable text keeps the field open and marks it red; leaving the field discards it. Values above the scale's maximum are clamped; `-inf` or −60 dB and below mean silence. Signs, `,` as the decimal point and a `dB` suffix are accepted.
 - **Keyboard.** It is a `role="slider"`: the arrow keys step 1 dB on whole decibels, stepping into and out of silence below −59 dB, and Home and End go to silence and to the scale's maximum.
 - **Drawing.** The lit part is a copy of the shapes, clipped with an inline `clip-path`, so updates during a drag never change classes (§9.6). The scales, keyboard steps and dB formatting and parsing are pure functions in `ui/gain-scale.js`, with unit tests.
 
@@ -776,7 +797,7 @@ public/
 		ui/         app.js  component.js  dom.js  icons.js  format.js  menus.js  position.js
 		            splash.js  overlay.js  context-menu.js  track-list.js  tile-grid.js
 		            playlist-tile.js  sound-tile.js  player-dock.js  player-bar.js  volume-controls.js
-		            dialog.js  customize-parts.js  sound-editor.js  playlist-editor.js  track-accordion.js
+		            dialog.js  customize-parts.js  filled-field.js  sound-editor.js  playlist-editor.js  track-accordion.js
 		            gain-control.js  gain-scale.js
 		            seconds-control.js  seconds-scale.js  range-control.js  range-scale.js
 test/
