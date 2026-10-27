@@ -29,7 +29,46 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## Proposals
 
-None yet.
+### 6. Sound start and end points
+
+**Goal.** In a sound's Customize dialog, choose the part of the file that plays: a start point and an end point, set with a two-handle range slider or typed in milliseconds. Every press of the sound then plays only that part. Like the other settings, a change applies at once and is saved 500 ms later.
+
+**Design changes.**
+
+- **§2.3.** Sound and track options files may hold `startAt` (seconds, default `0`) and `endAt` (seconds, or `null` for the end of the file, which is the default). The app writes both rounded to 3 decimals, so whole milliseconds survive. Validation: `startAt` a number ≥ 0, `endAt` a number or `null`, and `endAt` at least 0.01 s after `startAt` when both are numbers (question 5). The points are not checked against `duration`, which is only an estimate for some MP3s. Track files accept the keys too, but tracks ignore them until feature 11.
+- **§5.1.** `AudioFile` gets `startAt` and `endAt`. `LibraryEditor.updateSound(id, { title?, gain?, startAt?, endAt? })` validates the merged result, so moving only the start past the stored end is rejected. `updateTrack` still accepts only `title`.
+- **§5.2.** `PATCH /api/sounds/<id>` accepts `startAt` and `endAt`. `/api/library` includes both for every sound and track.
+- **§6, §6.1.** `customizeSound(soundId, { title?, gain?, startAt?, endAt? })`. Invalid points are an `InvalidCommandError`. `saveSoundOptions` sends the points along with the title and gain, as part of the sound's full editable options. Command validation gets a "number or `null`" field type for `endAt`.
+- **§6.3.** `createStreamVoice` and `createBufferVoice` take optional `startAt` and `endAt`. The voice starts at `startAt` and treats reaching `endAt` as its end: it stops and fires `ended`. `position` stays in file time.
+  - **Buffer voices** pass the range to `AudioBufferSourceNode.start(0, offset, endAt − offset)`, so the audio thread cuts it to the sample.
+  - **Stream voices** seek to `startAt` on `loadedmetadata`, before any audio plays. They end through a timer set on `playing` from the time left, and set again on `seek`; `pause` and `stop` clear it. This is accurate to a few tens of milliseconds while the window is in front. In a background tab Safari slows timers down, so a streamed sound can overrun its end there.
+  - `FakeAudioEngine` models both: a voice's position starts at `startAt` once loaded, and `ended` fires when it reaches `endAt`.
+- **§7.** `SoundPlayer` passes the sound's points to every new instance. Instances already playing keep the points they started with (question 2). A start point at or past the real end of the file ends the instance right away, like a file that ended.
+- **§9.7.** The sound dialog gets a **Start and end** section below the volume:
+  - **A range slider** (`ui/range-control.js`) over the sound's stored duration, with two handles that cannot cross. Dragging a handle moves it, and pressing the bar moves the nearer handle there. The part between the handles is lit in the sound's amber, and the rest is dimmed.
+  - **Handle keyboard:** each handle is a `role="slider"`. The arrow keys step 10 ms, Shift + arrow steps 100 ms, and Home and End go to the handle's limits.
+  - **Two number fields,** "Start" and "End", in whole milliseconds. Each applies its value on Enter or when it loses focus. A value out of range is clamped, and text that can't be read is marked red and not sent, like the gain readout.
+  - **A length readout** below, e.g. "Plays 1,250 ms of 4,210 ms".
+  - **A Reset button** that sets the start to `0` and the end to `null`.
+  - **Dragging the end handle all the way right** stores `null`, so a replaced, longer file still plays to its end.
+  - The pure mapping and step functions live in `ui/range-scale.js`, with unit tests.
+- **§10.** The new files.
+
+**Open questions.**
+
+1. **What the file stores.** *Recommended: seconds with 3 decimals, as `startAt` and `endAt`*, matching `duration`, the playlist timings and `planTrack`'s names, so feature 11 can reuse them for tracks. The dialog shows and accepts milliseconds, as asked. The alternative is whole milliseconds in the file, which would be the only value there in that unit.
+2. **Changes while a sound is playing.** *Recommended: only later presses use new points.* A playing instance keeps its range, so a sound never jumps or cuts off while you drag a handle. To hear the change, press Play again. Volume, by contrast, applies to playing instances, because changing it can't make anything jump.
+3. **Sounds with an unknown duration** (`duration: null`, because the file couldn't be measured). *Recommended: the slider is disabled with a note saying so, and only the number fields work, with no upper limit.* Playback works as usual: an end past the real end just plays to the end of the file.
+4. **Clicks at the cut points.** Cutting a waveform anywhere but a silent moment can produce an audible click. *Recommended: no de-click fades for now.* Add a few milliseconds of fade later if clicks turn out to be audible in practice. It is a contained change in the engine (§6.3).
+5. **Minimum length.** *Recommended: at least 10 ms between the points*, enforced by the slider, the fields and the server, so a sound can never be set to play nothing.
+
+**Plan.**
+
+1. **Server.** Validation of `startAt` and `endAt` in options files, `AudioFile` and `/api/library`, `LibraryEditor.updateSound` and `PATCH /api/sounds/<id>`. *Tests:* valid and invalid points in files (bootstrap stops on them), rounding, a partial update checked against the stored other point, `null` clearing the end, tracks rejecting the keys in `updateTrack`, and the route's `400`s.
+2. **Engine port.** `startAt` and `endAt` on both voice factories in the port, `FakeAudioEngine` and `WebAudioEngine`. *Tests:* the fake engine's model (start position, `ended` at the end point, after pause and resume, after a seek). `WebAudioEngine` is checked in headless Chromium and by the manual checklist.
+3. **Logic.** The `sound.customize` command with the points and the nullable field type, `LibraryModel.updateSound`, `SoundPlayer` passing the points, and `OptionsSync` saving them. *Tests:* validation (negative, crossed, too close, partial changes against the current points), new presses using new points while playing ones keep theirs, debounced saving of the full options, and `HttpBackendApi` against the real server.
+4. **UI.** `range-scale.js` and its tests, the range control, and the dialog section, plus new checks in `TESTING.md`. *Tests:* unit tests for the scale. The rest is checked with the manual checklist and a headless Chromium run.
+5. **Design update.** `DESIGN.md` in its own commit. Then this proposal and its backlog entry are removed.
 
 ---
 
