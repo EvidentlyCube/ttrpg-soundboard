@@ -52,6 +52,8 @@
  * @property {number} duration seconds, NaN until `loaded`
  * @property {(target: number, seconds: number) => void} rampGain fades; independent of the voice's own gain
  * @property {(gain: number) => void} setGain the voice's own volume, a linear multiplier; changes are smoothed
+ * @property {(looping: boolean) => void} setLooping while on, the voice starts over at its start point without a gap
+ * 	instead of ending, and never fires `ended`
  * @property {(type: 'loaded' | 'ended', handler: () => void) => void} on
  * @property {(handler: (error: VoiceError) => void) => void} onError
  */

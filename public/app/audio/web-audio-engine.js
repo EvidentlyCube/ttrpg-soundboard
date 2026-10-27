@@ -280,6 +280,7 @@ class StreamVoice {
 	#output;
 	#element;
 	#source;
+	#startAt;
 	#endAt;
 	#events = new VoiceEvents();
 	#listeners = new AbortController();
@@ -293,6 +294,7 @@ class StreamVoice {
 	 */
 	constructor(output, url, { startAt, endAt }) {
 		this.#output = output;
+		this.#startAt = startAt;
 		this.#endAt = endAt;
 		this.#element = new Audio();
 		this.#element.preload = 'auto';
@@ -360,6 +362,14 @@ class StreamVoice {
 		this.#output.setGain(gain);
 	}
 
+	/**
+	 * The element loops by itself, without a gap, and doesn't fire `ended` while it does.
+	 * @param {boolean} looping
+	 */
+	setLooping(looping) {
+		this.#element.loop = looping;
+	}
+
 	/** @type {Voice['on']} */
 	on(type, handler) {
 		this.#events.on(type, handler);
@@ -396,6 +406,11 @@ class StreamVoice {
 			return;
 		}
 		const left = endAt - this.#element.currentTime;
+		if (left <= END_TOLERANCE_SECONDS && this.#element.loop) {
+			// The element's own looping covers the whole file, so a loop that ends earlier goes back by hand.
+			this.#element.currentTime = this.#startAt;
+			return;
+		}
 		if (left <= END_TOLERANCE_SECONDS) {
 			this.#element.pause();
 			this.#events.ended();
@@ -420,7 +435,9 @@ class BufferVoice {
 	#output;
 	#context;
 	#buffer;
+	#startAt;
 	#endAt;
+	#looping = false;
 	#events = new VoiceEvents();
 	/** @type {AudioBufferSourceNode | null} */
 	#source = null;
@@ -436,7 +453,8 @@ class BufferVoice {
 		this.#output = output;
 		this.#context = output.context;
 		this.#buffer = buffer;
-		this.#offset = Math.min(startAt, buffer.duration);
+		this.#startAt = Math.min(startAt, buffer.duration);
+		this.#offset = this.#startAt;
 		this.#endAt = endAt;
 		// The duration is known right away; announce it asynchronously, like a media element would.
 		queueMicrotask(() => this.#events.loaded());
@@ -446,7 +464,12 @@ class BufferVoice {
 		if (!this.#source) {
 			return this.#offset;
 		}
-		return Math.min(this.#end, this.#offset + this.#context.currentTime - this.#startedAt);
+		const played = this.#offset + this.#context.currentTime - this.#startedAt;
+		const length = this.#end - this.#startAt;
+		if (this.#looping && played > this.#end && length > 0) {
+			return this.#startAt + ((played - this.#startAt) % length);
+		}
+		return Math.min(this.#end, played);
 	}
 
 	get duration() {
@@ -472,10 +495,36 @@ class BufferVoice {
 				this.#events.ended();
 			}
 		});
-		// Giving the length lets the audio thread stop at the end point to the sample.
-		source.start(0, this.#offset, Math.max(0, this.#end - this.#offset));
+		if (this.#looping) {
+			// A length would cap the whole playback, loops included, so a looping source gets loop points instead.
+			source.loop = true;
+			source.loopStart = this.#startAt;
+			source.loopEnd = this.#end;
+			source.start(0, this.#offset);
+		} else {
+			// Giving the length lets the audio thread stop at the end point to the sample.
+			source.start(0, this.#offset, Math.max(0, this.#end - this.#offset));
+		}
 		this.#startedAt = this.#context.currentTime;
 		this.#source = source;
+	}
+
+	/**
+	 * A playing source can't change how it was started, so it is restarted from where it is.
+	 * @param {boolean} looping
+	 */
+	setLooping(looping) {
+		if (looping === this.#looping) {
+			return;
+		}
+		const wasPlaying = this.#source !== null;
+		const position = this.position;
+		this.#halt();
+		this.#looping = looping;
+		this.#offset = position;
+		if (wasPlaying) {
+			this.play();
+		}
 	}
 
 	pause() {

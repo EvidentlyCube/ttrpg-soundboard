@@ -138,6 +138,9 @@ export class FakeAudioEngine {
 export class FakeVoice {
 	stopped = false;
 	playCalls = 0;
+	looping = false;
+	/** How many times the voice has started over while looping. */
+	loops = 0;
 	/** @type {[number, number][]} */
 	gainRamps = [];
 	#clock;
@@ -264,6 +267,11 @@ export class FakeVoice {
 		this.gain = gain;
 	}
 
+	/** @param {boolean} looping */
+	setLooping(looping) {
+		this.looping = looping;
+	}
+
 	/**
 	 * @param {'loaded' | 'ended'} type
 	 * @param {() => void} handler
@@ -307,6 +315,13 @@ export class FakeVoice {
 		const remaining = Math.max(0, this.#end - this.#position);
 		this.#endTimer = this.#clock.setTimeout(() => {
 			this.#endTimer = null;
+			if (this.looping) {
+				this.loops++;
+				this.#position = this.startAt;
+				this.#startedAt = this.#clock.now();
+				this.#scheduleEnd();
+				return;
+			}
 			this.#position = Math.max(this.#position, this.#end);
 			this.#playing = false;
 			if (!this.#ended) {

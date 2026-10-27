@@ -80,6 +80,31 @@ describe('FakeAudioEngine start and end points', () => {
 		assert.equal(endedCount(), 1);
 	});
 
+	it('loops back to the start point without firing ended while looping', () => {
+		const { clock, voice, endedCount } = setup({ startAt: 2 });
+		voice.setLooping(true);
+		voice.play();
+		clock.advance(100 + 8000);
+		assert.equal(endedCount(), 0);
+		assert.equal(voice.position, 2);
+		assert.equal(voice.playing, true);
+		clock.advance(3000);
+		assert.equal(voice.position, 5);
+	});
+
+	it('plays to the end and fires ended once looping is turned off', () => {
+		const { clock, voice, endedCount } = setup();
+		voice.setLooping(true);
+		voice.play();
+		clock.advance(100 + 15_000);
+		assert.equal(endedCount(), 0);
+		voice.setLooping(false);
+		clock.advance(4999);
+		assert.equal(endedCount(), 0);
+		clock.advance(1);
+		assert.equal(endedCount(), 1);
+	});
+
 	it('takes start and end points for buffer voices too', async () => {
 		const clock = new FakeClock();
 		const engine = new FakeAudioEngine(clock, { defaultScript: { duration: 10, loadDelay: 0 } });
