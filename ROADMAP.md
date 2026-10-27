@@ -29,7 +29,35 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## Proposals
 
-None yet.
+### What "stop" does
+
+**Goal.** Each playlist chooses what stopping it remembers, in its Customize dialog: **Pause** (play again continues where it stopped), **Reset track** (play again starts that track over), or **Reset playlist** (today's behavior: play again starts afresh). An idle tile shows when it will resume, so the board tells the GM what a click will do.
+
+**Design changes.**
+- §2.3: playlist options gain `"stopMode": "pause" | "resetTrack" | "resetPlaylist"`, default `"resetPlaylist"`; validated like `order`. `PATCH /api/playlists` (§5.2) and `LibraryEditor` (§5.1) accept it.
+- §6.1: `customizePlaylist` takes `stopMode`; new command `forgetPlaylist(playlistId)` (`playlist.forget`) drops what a stopped playlist remembers.
+- §6.2: `playlist.stateChanged` and snapshots gain `resume: { trackIndex, track, position } | null`, set only while idle; `position` is `null` for Reset track.
+- §8.1: stop keeps the play history and, by the mode, the current track and position; play from idle with something remembered starts that track (seeking to the position) instead of `history.start()`. `jumpTo` from idle still starts a fresh history. Failing over after too many errors forgets.
+- §8.2: `PlaybackRules` gains `stopMode`.
+- §9.1, §9.3, §9.7: the idle tile's look and status, a menu item to forget, and the radio group in the dialog.
+
+**Open questions.**
+1. **Names.** Key `stopMode`, values `pause` / `resetTrack` / `resetPlaylist`, labels "Pause", "Reset track", "Reset playlist". *Recommended: yes.*
+2. **Stop (Instant).** Follows the mode too; instant is about fades, not forgetting. *Recommended: yes.*
+3. **Which position is remembered with a fade-out.** The moment Stop is pressed, not where the fade ended, so playing again repeats the faded-out bit. *Recommended: the moment Stop is pressed.*
+4. **Fade-in on resuming.** A `'default'` play fades in from the remembered position as from a fresh start; `'instant'` doesn't. *Recommended: yes.*
+5. **Stopping during a crossfade.** Remembers the incoming track (the current one), at its position. *Recommended: yes.* A remembered position past the crossfade point lands on it, as any seek does (§8.4), so the crossfade plays again on resume.
+6. **Changing the mode while stopped.** Trims what is remembered right away (Reset track drops the position, Reset playlist drops everything), so the tile always matches the dialog; it never brings back something already dropped. *Recommended: yes.*
+7. **Changing the order while stopped with something remembered.** Refills the history around the remembered track, as while playing. *Recommended: yes.*
+8. **Idle tile.** While something is remembered, the tile keeps its normal idle look but its status reads "Resumes at 1:23" (Pause) or "Resumes track 3" (Reset track) instead of the track count, and its left border is drawn dashed. The tooltip names the track. *Recommended: this; say if you want something more visible.*
+9. **Forgetting by hand.** The tile's context menu gets **Reset** (enabled only while something is remembered), which forgets without playing. Plain Play / Play (Instant) resume. *Recommended: yes.*
+10. **Stopping while the track is still loading.** Remembers the track, and with Pause the position it was going to seek to (its start). *Recommended: yes.*
+
+**Plan.**
+1. Backend: store and validate `stopMode`, accept it in `PATCH /api/playlists` — validation, library and editor tests.
+2. Logic: `stopMode` in rules, commands and the library model; `PlaylistPlayer` remembers and resumes by mode, trims on a mode change, `forget()`, `resume` in snapshots and `stateChanged` — player and facade tests, the randomized invariant test extended with the modes.
+3. UI: the radio group in the dialog, the idle tile's look and status, the Reset menu item; manual checks in `TESTING.md`.
+4. `DESIGN.md` update.
 
 ---
 
