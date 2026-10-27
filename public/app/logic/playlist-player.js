@@ -1,5 +1,5 @@
 import { InvalidCommandError } from './errors.js';
-import { createOrderStrategy } from './order-strategies.js';
+import { PlayHistory } from './play-history.js';
 import { planTrack, resolvePlaybackRules } from './playback-rules.js';
 import { resolveTransition } from './transitions.js';
 
@@ -60,7 +60,8 @@ export class PlaylistPlayer {
 	#clock;
 	#emit;
 	#rules;
-	#order;
+	/** The tracks played and to play, with the current one (DESIGN.md §8.1). */
+	#history;
 	#isPlayable;
 	/** The playlist's own volume; each voice plays at this times its track's gain (DESIGN.md §6.4). */
 	#gain;
@@ -85,8 +86,9 @@ export class PlaylistPlayer {
 	 * @param {(event: PlaylistEvent) => void} options.emit
 	 * @param {Readonly<PlaybackRules>} [options.rules]
 	 * @param {(track: AudioFileJson) => boolean} [options.isPlayable]
+	 * @param {() => number} [options.random] for the random orders; tests pass a seeded generator
 	 */
-	constructor({ playlist, engine, clock, emit, rules = resolvePlaybackRules(playlist), isPlayable = () => true }) {
+	constructor({ playlist, engine, clock, emit, rules = resolvePlaybackRules(playlist), isPlayable = () => true, random = Math.random }) {
 		this.#playlist = playlist;
 		this.#engine = engine;
 		this.#clock = clock;
@@ -94,7 +96,7 @@ export class PlaylistPlayer {
 		this.#rules = rules;
 		this.#isPlayable = isPlayable;
 		this.#gain = playlist.gain;
-		this.#order = createOrderStrategy(rules.order, playlist.tracks.length, { loop: rules.loop });
+		this.#history = new PlayHistory({ trackCount: playlist.tracks.length, order: rules.order, random, loop: rules.loop });
 	}
 
 	get id() {
@@ -124,7 +126,7 @@ export class PlaylistPlayer {
 		if (this.#state !== 'idle') {
 			return;
 		}
-		const first = this.#order.first();
+		const first = this.#history.start();
 		if (first === null) {
 			return;
 		}
@@ -153,7 +155,7 @@ export class PlaylistPlayer {
 		if (!current) {
 			return;
 		}
-		const index = this.#order.next(current.trackIndex);
+		const index = this.#history.next();
 		if (index === null) {
 			this.stop(transition);
 			return;
@@ -162,7 +164,8 @@ export class PlaylistPlayer {
 	}
 
 	/**
-	 * Restarts the current track once it has played for a few seconds, like most players; otherwise goes back one track.
+	 * Restarts the current track once it has played for a few seconds, like most players, and at the start of the
+	 * history; otherwise goes back one track in the history.
 	 * @param {Transition} [transition]
 	 */
 	previous(transition = 'default') {
@@ -170,7 +173,7 @@ export class PlaylistPlayer {
 		if (!current) {
 			return;
 		}
-		const index = current.voice.position > RESTART_THRESHOLD_SECONDS ? null : this.#order.previous(current.trackIndex);
+		const index = current.voice.position > RESTART_THRESHOLD_SECONDS ? null : this.#history.previous();
 		if (index === null) {
 			this.seek(0);
 			this.resume();
@@ -188,6 +191,8 @@ export class PlaylistPlayer {
 			throw new InvalidCommandError(`Playlist "${this.#playlist.id}" has no track ${trackIndex}`);
 		}
 		this.#consecutiveErrors = 0;
+		// A chosen track starts a fresh history, as if playback had started there.
+		this.#history.start(trackIndex);
 		this.#startTrack(trackIndex, this.#state === 'idle'
 			? resolveTransition('play', transition, this.#rules)
 			: this.#changeTiming(transition, trackIndex));
@@ -275,6 +280,9 @@ export class PlaylistPlayer {
 	 * @param {Readonly<PlaybackRules>} rules
 	 */
 	setRules(rules) {
+		if (rules.order !== this.#rules.order) {
+			this.#history.setOrder(rules.order);
+		}
 		this.#rules = rules;
 		this.#planCrossfade();
 		// Progress events carry the crossfade point; send one now so the display follows even while paused.
@@ -315,7 +323,7 @@ export class PlaylistPlayer {
 	 */
 	#crossfadePoint(current) {
 		const { duration } = current.voice;
-		const next = this.#order.next(current.trackIndex);
+		const next = this.#history.upcoming();
 		if (this.#rules.crossfade <= 0 || !Number.isFinite(duration) || next === null) {
 			return null;
 		}
@@ -350,7 +358,7 @@ export class PlaylistPlayer {
 		if (!current || !current.loaded || this.#state !== 'playing' || this.#rules.crossfade <= 0) {
 			return;
 		}
-		const next = this.#order.next(current.trackIndex);
+		const next = this.#history.upcoming();
 		const timeLeft = this.#timeLeft(current);
 		if (next === null || !Number.isFinite(timeLeft)) {
 			return;
@@ -368,8 +376,8 @@ export class PlaylistPlayer {
 
 	/** @param {CurrentVoice} current */
 	#crossfadeFrom(current) {
-		const next = this.#order.next(current.trackIndex);
-		if (this.#isCurrent(current) && this.#state === 'playing' && next !== null) {
+		if (this.#isCurrent(current) && this.#state === 'playing' && this.#history.upcoming() !== null) {
+			const next = /** @type {number} */ (this.#history.next());
 			this.#startTrack(next, this.#changeTiming('default', next));
 		}
 	}
@@ -437,7 +445,7 @@ export class PlaylistPlayer {
 	/** @param {CurrentVoice} current */
 	#onEnded(current) {
 		if (this.#isCurrent(current)) {
-			this.#advanceFrom(current.trackIndex);
+			this.#advance();
 		}
 	}
 
@@ -462,16 +470,15 @@ export class PlaylistPlayer {
 			this.stop('instant');
 			return;
 		}
-		this.#advanceFrom(index);
+		this.#advance();
 	}
 
 	/**
 	 * Moves on after the current track ended or failed. That voice has nothing left to play, so it is stopped
 	 * outright rather than faded.
-	 * @param {number} index
 	 */
-	#advanceFrom(index) {
-		const next = this.#order.next(index);
+	#advance() {
+		const next = this.#history.next();
 		if (next === null) {
 			this.stop('instant');
 			return;

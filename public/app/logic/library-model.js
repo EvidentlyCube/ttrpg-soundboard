@@ -1,5 +1,6 @@
 import { checkClip, roundToMilliseconds } from './clip.js';
 import { InvalidCommandError } from './errors.js';
+import { PLAYBACK_ORDERS } from './order-strategies.js';
 import { MAX_CROSSFADE } from './playback-rules.js';
 import { sortBy } from './sort.js';
 import { MAX_GAIN } from './volume.js';
@@ -120,6 +121,12 @@ export class LibraryModel {
 	updatePlaylist(id, changes) {
 		const playlist = applyChanges(this.playlist(id), changes);
 		applyTimings(playlist, changes, { crossfade: 'Crossfade', fadeIn: 'Fade-in', fadeOut: 'Fade-out' });
+		if (changes.order !== undefined) {
+			if (!PLAYBACK_ORDERS.includes(changes.order)) {
+				throw new InvalidCommandError(`The order must be one of ${PLAYBACK_ORDERS.join(', ')}, got ${changes.order}`);
+			}
+			playlist.order = changes.order;
+		}
 		this.#playlists.set(id, playlist);
 		this.#json = {
 			...this.#json,

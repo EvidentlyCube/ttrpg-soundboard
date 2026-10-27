@@ -379,11 +379,33 @@ describe('Soundboard', () => {
 			assert.deepEqual(engine.voices[0].gainRamps.at(-1), [0, 3]);
 		});
 
+		it('applies a new order to the playing playlist at once, and saves it', async () => {
+			const { soundboard, api, clock } = await started();
+			soundboard.jumpToTrack('Combat', 1);
+			soundboard.customizePlaylist('Combat', { order: 'shuffle' });
+			assert.equal(soundboard.getLibrary()?.playlists.find((playlist) => playlist.id === 'Combat')?.order, 'shuffle');
+			// A shuffled history refilled around the current track has nothing before it.
+			soundboard.previousTrack('Combat', { transition: 'instant' });
+			assert.equal(soundboard.getPlaylistSnapshot('Combat').trackIndex, 1);
+			clock.advance(500);
+			assert.equal(api.playlistSaves[0].options.order, 'shuffle');
+		});
+
+		it('rejects an unknown order', async () => {
+			const { soundboard } = await started();
+			assert.throws(() => soundboard.customizePlaylist('Combat', /** @type {any} */ ({ order: 'backwards' })), InvalidCommandError);
+			assert.throws(() => soundboard.dispatch({ type: 'playlist.customize', playlistId: 'Combat', order: 3 }), InvalidCommandError);
+		});
+
 		it('saves debounced and reports it saved, or failed', async () => {
 			const { soundboard, api, clock, settle, eventsOf } = await started();
 			soundboard.customizePlaylist('Tavern', { gain: 2 });
 			clock.advance(500);
-			assert.deepEqual(api.playlistSaves, [{ playlistId: 'Tavern', options: { title: 'Tavern', gain: 2, crossfade: 0, fadeIn: 0, fadeOut: 0 }, keepalive: false }]);
+			assert.deepEqual(api.playlistSaves, [{
+				playlistId: 'Tavern',
+				options: { title: 'Tavern', gain: 2, crossfade: 0, fadeIn: 0, fadeOut: 0, order: 'ordered' },
+				keepalive: false,
+			}]);
 			await settle();
 			assert.deepEqual(eventsOf('playlist.saved'), [{ type: 'playlist.saved', playlistId: 'Tavern' }]);
 

@@ -5,6 +5,7 @@ import { DEFAULT_PLAYBACK_RULES } from '../../public/app/logic/playback-rules.js
 import { PlaylistPlayer } from '../../public/app/logic/playlist-player.js';
 import { FakeAudioEngine } from '../helpers/fake-audio-engine.js';
 import { FakeClock } from '../helpers/fake-clock.js';
+import { seededRandom } from '../helpers/seeded-random.js';
 
 /** @typedef {import('../../public/app/logic/playlist-player.js').PlaylistEvent} PlaylistEvent */
 /** @typedef {import('../../public/app/logic/playback-rules.js').PlaybackRules} PlaybackRules */
@@ -22,6 +23,7 @@ function playlistOf(count, { gain = 1, trackGains = [] } = {}) {
 		crossfade: 0,
 		fadeIn: 0,
 		fadeOut: 0,
+		order: 'ordered',
 		tracks: Array.from({ length: count }, (_, i) => ({ id: `Combat/${i}.mp3`, title: `Track ${i}`, format: 'mp3', size: 1000, gain: trackGains[i] ?? 1, duration: 10, startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0, url: `/t${i}` })),
 	};
 }
@@ -32,8 +34,9 @@ function playlistOf(count, { gain = 1, trackGains = [] } = {}) {
  * @param {Partial<PlaybackRules>} [options.rules]
  * @param {(track: import('../../public/app/logic/ports.js').AudioFileJson) => boolean} [options.isPlayable]
  * @param {{ gain?: number, trackGains?: number[] }} [options.gains]
+ * @param {number} [options.seed] for the random orders
  */
-function setup({ tracks = 3, rules = {}, isPlayable, gains } = {}) {
+function setup({ tracks = 3, rules = {}, isPlayable, gains, seed = 1 } = {}) {
 	const clock = new FakeClock();
 	const engine = new FakeAudioEngine(clock, { defaultScript: { duration: 10, loadDelay: 0.1 } });
 	/** @type {PlaylistEvent[]} */
@@ -45,6 +48,7 @@ function setup({ tracks = 3, rules = {}, isPlayable, gains } = {}) {
 		emit: (event) => events.push(event),
 		rules: { ...DEFAULT_PLAYBACK_RULES, ...rules },
 		isPlayable,
+		random: seededRandom(seed),
 	});
 	/** @param {number} seconds */
 	const advance = (seconds) => clock.advance(seconds * 1000);
@@ -207,11 +211,14 @@ describe('PlaylistPlayer', () => {
 			assert.equal(current().playing, true);
 		});
 
-		it('wraps from the first track to the last on previous', () => {
-			const { player, current } = setup();
+		it('restarts the first track on previous instead of wrapping to the last', () => {
+			const { player, current, engine, advance } = setup();
 			player.play();
+			advance(1);
 			player.previous();
-			assert.equal(current().url, '/t2');
+			assert.equal(current().url, '/t0');
+			assert.equal(current().position, 0);
+			assert.equal(engine.voices.length, 1);
 		});
 
 		it('jumps to any track, starting the playlist when idle', () => {
@@ -228,6 +235,104 @@ describe('PlaylistPlayer', () => {
 			for (const index of [-1, 3, 1.5, Number.NaN]) {
 				assert.throws(() => player.jumpTo(index), InvalidCommandError);
 			}
+		});
+	});
+
+	describe('playback order', () => {
+		/** @param {ReturnType<typeof setup>} context */
+		const urlOf = ({ current }) => current().url;
+
+		it('goes back and forward through the history, replaying the same tracks', () => {
+			const context = setup({ tracks: 6, rules: { order: 'random' } });
+			context.player.play();
+			const forward = [1, 2, 3].map(() => {
+				context.player.next('instant');
+				return urlOf(context);
+			});
+			context.player.previous('instant');
+			context.player.previous('instant');
+			assert.equal(urlOf(context), forward[0]);
+			context.player.next('instant');
+			context.player.next('instant');
+			assert.equal(urlOf(context), forward[2]);
+		});
+
+		it('never plays the same track twice in a row in random order', () => {
+			const context = setup({ tracks: 3, rules: { order: 'random' } });
+			context.player.play();
+			let last = urlOf(context);
+			for (let i = 0; i < 30; i++) {
+				context.player.next('instant');
+				assert.notEqual(urlOf(context), last);
+				last = urlOf(context);
+			}
+		});
+
+		it('plays every track once per shuffled round', () => {
+			const context = setup({ tracks: 5, rules: { order: 'shuffle' } });
+			context.player.play();
+			const round = [urlOf(context)];
+			for (let i = 0; i < 4; i++) {
+				context.player.next('instant');
+				round.push(urlOf(context));
+			}
+			assert.equal(new Set(round).size, 5);
+		});
+
+		it('starts a fresh history at a chosen track, so previous goes to the track before it in order', () => {
+			const context = setup({ tracks: 4 });
+			context.player.play();
+			context.player.next('instant');
+			context.player.jumpTo(3, 'instant');
+			context.player.previous('instant');
+			assert.equal(urlOf(context), '/t2');
+		});
+
+		it('starts a shuffled round with a chosen track, with nothing before it', () => {
+			const context = setup({ tracks: 5, rules: { order: 'shuffle' } });
+			context.player.play();
+			context.player.jumpTo(2, 'instant');
+			context.advance(1);
+			context.player.previous('instant');
+			assert.equal(urlOf(context), '/t2');
+			assert.equal(context.current().position, 0);
+		});
+
+		it('picks the upcoming track once, however often the crossfade point is asked for', () => {
+			/** @param {boolean} ask */
+			const nextAfterFirst = (ask) => {
+				const context = setup({ tracks: 6, rules: { order: 'random', crossfade: 2 }, seed: 9 });
+				context.player.play();
+				context.advance(0.1);
+				for (let i = 0; ask && i < 5; i++) {
+					context.player.snapshot();
+				}
+				context.player.next('instant');
+				return urlOf(context);
+			};
+			assert.equal(nextAfterFirst(true), nextAfterFirst(false));
+		});
+
+		it('crossfades into the same track that next would have played', () => {
+			const crossfaded = setup({ tracks: 6, rules: { order: 'shuffle', crossfade: 2 }, seed: 4 });
+			crossfaded.player.play();
+			crossfaded.advance(0.1 + 8);
+			const skipped = setup({ tracks: 6, rules: { order: 'shuffle', crossfade: 2 }, seed: 4 });
+			skipped.player.play();
+			skipped.advance(0.1);
+			skipped.player.next('instant');
+			assert.equal(crossfaded.engine.voices[1].url, urlOf(skipped));
+		});
+
+		it('refills the history around the current track when the order changes', () => {
+			const context = setup({ tracks: 6, rules: { order: 'random' }, seed: 3 });
+			context.player.play();
+			context.player.next('instant');
+			const playing = Number(urlOf(context).slice(2));
+			context.player.setRules({ ...DEFAULT_PLAYBACK_RULES, order: 'ordered' });
+			assert.equal(urlOf(context), `/t${playing}`, 'the current track keeps playing');
+			context.player.next('instant');
+			assert.equal(urlOf(context), `/t${(playing + 1) % 6}`);
 		});
 	});
 
@@ -839,9 +944,11 @@ describe('PlaylistPlayer', () => {
 			const transitions = /** @type {const} */ (['default', 'instant']);
 			const pick = (/** @type {readonly any[]} */ items) => items[Math.floor(random() * items.length)];
 
+			const orders = /** @type {const} */ (['ordered', 'random', 'shuffle']);
 			for (let run = 0; run < 400; run++) {
-				const rules = run % 2 === 0 ? {} : { crossfade: 1.5, fadeOut: 1, fadeIn: 0.5 };
-				const { player, engine, advance, clock } = setup({ tracks: 1 + (run % 4), rules });
+				const fades = run % 2 === 0 ? {} : { crossfade: 1.5, fadeOut: 1, fadeIn: 0.5 };
+				const rules = { ...fades, order: orders[run % 3] };
+				const { player, engine, advance, clock } = setup({ tracks: 1 + (run % 4), rules, seed: run });
 				if (run % 5 === 0) {
 					engine.script('/t1', { loadError: 'broken' });
 				}

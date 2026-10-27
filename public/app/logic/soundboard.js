@@ -60,6 +60,7 @@ export class Soundboard {
 	#volume;
 	#settingsSync;
 	#optionsSync;
+	#random;
 	/** @type {{ library: LibraryModel, sounds: SoundPlayer, playlists: Map<string, PlaylistPlayer> } | null} */
 	#loaded = null;
 	/** @type {Promise<void> | null} */
@@ -73,10 +74,12 @@ export class Soundboard {
 	 * @param {Clock} ports.clock
 	 * @param {BackendApi} ports.api
 	 * @param {Logger} ports.logger
+	 * @param {() => number} [ports.random] for the random playback orders; tests pass a seeded generator
 	 */
-	constructor({ engine, clock, api, logger }) {
+	constructor({ engine, clock, api, logger, random = Math.random }) {
 		this.#engine = engine;
 		this.#clock = clock;
+		this.#random = random;
 		this.#api = api;
 		this.#logger = logger;
 		this.#events = new EventEmitter((error, event) => logger.error(`A handler for ${event.type} failed`, error));
@@ -260,12 +263,12 @@ export class Soundboard {
 				player.resume();
 				return;
 			case 'playlist.customize': {
-				const { title, gain, crossfade, fadeIn, fadeOut } = command;
-				const playlist = loaded.library.updatePlaylist(player.id, { title, gain, crossfade, fadeIn, fadeOut });
+				const { title, gain, crossfade, fadeIn, fadeOut, order } = command;
+				const playlist = loaded.library.updatePlaylist(player.id, { title, gain, crossfade, fadeIn, fadeOut, order });
 				if (gain !== undefined) {
 					player.setGain(playlist.gain);
 				}
-				if (crossfade !== undefined || fadeIn !== undefined || fadeOut !== undefined) {
+				if (crossfade !== undefined || fadeIn !== undefined || fadeOut !== undefined || order !== undefined) {
 					player.setRules(resolvePlaybackRules(playlist));
 				}
 				this.#optionsSync.schedule({ kind: 'playlist', id: playlist.id }, {
@@ -274,6 +277,7 @@ export class Soundboard {
 					crossfade: playlist.crossfade,
 					fadeIn: playlist.fadeIn,
 					fadeOut: playlist.fadeOut,
+					order: playlist.order,
 				});
 				this.#events.emit({ type: 'playlist.changed', playlist });
 				return;
@@ -378,13 +382,14 @@ export class Soundboard {
 
 	/**
 	 * Like `customizeSound`, for a playlist: a new gain reaches its playing and fading tracks at once, and new timings
-	 * are used from the next change of track, start or stop. Saving is reported with `playlist.saved` or
-	 * `playlist.saveFailed`.
+	 * are used from the next change of track, start or stop. A new order refills the history around the current track
+	 * (DESIGN.md §8.1). Saving is reported with `playlist.saved` or `playlist.saveFailed`.
 	 * @param {string} playlistId
-	 * @param {ItemOptions} changes `crossfade`, `fadeIn` and `fadeOut` in seconds, from 0 to MAX_CROSSFADE
+	 * @param {ItemOptions} changes `crossfade`, `fadeIn` and `fadeOut` in seconds, from 0 to MAX_CROSSFADE; `order` one of
+	 * 	PLAYBACK_ORDERS
 	 */
-	customizePlaylist(playlistId, { title, gain, crossfade, fadeIn, fadeOut }) {
-		this.dispatch({ type: 'playlist.customize', playlistId, title, gain, crossfade, fadeIn, fadeOut });
+	customizePlaylist(playlistId, { title, gain, crossfade, fadeIn, fadeOut, order }) {
+		this.dispatch({ type: 'playlist.customize', playlistId, title, gain, crossfade, fadeIn, fadeOut, order });
 	}
 
 	/**
@@ -442,6 +447,7 @@ export class Soundboard {
 				clock: this.#clock,
 				emit: (event) => this.#onPlaylistEvent(event),
 				isPlayable,
+				random: this.#random,
 			})]));
 
 			this.#loaded = { library, sounds, playlists };

@@ -4,7 +4,7 @@
 /**
  * How a playlist plays (DESIGN.md §8.2). Fades are in seconds.
  * @typedef {object} PlaybackRules
- * @property {string} order an order strategy name
+ * @property {import('./order-strategies.js').PlaybackOrder} order
  * @property {boolean} loop
  * @property {number} fadeIn applied when the playlist starts
  * @property {number} fadeOut applied when the playlist stops
@@ -13,7 +13,7 @@
 
 /** @type {Readonly<PlaybackRules>} */
 export const DEFAULT_PLAYBACK_RULES = Object.freeze({
-	order: 'sequential',
+	order: 'ordered',
 	loop: true,
 	fadeIn: 0,
 	fadeOut: 0,
@@ -30,8 +30,8 @@ export const MAX_CROSSFADE = 30;
  * @returns {Readonly<PlaybackRules>}
  */
 export function resolvePlaybackRules(playlist) {
-	const { crossfade, fadeIn, fadeOut } = playlist;
-	return { ...DEFAULT_PLAYBACK_RULES, crossfade, fadeIn, fadeOut };
+	const { crossfade, fadeIn, fadeOut, order } = playlist;
+	return { ...DEFAULT_PLAYBACK_RULES, crossfade, fadeIn, fadeOut, order };
 }
 
 /**

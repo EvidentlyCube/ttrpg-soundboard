@@ -18,6 +18,7 @@ export function exampleLibrary() {
 				crossfade: 0,
 				fadeIn: 0,
 				fadeOut: 0,
+				order: 'ordered',
 				tracks: [
 					{ id: 'Combat/1.mp3', title: 'Battle', format: 'mp3', size: 3_000_000, gain: 1, duration: 180, ...NO_CLIP, url: '/media/Combat/1.mp3' },
 					{ id: 'Combat/2.ogg', title: 'Boss', format: 'ogg', size: 3_000_000, gain: 1, duration: 200, ...NO_CLIP, url: '/media/Combat/2.ogg' },
@@ -30,6 +31,7 @@ export function exampleLibrary() {
 				crossfade: 0,
 				fadeIn: 0,
 				fadeOut: 0,
+				order: 'ordered',
 				tracks: [{ id: 'Tavern/1.mp3', title: 'Song', format: 'mp3', size: 3_000_000, gain: 1, duration: 150, ...NO_CLIP, url: '/media/Tavern/1.mp3' }],
 			},
 		],

@@ -16,7 +16,7 @@ import { isTransition } from './transitions.js';
  * 	| { type: 'sound.customize', soundId: string, title?: string, gain?: number, startAt?: number, endAt?: number | null,
  * 		fadeIn?: number, fadeOut?: number }
  * 	| { type: 'playlist.customize', playlistId: string, title?: string, gain?: number, crossfade?: number, fadeIn?: number,
- * 		fadeOut?: number }
+ * 		fadeOut?: number, order?: import('./order-strategies.js').PlaybackOrder }
  * 	| { type: 'track.customize', trackId: string, title?: string }} Command
  */
 
@@ -45,7 +45,7 @@ const SHAPES = {
 	},
 	'playlist.customize': {
 		strings: ['playlistId'],
-		optional: { title: 'string', gain: 'number', crossfade: 'number', fadeIn: 'number', fadeOut: 'number' },
+		optional: { title: 'string', gain: 'number', crossfade: 'number', fadeIn: 'number', fadeOut: 'number', order: 'string' },
 	},
 	'track.customize': { strings: ['trackId'], optional: { title: 'string' } },
 };
