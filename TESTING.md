@@ -23,6 +23,7 @@ How the app is tested: the automated suite that runs in Node, and the manual che
 | `fake-clock.js` | Timers that only fire when a test calls `advance(ms)`, in time order, including timers created by timers. |
 | `fake-audio-engine.js` | The `AudioEngine` port on the fake clock, modelling media elements: load delay, `play()` before load, position advancing only while playing, `ended` once. Per-URL scripts add durations, load, play and decode errors, buffer sizes, and "leaky" voices that keep firing events after `stop()`. |
 | `fake-backend-api.js` | The `BackendApi` port with settable library, settings and failures; records saves. |
+| `seeded-random.js` | `seededRandom(seed)`, a repeatable stand-in for `Math.random` (mulberry32), for the random playback orders. |
 | `fake-prompter.js` / `fake-reporter.js` | Scripted answers for bootstrap questions; records everything reported. |
 | `http-client.js` | `rawRequest()` sends a path exactly as given (for path traversal tests, which `fetch` would normalize); `findFreePort()`. |
 
@@ -36,7 +37,7 @@ How the app is tested: the automated suite that runs in Node, and the manual che
 | CLI | Arguments and ports, colors and `NO_COLOR`, the prompter (including typed-ahead answers and closed input), reporter output, `main` from usage errors to serving and stopping, port in use, `--verbose`. |
 | HTTP | A real server on a random port: static files and MIME types, path traversal attempts, the library and settings API with its error codes, media with every range form, `HEAD`, `416`, clients disconnecting mid-stream, request logging. |
 | Frontend logic | Event emitter; order strategies; transitions and rules; volume; settings sync (debounce, one save at a time, flush, failures); library model; command validation; buffer cache (sharing, eviction, in-use protection); sound player (instances, both caps, cancelling pending decodes, errors); playlist player (every state transition, stale callbacks from leaky voices, previous/next/jump rules, seeking, progress, errors and the consecutive-error limit, fades with non-zero rules, the retiring cap); the `Soundboard` facade; `HttpBackendApi` against the real server. |
-| Playlist invariant | 400 seeded random command sequences, with and without fades, broken and leaky tracks: afterwards, at most one live voice while active, none and no timers while idle (DESIGN.md §8). |
+| Playlist invariant | 400 seeded random command sequences, with and without fades, in all three playback orders, with broken and leaky tracks: afterwards, at most one live voice while active, none and no timers while idle (DESIGN.md §8). |
 
 ## Checking the tests themselves
 

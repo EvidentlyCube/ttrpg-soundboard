@@ -29,48 +29,7 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## Proposals
 
-### 7. Playback order
-
-**Goal.** In the playlist dialog, choose how a playlist moves through its tracks: **Ordered** (the default, alphabetical), **Random** (each next track picked at random, never the same twice in a row), or **Shuffle** (all tracks once in a shuffled order, then a new shuffle). Previous and Next move backwards and forwards through the playlist's history. The choice applies at once and is saved 500 ms later.
-
-**Decided** (the owner's answers and the backlog):
-1. **History.** Each playlist keeps a history of tracks and a cursor in it. Next and Previous move the cursor. When Next goes past the end, the history is extended by the order: **Ordered** appends the whole playlist in order, **Shuffle** appends a whole new shuffled round (never starting with the track that just played), and **Random** appends one track at a time.
-2. **Starting** a playlist fills a fresh history the same way, and plays its first entry: Ordered starts at the first track, Shuffle at the first track of a shuffled round, Random at a random track.
-3. **Previous** never goes before the first entry. At the first entry it restarts the current track, and so does the existing 3-second rule. Ordered therefore no longer wraps backwards from the first track to the last.
-4. **Choosing a track** from the track list clears the history and fills it as if playback had started there:
-   - **Ordered:** the whole playlist in order, with the cursor at the chosen track, so Previous goes to the alphabetically earlier tracks.
-   - **Shuffle:** a shuffled round with the chosen track first, so every track still plays once in the round.
-   - **Random:** just the chosen track.
-5. **Changing the order** does the same as choosing the current track, without restarting it: the history is cleared and filled by the new order around the current track. While the playlist is stopped, the new order is simply used at the next start.
-6. **Size.** The history keeps at most 2¹⁶ (65,536) entries. When it grows beyond that, entries before the cursor are dropped, oldest first.
-7. **One track.** Random and Shuffle pick among the tracks other than the current one, never by retrying until a pick differs. With a single track they repeat it, so they can never loop forever.
-8. **Names** in the options file and the code: `"ordered"`, `"random"` and `"shuffle"`; today's internal `"sequential"` becomes `"ordered"`.
-9. **Radio button descriptions:** Ordered "First to last, as listed."; Random "Any track next, never the same one twice in a row."; Shuffle "Every track once in a shuffled order, then shuffled again."
-10. **Fixture.** A new playlist `Music Order/` with 6 MP3 tracks of about 10 s, cut from the existing fixture songs and tagged "Order 1" to "Order 6".
-11. From the backlog: the track list keeps the alphabetical order with the current track marked, and nothing is remembered across a reload.
-
-**Why two tracks are not enough to test it.** With two tracks, Random ("never the same twice") and Shuffle ("a new round never starts with the track that just played") both come down to strict alternation, exactly like Ordered. Nothing about the new orders can be heard or seen. Automated tests don't need the fixture, since they use fake libraries of any size, but manual testing does (decision 10).
-
-**Design changes.**
-
-- **§2.3.** Playlist options files may hold `order`: `"ordered"` (the default), `"random"` or `"shuffle"`. Any other value fails validation like other bad keys.
-- **§5.1, §5.2.** `Playlist` gets `order`. `updatePlaylist` and `PATCH /api/playlists/<id>` accept it. `/api/library` includes it for every playlist.
-- **§6, §6.1.** `customizePlaylist(playlistId, { …, order? })`; an unknown order is an `InvalidCommandError`. `savePlaylistOptions` sends it with the rest of the playlist's options. `Soundboard` takes an optional `random` function (default `Math.random`), passed down to the players, so tests can use a seeded generator.
-- **§8.2.** `PlaybackRules.order` is read from the playlist. The order strategies become pure functions that fill the history (`logic/order-strategies.js`): each order has `start(trackCount, random, at)`, which returns the first entries and the cursor (`at` is the chosen or current track, if any), and `extend(trackCount, random, last)`, which returns the entries to append after `last`.
-- **§8.1.** A **play history** (`logic/play-history.js`, new) holds the entries and the cursor, with `start(at?)`, `next()`, `previous()`, `canGoBack`, `upcoming` (the entry after the cursor, extending the history first if needed) and `setOrder(order)`. Because upcoming tracks are entries, the crossfade timer, the crossfade marker and the natural end of a track all agree on one next track. `play()`, `next()`, `previous()` and `jumpTo()` go through the history as decided above; a changed order (`setRules`) restarts the history around the current track.
-- **§8.4.** The crossfade reads the upcoming entry instead of asking the order strategy.
-- **§9.7.** A **Playback order** card in the playlist dialog's "Playlist" tab, between Volume and Fades: three radio buttons, each with a one-line description below its name.
-- **§10.** The new files and the new fixture playlist.
-
-**Plan.**
-
-1. **Server.** `order` in playlist options validation, `Playlist`, `/api/library`, `updatePlaylist` and `PATCH /api/playlists/<id>`. *Tests:* valid and invalid values in files, the default, saving, and the route's `400`.
-2. **Order strategies.** `start` and `extend` for the three orders with an injected random function, plus a seeded generator in `test/helpers/`. *Tests:* Ordered fills in order with the cursor at `at`; a Shuffle round holds each track once, starts with `at` when given, and never starts with `last`; Random never repeats `last`; one track never loops; the same seed gives the same entries.
-3. **Play history.** *Tests:* Next replays entries after going back; the history extends only past the end; `upcoming` extends once and `next()` then moves there; Previous stops at the first entry; `start(at)` and `setOrder` refill around a track; the 2¹⁶ cap drops only entries before the cursor.
-4. **Player and facade.** `PlaylistPlayer` uses the history; `resolvePlaybackRules` reads `order`; `setRules` applies a changed order; `customizePlaylist` accepts `order`; `Soundboard` takes `random`. *Tests:* each order through the player, Previous at the first entry restarting, crossfades into the upcoming entry, a changed order while playing, saving, validation, and the randomized invariant test run with all three orders.
-5. **Fixture.** The `Music Order/` playlist, and the fixture tests updated.
-6. **UI.** The Playback order card, plus checks in `TESTING.md`. Checked with the manual checklist and a headless Chromium run.
-7. **Design update.** `DESIGN.md` in its own commit. Then this proposal and its backlog entry are removed.
+None yet.
 
 ---
 
@@ -90,27 +49,11 @@ These are the next features, in roughly the order they will be built. Each will 
 
 **Decided for all of them.** Customization changes apply immediately and are saved with a 500 ms debounce, as the sound Customize dialog does (DESIGN.md §6.4, §9.7). Re-sorting on screen waits until the dialog closes. Playback state is never remembered across a page reload, so F5 always gives a clean start.
 
-#### 7. Playback order
-
-Radio buttons in the playlist dialog:
-
-- **Ordered** (the default): first to last in the usual alphabetical order.
-- **Random:** each next track is picked at random, never the same one twice in a row (unless the playlist has only one track).
-- **Shuffle:** a shuffled list of all tracks is played through; then a new shuffled list is made whose first track is not the one that just played.
-
-- **Seam:** the order strategy registry (`order-strategies.js`, DESIGN.md §8.2) and `PlaybackRules.order`. Random strategies take a seeded random number generator so they stay testable.
-- **Decided: Previous and Next work like undo and redo.** The playlist keeps a list of the tracks it has played and a cursor in it. *Previous* steps back through it and *Next* steps forward again, replaying the same tracks in the same order. Only when *Next* goes past the end of the list does the order strategy pick a new track, which is appended. Ordered and Shuffle can generate the upcoming tracks in advance; Random picks each one when it is needed.
-- **Notes** (to settle in the proposal):
-  - *Choosing a track* from the track list plays it and is probably appended like a new pick, dropping anything after the cursor (as typing does after an undo). In Shuffle it then counts as played for that round.
-  - The 3-second rule for *Previous* (restart the current track) stays.
-  - The track list always shows the alphabetical order, with the current track marked.
-  - Changing the order while the playlist plays takes effect from the next new pick.
-
 #### 8. Track looping
 
 A checkbox: the current track repeats until the user moves to another one. That track then repeats in turn.
 
-- **Decided:** the existing `PlaybackRules.loop` ("wrap from the last track to the first") is renamed `playlistLooping`. It stays `true` and is not customizable. The new option is `trackLooping`.
+- **Decided:** the existing `PlaybackRules.loop` (whether the play history is extended past its first fill, DESIGN.md §8.1) is renamed `playlistLooping`. It stays `true` and is not customizable. The new option is `trackLooping`.
 - **Notes:** with a crossfade, does a looping track crossfade into itself, or loop seamlessly? Seamless is the expected answer; it interacts with start and end points (feature 11).
 
 #### 9. What "stop" does
@@ -123,7 +66,7 @@ Radio buttons in the playlist dialog:
 
 - **Seam:** `PlaylistPlayer` (DESIGN.md §8). Starting a playlist currently always begins at the order strategy's first track.
 - **Decided:** nothing is remembered across a page reload.
-- **Notes:** "stopped but remembering" is a new look for the idle tile, showing that it will resume. Does "Stop (Instant)" follow the setting too? Probably yes, since "instant" is about fades, not about forgetting. The played-tracks list from feature 7 is kept or cleared along with the position.
+- **Notes:** "stopped but remembering" is a new look for the idle tile, showing that it will resume. Does "Stop (Instant)" follow the setting too? Probably yes, since "instant" is about fades, not about forgetting. The play history (DESIGN.md §8.1) is kept or cleared along with the position.
 
 #### 10. Test playback in the track list
 
