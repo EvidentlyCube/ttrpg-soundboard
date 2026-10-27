@@ -71,6 +71,39 @@ describe('validateAudioOptions', () => {
 		assert.deepEqual(validateAudioOptions({ title: '   ' }), ['"title" must be a non-empty string']);
 		assert.deepEqual(validateAudioOptions({ title: 5 }), ['"title" must be a non-empty string']);
 	});
+
+	it('accepts start and end points, with a null end meaning the end of the file', () => {
+		assert.deepEqual(validateAudioOptions({ startAt: 0, endAt: null }), []);
+		assert.deepEqual(validateAudioOptions({ startAt: 1.25, endAt: 3.5 }), []);
+		assert.deepEqual(validateAudioOptions({ startAt: 120 }), []);
+		assert.deepEqual(validateAudioOptions({ endAt: 0.01 }), []);
+	});
+
+	it('rejects malformed start and end points', () => {
+		for (const startAt of [-0.001, '1', null, Number.POSITIVE_INFINITY]) {
+			assert.deepEqual(validateAudioOptions({ startAt }), ['"startAt" must be a non-negative number of seconds'], String(startAt));
+		}
+		for (const endAt of [-1, '2', false, Number.NaN]) {
+			assert.deepEqual(validateAudioOptions({ endAt }), ['"endAt" must be a non-negative number of seconds or null'], String(endAt));
+		}
+	});
+
+	it('requires the end point at least 10 ms after the start point', () => {
+		const tooClose = ['"endAt" must be at least 0.01 seconds after "startAt"'];
+		assert.deepEqual(validateAudioOptions({ startAt: 2, endAt: 1 }), tooClose);
+		assert.deepEqual(validateAudioOptions({ startAt: 2, endAt: 2.009 }), tooClose);
+		assert.deepEqual(validateAudioOptions({ endAt: 0.005 }), tooClose);
+		// 1001 − 991 comes out a hair under 10 when computed from these in floating point, but it is 10 ms.
+		assert.deepEqual(validateAudioOptions({ startAt: 0.991, endAt: 1.001 }), []);
+	});
+
+	it('accepts a fade-in and fade-out from 0 to 30 seconds and rejects others', () => {
+		assert.deepEqual(validateAudioOptions({ fadeIn: 0.5, fadeOut: 30 }), []);
+		assert.deepEqual(validateAudioOptions({ fadeIn: 31, fadeOut: null }), [
+			'"fadeIn" must be a number of seconds from 0 to 30',
+			'"fadeOut" must be a number of seconds from 0 to 30',
+		]);
+	});
 });
 
 describe('validatePlaylistOptions', () => {

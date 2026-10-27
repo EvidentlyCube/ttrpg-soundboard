@@ -120,6 +120,37 @@ describe('LibraryEditor.updateSound', () => {
 		assert.equal(lib.files.get('Alpha.mp3')?.gain, 1);
 	});
 
+	it('saves start and end points rounded to 3 decimals, and fades rounded to 2', async () => {
+		const editor = new LibraryEditor(library());
+		const updated = await editor.updateSound('Alpha.mp3', { startAt: 0.12345, endAt: 2.0004, fadeIn: 0.123, fadeOut: 1 });
+		const expected = { startAt: 0.123, endAt: 2, fadeIn: 0.12, fadeOut: 1 };
+		assert.deepEqual({ startAt: updated.startAt, endAt: updated.endAt, fadeIn: updated.fadeIn, fadeOut: updated.fadeOut }, expected);
+		assert.deepEqual(await readOptions('Alpha.mp3'), { title: 'Alpha', futureKey: 'kept', ...expected });
+	});
+
+	it('clears the end point with null', async () => {
+		const lib = library();
+		const editor = new LibraryEditor(lib);
+		await editor.updateSound('Alpha.mp3', { endAt: 2 });
+		await editor.updateSound('Alpha.mp3', { endAt: null });
+		assert.equal(lib.files.get('Alpha.mp3')?.endAt, null);
+		assert.equal((await readOptions('Alpha.mp3')).endAt, null);
+	});
+
+	it('checks a change of one point against the other point already stored', async () => {
+		const lib = library();
+		const editor = new LibraryEditor(lib);
+		await editor.updateSound('Alpha.mp3', { startAt: 1, endAt: 2 });
+		const tooClose = /"endAt" must be at least 0.01 seconds after "startAt"/;
+		await assert.rejects(editor.updateSound('Alpha.mp3', { startAt: 2 }), tooClose);
+		await assert.rejects(editor.updateSound('Alpha.mp3', { endAt: 1.005 }), tooClose);
+		// Rounding comes first: 1.0096 is stored as 1.01, which is far enough from 1.
+		await editor.updateSound('Alpha.mp3', { endAt: 1.0096 });
+		assert.equal(lib.files.get('Alpha.mp3')?.endAt, 1.01);
+		await editor.updateSound('Alpha.mp3', { startAt: 5, endAt: null });
+		assert.deepEqual((await readOptions('Alpha.mp3')).startAt, 5);
+	});
+
 	it('rejects unknown sounds and tracks', async () => {
 		const editor = new LibraryEditor(library());
 		await assert.rejects(editor.updateSound('Nope.mp3', { gain: 1 }), UnknownSoundError);
@@ -204,13 +235,17 @@ describe('LibraryEditor.updatePlaylist', () => {
 		assert.equal((await readOptions('Combat')).crossfade, 2.5);
 	});
 
-	it('saves fades, rounded to 2 decimals, and only for playlists', async () => {
+	it('saves fades, rounded to 2 decimals', async () => {
 		const editor = new LibraryEditor(library());
 		const updated = await editor.updatePlaylist('Combat', { fadeIn: 1.234, fadeOut: 5 });
 		assert.deepEqual([updated.fadeIn, updated.fadeOut], [1.23, 5]);
 		const saved = await readOptions('Combat');
 		assert.deepEqual([saved.fadeIn, saved.fadeOut], [1.23, 5]);
-		await assert.rejects(editor.updateSound('Alpha.mp3', /** @type {any} */ ({ fadeIn: 2 })), /Unknown option "fadeIn"/);
+	});
+
+	it('rejects start and end points for a playlist', async () => {
+		const editor = new LibraryEditor(library());
+		await assert.rejects(editor.updatePlaylist('Combat', /** @type {any} */ ({ startAt: 1 })), /Unknown option "startAt"/);
 	});
 
 	it('rejects a crossfade out of range, and a crossfade for a sound', async () => {
@@ -250,6 +285,9 @@ describe('LibraryEditor.updateTrack', () => {
 	it('accepts only a title, and rejects unknown ids and sound ids', async () => {
 		const editor = new LibraryEditor(library());
 		await assert.rejects(editor.updateTrack('Combat/1.mp3', /** @type {any} */ ({ gain: 1 })), /Unknown option "gain"/);
+		for (const key of ['startAt', 'endAt', 'fadeIn', 'fadeOut']) {
+			await assert.rejects(editor.updateTrack('Combat/1.mp3', /** @type {any} */ ({ [key]: 1 })), new RegExp(`Unknown option "${key}"`));
+		}
 		await assert.rejects(editor.updateTrack('Combat/1.mp3', { title: ' ' }), /"title" must be a non-empty string/);
 		await assert.rejects(editor.updateTrack('Combat/nope.mp3', { title: 'X' }), UnknownTrackError);
 		await assert.rejects(editor.updateTrack('Alpha.mp3', { title: 'X' }), UnknownTrackError);

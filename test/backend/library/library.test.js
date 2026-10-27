@@ -58,10 +58,25 @@ describe('buildLibrary', () => {
 	it('takes titles from options, falling back to the file name', () => {
 		const scan = scanOf({ sounds: [audio('Boom.mp3', true), audio('Creak.ogg')] });
 		const library = buildLibrary(scan, new Map([['/music/Boom.mp3.json', { title: 'Big Boom' }]]));
+		const defaults = { size: 100, gain: 1, duration: null, startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0 };
 		assert.deepEqual(library.sounds, [
-			{ id: 'Boom.mp3', title: 'Big Boom', format: 'mp3', size: 100, gain: 1, duration: null, absolutePath: '/music/Boom.mp3' },
-			{ id: 'Creak.ogg', title: 'Creak.ogg', format: 'ogg', size: 100, gain: 1, duration: null, absolutePath: '/music/Creak.ogg' },
+			{ id: 'Boom.mp3', title: 'Big Boom', format: 'mp3', ...defaults, absolutePath: '/music/Boom.mp3' },
+			{ id: 'Creak.ogg', title: 'Creak.ogg', format: 'ogg', ...defaults, absolutePath: '/music/Creak.ogg' },
 		]);
+	});
+
+	it('takes start and end points and fades of sounds and tracks from options', () => {
+		const scan = scanOf({
+			sounds: [audio('Boom.mp3', true)],
+			playlists: [playlist('Combat', [audio('Combat/1.mp3', true)])],
+		});
+		const library = buildLibrary(scan, new Map([
+			['/music/Boom.mp3.json', { startAt: 0.25, endAt: 1.5, fadeIn: 0.1, fadeOut: 0.2 }],
+			['/music/Combat/1.mp3.json', { startAt: 3 }],
+		]));
+		const { startAt, endAt, fadeIn, fadeOut } = library.sounds[0];
+		assert.deepEqual({ startAt, endAt, fadeIn, fadeOut }, { startAt: 0.25, endAt: 1.5, fadeIn: 0.1, fadeOut: 0.2 });
+		assert.deepEqual([library.playlists[0].tracks[0].startAt, library.playlists[0].tracks[0].endAt], [3, null]);
 	});
 
 	it('takes the measured duration from options', () => {

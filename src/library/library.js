@@ -13,6 +13,10 @@ import { sortBy } from './sort.js';
  * @property {number} size
  * @property {number} gain linear multiplier for its own volume; 1 plays it as recorded
  * @property {number | null} duration seconds, as measured at startup; null when it could not be read
+ * @property {number} startAt seconds into the file where playback starts
+ * @property {number | null} endAt seconds into the file where playback ends; null is the end of the file
+ * @property {number} fadeIn seconds; 0 is off
+ * @property {number} fadeOut seconds, ending at the end point; 0 is off
  * @property {string} absolutePath
  */
 
@@ -53,6 +57,10 @@ export function buildLibrary(scan, optionsByPath) {
 			size,
 			gain: options?.gain ?? 1,
 			duration: options?.duration ?? null,
+			startAt: options?.startAt ?? 0,
+			endAt: options?.endAt ?? null,
+			fadeIn: options?.fadeIn ?? 0,
+			fadeOut: options?.fadeOut ?? 0,
 			absolutePath,
 		};
 	};

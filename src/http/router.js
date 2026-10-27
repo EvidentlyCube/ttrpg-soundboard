@@ -107,8 +107,8 @@ function toPlaylistJson({ id, title, gain, crossfade, fadeIn, fadeOut, tracks })
 }
 
 /** @param {import('../library/library.js').AudioFile} file */
-function toFileJson({ id, title, format, size, gain, duration }) {
-	return { id, title, format, size, gain, duration, url: mediaUrl(id) };
+function toFileJson({ id, title, format, size, gain, duration, startAt, endAt, fadeIn, fadeOut }) {
+	return { id, title, format, size, gain, duration, startAt, endAt, fadeIn, fadeOut, url: mediaUrl(id) };
 }
 
 /**

@@ -2,20 +2,23 @@ import { join } from 'node:path';
 import { ValidationError } from './errors.js';
 import { updateJsonFile } from './options-store.js';
 import { sortBy } from './sort.js';
-import { isPlainObject, validateAudioOptions, validatePlaylistOptions } from './validate.js';
+import { checkClip, isPlainObject, validateAudioOptions, validatePlaylistOptions } from './validate.js';
 
 /** @typedef {import('./library.js').Library} Library */
 /** @typedef {import('./library.js').AudioFile} AudioFile */
 /** @typedef {import('./library.js').Playlist} Playlist */
 /** @typedef {import('./settings-store.js').FileUpdater} FileUpdater */
-/** @typedef {{ title?: string, gain?: number, crossfade?: number, fadeIn?: number, fadeOut?: number }} OptionChanges */
+/**
+ * @typedef {{ title?: string, gain?: number, crossfade?: number, fadeIn?: number, fadeOut?: number, startAt?: number,
+ * 	endAt?: number | null }} OptionChanges
+ */
 
 /** @type {readonly ('crossfade' | 'fadeIn' | 'fadeOut')[]} */
 const SECONDS_KEYS = ['crossfade', 'fadeIn', 'fadeOut'];
 
 /** The only options the app itself changes, per kind of item; anything else in a request is rejected. */
 const EDITABLE = {
-	sound: { keys: ['title', 'gain'], validate: validateAudioOptions },
+	sound: { keys: ['title', 'gain', 'startAt', 'endAt', 'fadeIn', 'fadeOut'], validate: validateAudioOptions },
 	playlist: { keys: ['title', 'gain', ...SECONDS_KEYS], validate: validatePlaylistOptions },
 	track: { keys: ['title'], validate: validateAudioOptions },
 };
@@ -78,6 +81,11 @@ export class LibraryEditor {
 			throw new UnknownSoundError(soundId);
 		}
 		const normalized = normalizeChanges(changes, EDITABLE.sound);
+		// A change to one point must still fit the other one already stored.
+		const clipProblems = checkClip({ startAt: sound.startAt, endAt: sound.endAt, ...normalized });
+		if (clipProblems.length > 0) {
+			throw new ValidationError(null, clipProblems);
+		}
 		// Sound options files sit next to their audio file with ".json" appended (DESIGN.md §2.1).
 		await this.#queueWrite(`${sound.absolutePath}.json`, (current) => ({ ...current, ...normalized }));
 		Object.assign(sound, normalized);
@@ -173,6 +181,13 @@ function normalizeChanges(changes, { keys, validate }) {
 		if (typeof seconds === 'number') {
 			normalized[key] = Math.round(seconds * 100) / 100;
 		}
+	}
+	// Points keep whole milliseconds, which is what the dialog shows.
+	if (typeof changes.startAt === 'number') {
+		normalized.startAt = Math.round(changes.startAt * 1000) / 1000;
+	}
+	if (typeof changes.endAt === 'number' || changes.endAt === null) {
+		normalized.endAt = changes.endAt === null ? null : Math.round(changes.endAt * 1000) / 1000;
 	}
 	return normalized;
 }

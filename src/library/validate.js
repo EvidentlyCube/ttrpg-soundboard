@@ -4,7 +4,10 @@
  */
 
 /** @typedef {{ size: number, modified: string, sha1: string }} MeasuredFrom what a stored duration was measured from */
-/** @typedef {{ title?: string, gain?: number, duration?: number | null, measuredFrom?: MeasuredFrom }} AudioOptions */
+/**
+ * @typedef {{ title?: string, gain?: number, duration?: number | null, measuredFrom?: MeasuredFrom, startAt?: number,
+ * 	endAt?: number | null, fadeIn?: number, fadeOut?: number }} AudioOptions
+ */
 /**
  * @typedef {{ title?: string, gain?: number, crossfade?: number, fadeIn?: number, fadeOut?: number,
  * 	includedSubdirectories?: string[] }} PlaylistOptions
@@ -20,8 +23,11 @@ export const VOLUME_BUSES = ['master', 'music', 'sfx'];
 /** The loudest boost a sound, track or playlist may have: just over +12 dB. */
 export const MAX_GAIN = 4;
 
-/** The longest crossfade, fade-in or fade-out a playlist may have, in seconds. */
+/** The longest crossfade, fade-in or fade-out a playlist or sound may have, in seconds. */
 export const MAX_CROSSFADE = 30;
+
+/** How much of a sound must stay between its start and end points, in milliseconds. */
+export const MIN_CLIP_MS = 10;
 
 const NOT_AN_OBJECT = 'must be a JSON object';
 
@@ -33,7 +39,38 @@ export function validateAudioOptions(value) {
 	if (!isPlainObject(value)) {
 		return [NOT_AN_OBJECT];
 	}
-	return [...checkTitle(value), ...checkGain(value), ...checkDuration(value)];
+	return [
+		...checkTitle(value),
+		...checkGain(value),
+		...checkDuration(value),
+		...checkClip(value),
+		...checkSeconds(value, ['fadeIn', 'fadeOut']),
+	];
+}
+
+/**
+ * Checks start and end points on their own and against each other; a missing start counts as 0.
+ * @param {Record<string, unknown>} value
+ * @returns {string[]}
+ */
+export function checkClip(value) {
+	const { startAt = 0, endAt = null } = value;
+	const problems = [];
+	const validStart = isSeconds(startAt);
+	if (!validStart) {
+		problems.push('"startAt" must be a non-negative number of seconds');
+	}
+	if (endAt !== null && !isSeconds(endAt)) {
+		problems.push('"endAt" must be a non-negative number of seconds or null');
+	} else if (
+		validStart
+		&& typeof endAt === 'number'
+		// Compared in whole milliseconds, so that floating-point noise never turns 10 ms into 9.999….
+		&& Math.round(endAt * 1000) - Math.round(/** @type {number} */ (startAt) * 1000) < MIN_CLIP_MS
+	) {
+		problems.push(`"endAt" must be at least ${MIN_CLIP_MS / 1000} seconds after "startAt"`);
+	}
+	return problems;
 }
 
 /**
@@ -44,13 +81,7 @@ export function validatePlaylistOptions(value) {
 	if (!isPlainObject(value)) {
 		return [NOT_AN_OBJECT];
 	}
-	const problems = [...checkTitle(value), ...checkGain(value)];
-	for (const key of ['crossfade', 'fadeIn', 'fadeOut']) {
-		const seconds = value[key];
-		if (key in value && !(typeof seconds === 'number' && seconds >= 0 && seconds <= MAX_CROSSFADE)) {
-			problems.push(`"${key}" must be a number of seconds from 0 to ${MAX_CROSSFADE}`);
-		}
-	}
+	const problems = [...checkTitle(value), ...checkGain(value), ...checkSeconds(value, ['crossfade', 'fadeIn', 'fadeOut'])];
 	if (
 		'includedSubdirectories' in value
 		&& !(Array.isArray(value.includedSubdirectories) && value.includedSubdirectories.every((entry) => typeof entry === 'string'))
@@ -147,6 +178,21 @@ function checkGain(value) {
 		return [`"gain" must be a number from 0 to ${MAX_GAIN}`];
 	}
 	return [];
+}
+
+/**
+ * @param {Record<string, unknown>} value
+ * @param {string[]} keys fades and crossfades, each from 0 to `MAX_CROSSFADE` seconds
+ */
+function checkSeconds(value, keys) {
+	return keys
+		.filter((key) => key in value && !(typeof value[key] === 'number' && value[key] >= 0 && value[key] <= MAX_CROSSFADE))
+		.map((key) => `"${key}" must be a number of seconds from 0 to ${MAX_CROSSFADE}`);
+}
+
+/** @param {unknown} value */
+function isSeconds(value) {
+	return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
 /** @param {unknown} value */
