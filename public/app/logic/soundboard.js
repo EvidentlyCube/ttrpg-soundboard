@@ -262,13 +262,16 @@ export class Soundboard {
 			case 'playlist.resume':
 				player.resume();
 				return;
+			case 'playlist.forget':
+				player.forget();
+				return;
 			case 'playlist.customize': {
-				const { title, gain, crossfade, fadeIn, fadeOut, order, trackLooping } = command;
-				const playlist = loaded.library.updatePlaylist(player.id, { title, gain, crossfade, fadeIn, fadeOut, order, trackLooping });
+				const { title, gain, crossfade, fadeIn, fadeOut, order, trackLooping, stopMode } = command;
+				const playlist = loaded.library.updatePlaylist(player.id, { title, gain, crossfade, fadeIn, fadeOut, order, trackLooping, stopMode });
 				if (gain !== undefined) {
 					player.setGain(playlist.gain);
 				}
-				if ([crossfade, fadeIn, fadeOut, order, trackLooping].some((value) => value !== undefined)) {
+				if ([crossfade, fadeIn, fadeOut, order, trackLooping, stopMode].some((value) => value !== undefined)) {
 					player.setRules(resolvePlaybackRules(playlist));
 				}
 				this.#optionsSync.schedule({ kind: 'playlist', id: playlist.id }, {
@@ -279,6 +282,7 @@ export class Soundboard {
 					fadeOut: playlist.fadeOut,
 					order: playlist.order,
 					trackLooping: playlist.trackLooping,
+					stopMode: playlist.stopMode,
 				});
 				this.#events.emit({ type: 'playlist.changed', playlist });
 				return;
@@ -384,14 +388,22 @@ export class Soundboard {
 	/**
 	 * Like `customizeSound`, for a playlist: a new gain reaches its playing and fading tracks at once, and new timings
 	 * are used from the next change of track, start or stop. A new order refills the history around the current track
-	 * (DESIGN.md §8.1), and track looping applies to the current track at once. Saving is reported with `playlist.saved`
-	 * or `playlist.saveFailed`.
+	 * (DESIGN.md §8.1), and track looping applies to the current track at once. A new stop mode trims what a stopped
+	 * playlist remembers. Saving is reported with `playlist.saved` or `playlist.saveFailed`.
 	 * @param {string} playlistId
 	 * @param {ItemOptions} changes `crossfade`, `fadeIn` and `fadeOut` in seconds, from 0 to MAX_CROSSFADE; `order` one of
-	 * 	PLAYBACK_ORDERS
+	 * 	PLAYBACK_ORDERS; `stopMode` one of STOP_MODES
 	 */
-	customizePlaylist(playlistId, { title, gain, crossfade, fadeIn, fadeOut, order, trackLooping }) {
-		this.dispatch({ type: 'playlist.customize', playlistId, title, gain, crossfade, fadeIn, fadeOut, order, trackLooping });
+	customizePlaylist(playlistId, { title, gain, crossfade, fadeIn, fadeOut, order, trackLooping, stopMode }) {
+		this.dispatch({ type: 'playlist.customize', playlistId, title, gain, crossfade, fadeIn, fadeOut, order, trackLooping, stopMode });
+	}
+
+	/**
+	 * Makes a stopped playlist forget the track and position it would resume at, so it starts afresh.
+	 * @param {string} playlistId
+	 */
+	forgetPlaylist(playlistId) {
+		this.dispatch({ type: 'playlist.forget', playlistId });
 	}
 
 	/**

@@ -151,6 +151,16 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] Turning it on mid-track makes that track repeat; turning it off lets it finish and move on in the playlist's order.
 - [ ] With a crossfade set, a repeating track has no crossfade marker and no crossfade at its loop point, but Next still crossfades. Turning it on during a crossfade makes the incoming track repeat.
 
+**What stopping remembers** (use "Music Order")
+- [ ] The playlist dialog's "When stopped" card offers Pause, Reset track and Reset playlist (checked by default), each with its description. A choice is saved (`"stopMode"`) and survives a reload.
+- [ ] Reset playlist: stopping and playing again starts at the first track, and the idle tile shows the track count as before.
+- [ ] Pause: stop a few seconds into track 3. The tile gets a dashed left border and reads "Resumes at m:ss", with the track named in its tooltip; playing it again continues from that spot, and the border goes away.
+- [ ] Reset track: the same, but the tile reads "Resumes track 3" and the track starts over. Previous after resuming still goes back through the tracks played.
+- [ ] Stop (Instant) remembers as well. With a fade-out, resuming continues from where Stop was pressed, fades in with the playlist's fade-in, and Play (Instant) starts at full volume.
+- [ ] Changing the mode while stopped updates the tile at once (Pause to Reset track drops the time, Reset playlist drops the tile's resume look) and never brings it back.
+- [ ] The tile's context menu shows Reset only while the tile remembers something; choosing it returns the tile to its track count, and the next Play starts at the first track.
+- [ ] Choosing a track in the footer's track list, and a playlist that stops on its own (track looping and playlist looping can't end it; use a single broken track), leave nothing remembered.
+
 **Interface**
 - [ ] Clicking outside a context menu doesn't trigger the tile underneath; Esc closes it.
 - [ ] Context menus and the track list open fully on screen, also near the window edges and the first time.

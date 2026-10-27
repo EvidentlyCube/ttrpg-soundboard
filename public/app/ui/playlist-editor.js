@@ -1,5 +1,5 @@
 import { PLAYBACK_ORDERS } from '../logic/order-strategies.js';
-import { MAX_CROSSFADE } from '../logic/playback-rules.js';
+import { MAX_CROSSFADE, STOP_MODES } from '../logic/playback-rules.js';
 import { Component } from './component.js';
 import { card, checkbox, labeledRow, playToggle, radioGroup, saveStatus, tabs, titleField } from './customize-parts.js';
 import { h } from './dom.js';
@@ -13,12 +13,20 @@ import { TrackAccordion } from './track-accordion.js';
 /** @typedef {import('./seconds-scale.js').SecondsLimits} SecondsLimits */
 /** @typedef {'crossfade' | 'fadeIn' | 'fadeOut'} TimingKey */
 /** @typedef {import('../logic/order-strategies.js').PlaybackOrder} PlaybackOrder */
+/** @typedef {import('../logic/playback-rules.js').StopMode} StopMode */
 
 /** @type {Record<PlaybackOrder, { label: string, description: string }>} */
 const ORDER_CHOICES = {
 	ordered: { label: 'Ordered', description: 'First to last, as listed.' },
 	random: { label: 'Random', description: 'Any track next, never the same one twice in a row.' },
 	shuffle: { label: 'Shuffle', description: 'Every track once in a shuffled order, then shuffled again.' },
+};
+
+/** @type {Record<StopMode, { label: string, description: string }>} */
+const STOP_CHOICES = {
+	pause: { label: 'Pause', description: 'Playing again continues where it stopped.' },
+	resetTrack: { label: 'Reset track', description: 'Playing again starts the same track from its beginning.' },
+	resetPlaylist: { label: 'Reset playlist', description: 'Playing again starts afresh, as if for the first time.' },
 };
 
 /**
@@ -128,6 +136,17 @@ export class PlaylistEditor extends Component {
 			},
 		});
 
+		const stopMode = radioGroup({
+			name: 'stop-mode',
+			choices: STOP_MODES.map((value) => ({ value, ...STOP_CHOICES[value] })),
+			value: this.#playlist.stopMode,
+			accent: 'music',
+			onChange: (value) => {
+				status.show('saving');
+				soundboard.customizePlaylist(id, { stopMode: value });
+			},
+		});
+
 		const play = playToggle(() => soundboard.togglePlaylist(id));
 		play.show(soundboard.getPlaylistSnapshot(id).state !== 'idle');
 
@@ -141,6 +160,7 @@ export class PlaylistEditor extends Component {
 				gain.update(event.playlist.gain);
 				order.update(event.playlist.order);
 				looping.update(event.playlist.trackLooping);
+				stopMode.update(event.playlist.stopMode);
 				for (const key of /** @type {TimingKey[]} */ (Object.keys(timings))) {
 					timings[key].control.update(event.playlist[key]);
 				}
@@ -185,6 +205,7 @@ export class PlaylistEditor extends Component {
 			card('Playlist', 'music', title.element),
 			card('Volume', 'music', gainSlot),
 			card('Playback order', 'music', order.element, h('div', { class: 'mt-4 border-t border-line pt-4' }, looping.element)),
+			card('When stopped', 'music', stopMode.element),
 			card('Fades', 'music', h('div', { class: 'space-y-3' }, timings.fadeIn.element, timings.crossfade.element, timings.fadeOut.element)));
 		const { bar, panels } = tabs([
 			{ id: 'playlist', label: 'Playlist', panel: settingsPanel },

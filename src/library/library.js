@@ -30,6 +30,7 @@ import { sortBy } from './sort.js';
  * @property {number} fadeOut seconds, when it stops; 0 is off
  * @property {import('./validate.js').PlaybackOrder} order how it moves through its tracks
  * @property {boolean} trackLooping whether the current track repeats until the user moves on
+ * @property {import('./validate.js').StopMode} stopMode what stopping it remembers
  * @property {AudioFile[]} tracks in path order
  * @property {string[]} includedSubdirectories
  */
@@ -82,6 +83,7 @@ export function buildLibrary(scan, optionsByPath) {
 					fadeOut: options?.fadeOut ?? 0,
 					order: options?.order ?? 'ordered',
 					trackLooping: options?.trackLooping ?? false,
+					stopMode: options?.stopMode ?? 'resetPlaylist',
 					tracks: playlist.tracks.map(toAudioFile),
 					includedSubdirectories: options?.includedSubdirectories ?? [],
 				};

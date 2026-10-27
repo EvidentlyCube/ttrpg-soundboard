@@ -391,6 +391,30 @@ describe('Soundboard', () => {
 			assert.equal(api.playlistSaves[0].options.order, 'shuffle');
 		});
 
+		it('rejects an unknown stop mode', async () => {
+			const { soundboard } = await started();
+			assert.throws(() => soundboard.customizePlaylist('Combat', /** @type {any} */ ({ stopMode: 'forever' })), InvalidCommandError);
+		});
+
+		it('resumes a stopped playlist by its stop mode, saves the mode, and forgets on request', async () => {
+			const { soundboard, api, clock, advance } = await started();
+			soundboard.customizePlaylist('Combat', { stopMode: 'resetTrack' });
+			soundboard.jumpToTrack('Combat', 1);
+			await advance(1);
+			soundboard.stopPlaylist('Combat');
+			assert.equal(soundboard.getPlaylistSnapshot('Combat').resume?.trackIndex, 1);
+			soundboard.forgetPlaylist('Combat');
+			assert.equal(soundboard.getPlaylistSnapshot('Combat').resume, null);
+			soundboard.customizePlaylist('Combat', { stopMode: 'pause' });
+			soundboard.jumpToTrack('Combat', 1);
+			await advance(1);
+			soundboard.stopPlaylist('Combat');
+			soundboard.togglePlaylist('Combat');
+			assert.equal(soundboard.getPlaylistSnapshot('Combat').trackIndex, 1);
+			clock.advance(500);
+			assert.equal(api.playlistSaves.at(-1)?.options.stopMode, 'pause');
+		});
+
 		it('applies track looping to the playing track at once, and saves it', async () => {
 			const { soundboard, api, clock, engine } = await started();
 			soundboard.togglePlaylist('Combat');
@@ -413,7 +437,7 @@ describe('Soundboard', () => {
 			clock.advance(500);
 			assert.deepEqual(api.playlistSaves, [{
 				playlistId: 'Tavern',
-				options: { title: 'Tavern', gain: 2, crossfade: 0, fadeIn: 0, fadeOut: 0, order: 'ordered', trackLooping: false },
+				options: { title: 'Tavern', gain: 2, crossfade: 0, fadeIn: 0, fadeOut: 0, order: 'ordered', trackLooping: false, stopMode: 'resetPlaylist' },
 				keepalive: false,
 			}]);
 			await settle();

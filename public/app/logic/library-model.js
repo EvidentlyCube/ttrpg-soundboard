@@ -1,7 +1,7 @@
 import { checkClip, roundToMilliseconds } from './clip.js';
 import { InvalidCommandError } from './errors.js';
 import { PLAYBACK_ORDERS } from './order-strategies.js';
-import { MAX_CROSSFADE } from './playback-rules.js';
+import { MAX_CROSSFADE, STOP_MODES } from './playback-rules.js';
 import { sortBy } from './sort.js';
 import { MAX_GAIN } from './volume.js';
 
@@ -129,6 +129,12 @@ export class LibraryModel {
 		}
 		if (changes.trackLooping !== undefined) {
 			playlist.trackLooping = changes.trackLooping;
+		}
+		if (changes.stopMode !== undefined) {
+			if (!STOP_MODES.includes(changes.stopMode)) {
+				throw new InvalidCommandError(`The stop mode must be one of ${STOP_MODES.join(', ')}, got ${changes.stopMode}`);
+			}
+			playlist.stopMode = changes.stopMode;
 		}
 		this.#playlists.set(id, playlist);
 		this.#json = {

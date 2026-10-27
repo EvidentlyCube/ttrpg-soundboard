@@ -150,6 +150,19 @@ describe('validatePlaylistOptions', () => {
 		}
 	});
 
+	it('accepts the three stop modes and rejects anything else', () => {
+		for (const stopMode of ['pause', 'resetTrack', 'resetPlaylist']) {
+			assert.deepEqual(validatePlaylistOptions({ stopMode }), [], stopMode);
+		}
+		for (const stopMode of ['stop', 'Pause', '', 1, null]) {
+			assert.deepEqual(
+				validatePlaylistOptions({ stopMode }),
+				['"stopMode" must be "pause", "resetTrack" or "resetPlaylist"'],
+				String(stopMode),
+			);
+		}
+	});
+
 	it('accepts a crossfade from 0 to 30 seconds and rejects others', () => {
 		for (const crossfade of [0, 2.5, 30]) {
 			assert.deepEqual(validatePlaylistOptions({ crossfade }), [], String(crossfade));

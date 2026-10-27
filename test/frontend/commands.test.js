@@ -18,6 +18,7 @@ describe('validateCommand', () => {
 			{ type: 'playlist.seek', playlistId: 'p', seconds: 12.5 },
 			{ type: 'playlist.pause', playlistId: 'p' },
 			{ type: 'playlist.resume', playlistId: 'p' },
+			{ type: 'playlist.forget', playlistId: 'p' },
 			{ type: 'volume.set', bus: 'music', value: 0.5 },
 			{ type: 'sound.customize', soundId: 'a', title: 'Boom' },
 			{ type: 'sound.customize', soundId: 'a', gain: 2 },
@@ -29,6 +30,7 @@ describe('validateCommand', () => {
 			{ type: 'playlist.customize', playlistId: 'p', gain: 1.5 },
 			{ type: 'playlist.customize', playlistId: 'p', crossfade: 2 },
 			{ type: 'playlist.customize', playlistId: 'p', fadeIn: 1, fadeOut: 2 },
+			{ type: 'playlist.customize', playlistId: 'p', stopMode: 'pause' },
 			{ type: 'track.customize', trackId: 'p/1.mp3', title: 'Battle' },
 		];
 		for (const command of commands) {
@@ -58,6 +60,7 @@ describe('validateCommand', () => {
 			[{ type: 'playlist.customize', playlistId: 'p', gain: null }, /"gain" must be a number/],
 			[{ type: 'playlist.customize', playlistId: 'p', crossfade: '2' }, /"crossfade" must be a number/],
 			[{ type: 'playlist.customize', playlistId: 'p', fadeOut: '1' }, /"fadeOut" must be a number/],
+			[{ type: 'playlist.customize', playlistId: 'p', stopMode: 1 }, /"stopMode" must be a string/],
 			[{ type: 'track.customize', trackId: 'p/1.mp3' }, /needs "title"/],
 			[{ type: 'track.customize', title: 'X' }, /"trackId" must be a string/],
 			[{ type: 'playlist.customize', playlistId: 'p' }, /needs "title" or "gain" or "crossfade" or "fadeIn" or "fadeOut"/],

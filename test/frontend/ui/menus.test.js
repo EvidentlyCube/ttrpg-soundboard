@@ -17,23 +17,30 @@ describe('soundMenuItems', () => {
 });
 
 describe('playlistMenuItems', () => {
+	const idle = { state: /** @type {const} */ ('idle'), resume: null };
+
 	it('lists every item from DESIGN.md §9.3 in order', () => {
-		assert.deepEqual(playlistMenuItems('idle').map((item) => item.label), [
-			'Play', 'Play (Instant)', 'Next', 'Next (Instant)', 'Stop', 'Stop (Instant)', 'Customize',
+		assert.deepEqual(playlistMenuItems(idle).map((item) => item.label), [
+			'Play', 'Play (Instant)', 'Next', 'Next (Instant)', 'Stop', 'Stop (Instant)', 'Reset', 'Customize',
 		]);
 	});
 
 	it('only offers playing while idle, and Customize always', () => {
-		assert.deepEqual(enabledLabels(playlistMenuItems('idle')), ['Play', 'Play (Instant)', 'Customize']);
+		assert.deepEqual(enabledLabels(playlistMenuItems(idle)), ['Play', 'Play (Instant)', 'Customize']);
 	});
 
 	it('offers next and stop while active, in every active state', () => {
 		for (const state of /** @type {const} */ (['loading', 'playing', 'paused'])) {
-			assert.deepEqual(enabledLabels(playlistMenuItems(state)), ['Next', 'Next (Instant)', 'Stop', 'Stop (Instant)', 'Customize'], state);
+			assert.deepEqual(enabledLabels(playlistMenuItems({ state, resume: null })), ['Next', 'Next (Instant)', 'Stop', 'Stop (Instant)', 'Customize'], state);
 		}
 	});
 
+	it('offers Reset only while idle and remembering where to resume', () => {
+		assert.deepEqual(enabledLabels(playlistMenuItems({ state: 'idle', resume: {} })), ['Play', 'Play (Instant)', 'Reset', 'Customize']);
+		assert.ok(!enabledLabels(playlistMenuItems({ state: 'playing', resume: {} })).includes('Reset'));
+	});
+
 	it('groups the items so the menu can separate them', () => {
-		assert.deepEqual(playlistMenuItems('idle').map((item) => item.group), [0, 0, 1, 1, 2, 2, 3]);
+		assert.deepEqual(playlistMenuItems(idle).map((item) => item.group), [0, 0, 1, 1, 2, 2, 2, 3]);
 	});
 });

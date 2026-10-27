@@ -8,7 +8,7 @@ import { isTransition } from './transitions.js';
  * Everything the UI, or later a remote control, can ask the soundboard to do. Commands are plain data, so they can be
  * sent over a connection unchanged (DESIGN.md §6).
  * @typedef {{ type: 'sound.play' | 'sound.stop', soundId: string }
- * 	| { type: 'playlist.toggle' | 'playlist.pause' | 'playlist.resume', playlistId: string }
+ * 	| { type: 'playlist.toggle' | 'playlist.pause' | 'playlist.resume' | 'playlist.forget', playlistId: string }
  * 	| { type: 'playlist.play' | 'playlist.stop' | 'playlist.next' | 'playlist.previous', playlistId: string, transition?: Transition }
  * 	| { type: 'playlist.jump', playlistId: string, trackIndex: number, transition?: Transition }
  * 	| { type: 'playlist.seek', playlistId: string, seconds: number }
@@ -16,7 +16,8 @@ import { isTransition } from './transitions.js';
  * 	| { type: 'sound.customize', soundId: string, title?: string, gain?: number, startAt?: number, endAt?: number | null,
  * 		fadeIn?: number, fadeOut?: number }
  * 	| { type: 'playlist.customize', playlistId: string, title?: string, gain?: number, crossfade?: number, fadeIn?: number,
- * 		fadeOut?: number, order?: import('./order-strategies.js').PlaybackOrder, trackLooping?: boolean }
+ * 		fadeOut?: number, order?: import('./order-strategies.js').PlaybackOrder, trackLooping?: boolean,
+ * 		stopMode?: import('./playback-rules.js').StopMode }
  * 	| { type: 'track.customize', trackId: string, title?: string }} Command
  */
 
@@ -32,6 +33,7 @@ const SHAPES = {
 	'playlist.toggle': { strings: ['playlistId'] },
 	'playlist.pause': { strings: ['playlistId'] },
 	'playlist.resume': { strings: ['playlistId'] },
+	'playlist.forget': { strings: ['playlistId'] },
 	'playlist.play': { strings: ['playlistId'], transition: true },
 	'playlist.stop': { strings: ['playlistId'], transition: true },
 	'playlist.next': { strings: ['playlistId'], transition: true },
@@ -47,6 +49,7 @@ const SHAPES = {
 		strings: ['playlistId'],
 		optional: {
 			title: 'string', gain: 'number', crossfade: 'number', fadeIn: 'number', fadeOut: 'number', order: 'string', trackLooping: 'boolean',
+			stopMode: 'string',
 		},
 	},
 	'track.customize': { strings: ['trackId'], optional: { title: 'string' } },

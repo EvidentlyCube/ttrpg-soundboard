@@ -151,6 +151,12 @@ describe('buildLibrary', () => {
 		assert.deepEqual(library.playlists.map((entry) => entry.trackLooping), [true, false]);
 	});
 
+	it('takes the stop mode from options, defaulting to resetPlaylist', () => {
+		const scan = scanOf({ playlists: [playlist('A', [audio('A/1.mp3')], true), playlist('B', [audio('B/1.mp3')])] });
+		const library = buildLibrary(scan, new Map([['/music/A.json', { stopMode: 'pause' }]]));
+		assert.deepEqual(library.playlists.map((entry) => entry.stopMode), ['pause', 'resetPlaylist']);
+	});
+
 	it('reads included subdirectories from playlist options', () => {
 		const scan = scanOf({ playlists: [playlist('A', [audio('A/1.mp3')], true), playlist('B', [audio('B/1.mp3')])] });
 		const library = buildLibrary(scan, new Map([['/music/A.json', { includedSubdirectories: ['Boss'] }]]));

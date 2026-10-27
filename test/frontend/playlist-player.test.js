@@ -25,6 +25,7 @@ function playlistOf(count, { gain = 1, trackGains = [] } = {}) {
 		fadeOut: 0,
 		order: 'ordered',
 		trackLooping: false,
+		stopMode: 'resetPlaylist',
 		tracks: Array.from({ length: count }, (_, i) => ({ id: `Combat/${i}.mp3`, title: `Track ${i}`, format: 'mp3', size: 1000, gain: trackGains[i] ?? 1, duration: 10, startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0, url: `/t${i}` })),
 	};
 }
@@ -97,6 +98,7 @@ describe('PlaylistPlayer', () => {
 				track: playlistOf(3).tracks[0],
 				duration: null,
 				crossfadeFrom: null,
+				resume: null,
 			});
 			assert.equal(playing.type === 'playlist.stateChanged' && playing.duration, 10);
 			assert.deepEqual(JSON.parse(JSON.stringify(loading)), loading);
@@ -151,6 +153,154 @@ describe('PlaylistPlayer', () => {
 			const { player, events } = setup();
 			player.stop();
 			assert.deepEqual(events, []);
+		});
+
+		describe('what stopping remembers', () => {
+			/** @param {import('../../public/app/logic/playback-rules.js').StopMode} stopMode */
+			function playedFor4Seconds(stopMode) {
+				const harness = setup({ rules: { stopMode } });
+				harness.player.jumpTo(1);
+				harness.advance(4);
+				return harness;
+			}
+
+			it('remembers nothing by default', () => {
+				const { player } = playedFor4Seconds('resetPlaylist');
+				player.stop();
+				assert.equal(player.snapshot().resume, null);
+				player.play();
+				assert.equal(player.snapshot().trackIndex, 0);
+			});
+
+			it('continues the same track where it stopped with pause', () => {
+				const { player, advance } = playedFor4Seconds('pause');
+				player.stop();
+				const { resume } = player.snapshot();
+				assert.equal(resume?.trackIndex, 1);
+				assert.equal(resume?.track.title, 'Track 1');
+				assert.ok(Math.abs((resume?.position ?? 0) - 3.9) < 0.01);
+				player.play();
+				advance(0.1);
+				assert.equal(player.snapshot().trackIndex, 1);
+				assert.ok(Math.abs(player.snapshot().position - 3.9) < 0.1);
+				assert.equal(player.snapshot().resume, null);
+			});
+
+			it('restarts the same track with resetTrack', () => {
+				const { player, advance } = playedFor4Seconds('resetTrack');
+				player.stop();
+				assert.deepEqual(
+					{ trackIndex: player.snapshot().resume?.trackIndex, position: player.snapshot().resume?.position },
+					{ trackIndex: 1, position: null },
+				);
+				player.play();
+				advance(0.1);
+				assert.equal(player.snapshot().trackIndex, 1);
+				assert.ok(player.snapshot().position < 0.1);
+			});
+
+			it('keeps the play history, so Previous still goes back', () => {
+				const { player, advance } = setup({ rules: { stopMode: 'resetTrack' } });
+				player.play();
+				advance(0.2);
+				player.next();
+				advance(0.2);
+				player.stop();
+				player.play();
+				advance(0.2);
+				player.previous();
+				assert.equal(player.snapshot().trackIndex, 0);
+			});
+
+			it('follows Stop (Instant) too', () => {
+				const { player } = playedFor4Seconds('pause');
+				player.stop('instant');
+				assert.equal(player.snapshot().resume?.trackIndex, 1);
+			});
+
+			it('remembers the position of a track that was still loading', () => {
+				const { player } = setup({ rules: { stopMode: 'pause' } });
+				player.jumpTo(2);
+				player.stop();
+				assert.deepEqual(
+					{ trackIndex: player.snapshot().resume?.trackIndex, position: player.snapshot().resume?.position },
+					{ trackIndex: 2, position: 0 },
+				);
+			});
+
+			it('announces what it remembers with the idle state', () => {
+				const { player, eventsOf } = playedFor4Seconds('resetTrack');
+				player.stop();
+				const idle = eventsOf('playlist.stateChanged').at(-1);
+				assert.equal(idle?.type === 'playlist.stateChanged' && idle.resume?.trackIndex, 1);
+			});
+
+			it('forgets when a track is chosen, so the next start is fresh', () => {
+				const { player } = playedFor4Seconds('pause');
+				player.stop();
+				player.jumpTo(0);
+				player.stop();
+				assert.equal(player.snapshot().resume?.trackIndex, 0);
+			});
+
+			it('forgets when the playlist ends by itself', () => {
+				const { player, advance } = setup({ tracks: 1, rules: { stopMode: 'pause', playlistLooping: false } });
+				player.play();
+				advance(11);
+				assert.equal(player.state, 'idle');
+				assert.equal(player.snapshot().resume, null);
+			});
+
+			it('forgets when every track fails', () => {
+				const { player, engine, advance } = setup({ tracks: 1, rules: { stopMode: 'pause' } });
+				engine.script('/t0', { loadError: 'broken' });
+				player.play();
+				advance(1);
+				assert.equal(player.state, 'idle');
+				assert.equal(player.snapshot().resume, null);
+			});
+
+			it('forgets on request, and says so', () => {
+				const { player, eventsOf } = playedFor4Seconds('pause');
+				player.stop();
+				player.forget();
+				assert.equal(player.snapshot().resume, null);
+				const idle = eventsOf('playlist.stateChanged').at(-1);
+				assert.equal(idle?.type === 'playlist.stateChanged' && idle.resume, null);
+				player.play();
+				assert.equal(player.snapshot().trackIndex, 0);
+			});
+
+			it('ignores forget while playing', () => {
+				const { player, events } = playedFor4Seconds('pause');
+				const before = events.length;
+				player.forget();
+				assert.equal(events.length, before);
+				assert.equal(player.state, 'playing');
+			});
+
+			it('trims what is remembered when the mode changes, and never brings it back', () => {
+				const { player } = playedFor4Seconds('pause');
+				player.stop();
+				player.setRules({ ...DEFAULT_PLAYBACK_RULES, stopMode: 'resetTrack' });
+				assert.equal(player.snapshot().resume?.position, null);
+				player.setRules({ ...DEFAULT_PLAYBACK_RULES, stopMode: 'pause' });
+				assert.equal(player.snapshot().resume?.position, null);
+				player.setRules({ ...DEFAULT_PLAYBACK_RULES, stopMode: 'resetPlaylist' });
+				assert.equal(player.snapshot().resume, null);
+			});
+
+			it('fades in when resuming with the default transition only', () => {
+				const { player, engine, advance } = setup({ rules: { stopMode: 'pause', fadeIn: 2 } });
+				player.play('instant');
+				advance(2);
+				player.stop('instant');
+				player.play('instant');
+				assert.deepEqual(engine.voices.at(-1)?.gainRamps, []);
+				player.stop('instant');
+				player.play();
+				assert.deepEqual(engine.voices.at(-1)?.gainRamps.at(-1), [1, 2]);
+			});
 		});
 	});
 
@@ -1004,9 +1154,10 @@ describe('PlaylistPlayer', () => {
 			const pick = (/** @type {readonly any[]} */ items) => items[Math.floor(random() * items.length)];
 
 			const orders = /** @type {const} */ (['ordered', 'random', 'shuffle']);
+			const stopModes = /** @type {const} */ (['pause', 'resetTrack', 'resetPlaylist']);
 			for (let run = 0; run < 400; run++) {
 				const fades = run % 2 === 0 ? {} : { crossfade: 1.5, fadeOut: 1, fadeIn: 0.5 };
-				const rules = { ...fades, order: orders[run % 3], trackLooping: run % 5 === 1 };
+				const rules = { ...fades, order: orders[run % 3], trackLooping: run % 5 === 1, stopMode: stopModes[Math.floor(run / 3) % 3] };
 				const { player, engine, advance, clock } = setup({ tracks: 1 + (run % 4), rules, seed: run });
 				if (run % 5 === 0) {
 					engine.script('/t1', { loadError: 'broken' });

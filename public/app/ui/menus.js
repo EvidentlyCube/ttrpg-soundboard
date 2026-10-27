@@ -24,10 +24,11 @@ export function soundMenuItems(isActive) {
 /**
  * The playlist tile's context menu (DESIGN.md §9.3). Only the instant items get their own label; the plain ones follow
  * the playlist's rules.
- * @param {PlaylistState} state
+ * @param {{ state: PlaylistState, resume: unknown }} snapshot `resume` is set while a stopped playlist remembers where
+ * 	it will resume
  * @returns {MenuItem[]}
  */
-export function playlistMenuItems(state) {
+export function playlistMenuItems({ state, resume }) {
 	const active = state !== 'idle';
 	return [
 		{ id: 'play', label: 'Play', enabled: !active, group: 0 },
@@ -36,6 +37,7 @@ export function playlistMenuItems(state) {
 		{ id: 'nextInstant', label: 'Next (Instant)', enabled: active, group: 1 },
 		{ id: 'stop', label: 'Stop', enabled: active, group: 2 },
 		{ id: 'stopInstant', label: 'Stop (Instant)', enabled: active, group: 2 },
+		{ id: 'reset', label: 'Reset', enabled: !active && resume !== null, group: 2 },
 		{ id: 'customize', label: 'Customize', enabled: true, group: 3 },
 	];
 }

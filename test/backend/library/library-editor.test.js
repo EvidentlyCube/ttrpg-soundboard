@@ -264,6 +264,15 @@ describe('LibraryEditor.updatePlaylist', () => {
 		await assert.rejects(editor.updateSound('Alpha.mp3', /** @type {any} */ ({ trackLooping: true })), /Unknown option "trackLooping"/);
 	});
 
+	it('saves the stop mode, and only for playlists', async () => {
+		const editor = new LibraryEditor(library());
+		const updated = await editor.updatePlaylist('Combat', { stopMode: 'resetTrack' });
+		assert.equal(updated.stopMode, 'resetTrack');
+		assert.equal((await readOptions('Combat')).stopMode, 'resetTrack');
+		await assert.rejects(editor.updatePlaylist('Combat', /** @type {any} */ ({ stopMode: 'forever' })), /"stopMode" must be/);
+		await assert.rejects(editor.updateSound('Alpha.mp3', /** @type {any} */ ({ stopMode: 'pause' })), /Unknown option "stopMode"/);
+	});
+
 	it('rejects start and end points for a playlist', async () => {
 		const editor = new LibraryEditor(library());
 		await assert.rejects(editor.updatePlaylist('Combat', /** @type {any} */ ({ startAt: 1 })), /Unknown option "startAt"/);

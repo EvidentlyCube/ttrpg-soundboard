@@ -16,7 +16,8 @@ import { resolveTransition } from './transitions.js';
 
 /**
  * @typedef {{ type: 'playlist.stateChanged', playlistId: string, state: PlaylistState, trackIndex: number | null,
- * 	track: AudioFileJson | null, duration: number | null, crossfadeFrom: number | null }} PlaylistStateChangedEvent
+ * 	track: AudioFileJson | null, duration: number | null, crossfadeFrom: number | null,
+ * 	resume: ResumePoint | null }} PlaylistStateChangedEvent
  * @typedef {{ type: 'playlist.progress', playlistId: string, position: number, duration: number | null,
  * 	crossfadeFrom: number | null }} PlaylistProgressEvent
  * @typedef {{ type: 'playlist.error', playlistId: string, trackId: string, message: string }} PlaylistErrorEvent
@@ -32,6 +33,12 @@ import { resolveTransition } from './transitions.js';
  * @property {number} position
  * @property {number | null} duration
  * @property {number | null} crossfadeFrom the position where the crossfade into the next track will start, if it will
+ * @property {ResumePoint | null} resume where a stopped playlist will start again, if it remembers that
+ */
+
+/**
+ * What a stopped playlist remembers (DESIGN.md §8.1). `position` is null when the track starts over.
+ * @typedef {{ trackIndex: number, track: AudioFileJson, position: number | null }} ResumePoint
  */
 
 /**
@@ -77,6 +84,11 @@ export class PlaylistPlayer {
 	#progressTimer = null;
 	/** Fires when the current track should start crossfading into the next one. @type {number | null} */
 	#crossfadeTimer = null;
+	/**
+	 * Where the next start picks up, kept by a stop according to the stop mode; the history is kept with it.
+	 * @type {{ trackIndex: number, position: number | null } | null}
+	 */
+	#resumePoint = null;
 
 	/**
 	 * @param {object} options
@@ -118,30 +130,56 @@ export class PlaylistPlayer {
 			position: current?.voice.position ?? 0,
 			duration: current ? knownOrNull(current.voice.duration) : null,
 			crossfadeFrom: current ? this.#crossfadePoint(current) : null,
+			resume: this.#resumePoint ? { ...this.#resumePoint, track: this.#playlist.tracks[this.#resumePoint.trackIndex] } : null,
 		};
 	}
 
-	/** @param {Transition} [transition] */
+	/**
+	 * Starts the playlist, or picks it up where a stop left it when the stop mode remembered that.
+	 * @param {Transition} [transition]
+	 */
 	play(transition = 'default') {
 		if (this.#state !== 'idle') {
 			return;
 		}
-		const first = this.#history.start();
+		const resumePoint = this.#resumePoint;
+		this.#resumePoint = null;
+		const first = resumePoint?.trackIndex ?? this.#history.start();
 		if (first === null) {
 			return;
 		}
 		this.#consecutiveErrors = 0;
-		this.#startTrack(first, resolveTransition('play', transition, this.#rules));
+		this.#startTrack(first, resolveTransition('play', transition, this.#rules), resumePoint?.position ?? null);
 	}
 
-	/** @param {Transition} [transition] */
+	/**
+	 * Stops the playlist; the stop mode decides what the next start picks up (DESIGN.md §8.1).
+	 * @param {Transition} [transition]
+	 */
 	stop(transition = 'default') {
+		this.#stop(transition, true);
+	}
+
+	/** Makes a stopped playlist forget where it would resume, so the next start is a fresh one. */
+	forget() {
+		if (this.#state === 'idle' && this.#resumePoint) {
+			this.#resumePoint = null;
+			this.#emitState();
+		}
+	}
+
+	/**
+	 * @param {Transition} transition
+	 * @param {boolean} remember false when the playlist stops by itself, having nothing left to play
+	 */
+	#stop(transition, remember) {
 		if (this.#state === 'idle') {
 			return;
 		}
 		this.#generation++;
 		const timing = resolveTransition('stop', transition, this.#rules);
 		const current = this.#current;
+		this.#resumePoint = remember && current ? this.#trimResumePoint({ trackIndex: current.trackIndex, position: this.#positionOf(current) }) : null;
 		// A fade-out longer than what is left would be cut off by the end of the track anyway.
 		this.#retireCurrent(current ? { ...timing, fadeOutSeconds: Math.min(timing.fadeOutSeconds, this.#timeLeft(current)) } : timing);
 		this.#stopProgress();
@@ -157,7 +195,7 @@ export class PlaylistPlayer {
 		}
 		const index = this.#history.next();
 		if (index === null) {
-			this.stop(transition);
+			this.#stop(transition, false);
 			return;
 		}
 		this.#startTrack(index, this.#changeTiming(transition, index));
@@ -192,6 +230,7 @@ export class PlaylistPlayer {
 		}
 		this.#consecutiveErrors = 0;
 		// A chosen track starts a fresh history, as if playback had started there.
+		this.#resumePoint = null;
 		this.#history.start(trackIndex);
 		this.#startTrack(trackIndex, this.#state === 'idle'
 			? resolveTransition('play', transition, this.#rules)
@@ -288,9 +327,40 @@ export class PlaylistPlayer {
 			this.#current?.voice.setLooping(rules.trackLooping);
 		}
 		this.#rules = rules;
+		if (this.#resumePoint) {
+			// What a stopped playlist remembers follows the mode at once, so the tile always matches the dialog.
+			const trimmed = this.#trimResumePoint(this.#resumePoint);
+			if (trimmed?.position !== this.#resumePoint.position) {
+				this.#resumePoint = trimmed;
+				this.#emitState();
+			}
+		}
 		this.#planCrossfade();
 		// Progress events carry the crossfade point; send one now so the display follows even while paused.
 		this.#emitProgress();
+	}
+
+	/**
+	 * Keeps as much of a resume point as the stop mode allows; it never adds back what was dropped.
+	 * @param {{ trackIndex: number, position: number | null }} point
+	 */
+	#trimResumePoint(point) {
+		switch (this.#rules.stopMode) {
+			case 'pause':
+				return point;
+			case 'resetTrack':
+				return { ...point, position: null };
+			default:
+				return null;
+		}
+	}
+
+	/**
+	 * Where the current track is, or is about to be once it has loaded.
+	 * @param {CurrentVoice} current
+	 */
+	#positionOf(current) {
+		return current.loaded ? current.voice.position : current.pendingSeek ?? 0;
 	}
 
 	/**
@@ -400,8 +470,9 @@ export class PlaylistPlayer {
 	/**
 	 * @param {number} index
 	 * @param {TransitionTiming} timing
+	 * @param {number | null} [at] where to start instead of the track's start point, when resuming
 	 */
-	#startTrack(index, timing) {
+	#startTrack(index, timing, at = null) {
 		const generation = ++this.#generation;
 		this.#retireCurrent(timing);
 		this.#stopProgress();
@@ -415,8 +486,9 @@ export class PlaylistPlayer {
 
 		const voice = this.#engine.createStreamVoice({ url: track.url, bus: 'music', gain: this.#voiceGain(index) });
 		const { startAt } = planTrack(track, this.#rules);
+		const seekTo = at ?? startAt;
 		/** @type {CurrentVoice} */
-		const current = { voice, trackIndex: index, generation, loaded: false, pendingSeek: startAt > 0 ? startAt : null };
+		const current = { voice, trackIndex: index, generation, loaded: false, pendingSeek: seekTo > 0 ? seekTo : null };
 		this.#current = current;
 		voice.on('loaded', () => this.#onLoaded(current));
 		voice.on('ended', () => this.#onEnded(current));
@@ -476,7 +548,7 @@ export class PlaylistPlayer {
 		this.#emit({ type: 'playlist.error', playlistId: this.#playlist.id, trackId: this.#playlist.tracks[index].id, message });
 		this.#consecutiveErrors++;
 		if (this.#consecutiveErrors >= this.#playlist.tracks.length) {
-			this.stop('instant');
+			this.#stop('instant', false);
 			return;
 		}
 		this.#advance();
@@ -489,7 +561,7 @@ export class PlaylistPlayer {
 	#advance() {
 		const next = this.#history.next();
 		if (next === null) {
-			this.stop('instant');
+			this.#stop('instant', false);
 			return;
 		}
 		this.#startTrack(next, { ...this.#changeTiming('default', next), fadeOutSeconds: 0 });
@@ -576,8 +648,8 @@ export class PlaylistPlayer {
 	}
 
 	#emitState() {
-		const { playlistId, state, trackIndex, track, duration, crossfadeFrom } = this.snapshot();
-		this.#emit({ type: 'playlist.stateChanged', playlistId, state, trackIndex, track, duration, crossfadeFrom });
+		const { playlistId, state, trackIndex, track, duration, crossfadeFrom, resume } = this.snapshot();
+		this.#emit({ type: 'playlist.stateChanged', playlistId, state, trackIndex, track, duration, crossfadeFrom, resume });
 	}
 }
 

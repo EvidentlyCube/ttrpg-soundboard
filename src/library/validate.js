@@ -10,9 +10,10 @@
  */
 /**
  * @typedef {{ title?: string, gain?: number, crossfade?: number, fadeIn?: number, fadeOut?: number,
- * 	order?: PlaybackOrder, trackLooping?: boolean, includedSubdirectories?: string[] }} PlaylistOptions
+ * 	order?: PlaybackOrder, trackLooping?: boolean, stopMode?: StopMode, includedSubdirectories?: string[] }} PlaylistOptions
  */
 /** @typedef {typeof PLAYBACK_ORDERS[number]} PlaybackOrder */
+/** @typedef {typeof STOP_MODES[number]} StopMode */
 /** @typedef {{ master: number, music: number, sfx: number }} Volumes */
 /** @typedef {{ version: number, volumes?: Partial<Volumes> }} SettingsFile */
 
@@ -29,6 +30,9 @@ export const MAX_CROSSFADE = 30;
 
 /** How a playlist moves through its tracks; the first is the default. */
 export const PLAYBACK_ORDERS = /** @type {const} */ (['ordered', 'random', 'shuffle']);
+
+/** What stopping a playlist remembers; `resetPlaylist`, remembering nothing, is the default. */
+export const STOP_MODES = /** @type {const} */ (['pause', 'resetTrack', 'resetPlaylist']);
 
 /** How much of a sound must stay between its start and end points, in milliseconds. */
 export const MIN_CLIP_MS = 10;
@@ -91,6 +95,9 @@ export function validatePlaylistOptions(value) {
 	}
 	if ('trackLooping' in value && typeof value.trackLooping !== 'boolean') {
 		problems.push('"trackLooping" must be true or false');
+	}
+	if ('stopMode' in value && !(/** @type {readonly unknown[]} */ (STOP_MODES)).includes(value.stopMode)) {
+		problems.push('"stopMode" must be "pause", "resetTrack" or "resetPlaylist"');
 	}
 	if (
 		'includedSubdirectories' in value
