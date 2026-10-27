@@ -1,6 +1,7 @@
+import { PLAYBACK_ORDERS } from '../logic/order-strategies.js';
 import { MAX_CROSSFADE } from '../logic/playback-rules.js';
 import { Component } from './component.js';
-import { card, labeledRow, playToggle, saveStatus, tabs, titleField } from './customize-parts.js';
+import { card, labeledRow, playToggle, radioGroup, saveStatus, tabs, titleField } from './customize-parts.js';
 import { h } from './dom.js';
 import { GainControl } from './gain-control.js';
 import { SecondsControl } from './seconds-control.js';
@@ -11,6 +12,14 @@ import { TrackAccordion } from './track-accordion.js';
 /** @typedef {import('../logic/soundboard.js').Soundboard} Soundboard */
 /** @typedef {import('./seconds-scale.js').SecondsLimits} SecondsLimits */
 /** @typedef {'crossfade' | 'fadeIn' | 'fadeOut'} TimingKey */
+/** @typedef {import('../logic/order-strategies.js').PlaybackOrder} PlaybackOrder */
+
+/** @type {Record<PlaybackOrder, { label: string, description: string }>} */
+const ORDER_CHOICES = {
+	ordered: { label: 'Ordered', description: 'First to last, as listed.' },
+	random: { label: 'Random', description: 'Any track next, never the same one twice in a row.' },
+	shuffle: { label: 'Shuffle', description: 'Every track once in a shuffled order, then shuffled again.' },
+};
 
 /**
  * The body of a playlist's Customize dialog (DESIGN.md §9.7). It works like the sound dialog; later playlist settings
@@ -96,6 +105,17 @@ export class PlaylistEditor extends Component {
 			fadeOut: timing('fadeOut', 'Fade out', SECONDS_LIMITS),
 		};
 
+		const order = radioGroup({
+			name: 'playback-order',
+			choices: PLAYBACK_ORDERS.map((value) => ({ value, ...ORDER_CHOICES[value] })),
+			value: this.#playlist.order,
+			accent: 'music',
+			onChange: (value) => {
+				status.show('saving');
+				soundboard.customizePlaylist(id, { order: value });
+			},
+		});
+
 		const play = playToggle(() => soundboard.togglePlaylist(id));
 		play.show(soundboard.getPlaylistSnapshot(id).state !== 'idle');
 
@@ -107,6 +127,7 @@ export class PlaylistEditor extends Component {
 		this.own(soundboard.on('playlist.changed', (event) => {
 			if (event.playlist.id === id) {
 				gain.update(event.playlist.gain);
+				order.update(event.playlist.order);
 				for (const key of /** @type {TimingKey[]} */ (Object.keys(timings))) {
 					timings[key].control.update(event.playlist[key]);
 				}
@@ -150,6 +171,7 @@ export class PlaylistEditor extends Component {
 		const settingsPanel = h('div', { class: 'space-y-8 pt-3' },
 			card('Playlist', 'music', title.element),
 			card('Volume', 'music', gainSlot),
+			card('Playback order', 'music', order.element),
 			card('Fades', 'music', h('div', { class: 'space-y-3' }, timings.fadeIn.element, timings.crossfade.element, timings.fadeOut.element)));
 		const { bar, panels } = tabs([
 			{ id: 'playlist', label: 'Playlist', panel: settingsPanel },

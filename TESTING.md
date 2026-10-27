@@ -136,6 +136,14 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] Mashing "next" never leaves a stray track playing.
 - [ ] Seeking in a long MP3 works (Range requests).
 
+**Playback order** (use the fixture's six-track "Music Order" playlist)
+- [ ] The playlist dialog's Playback order card offers Ordered (checked by default), Random and Shuffle, each with its description. A choice is saved (`"order"` in `Music Order.json`) and survives a reload.
+- [ ] Ordered plays Order 1 to 6 and wraps to Order 1. Random never plays the same track twice in a row. Shuffle plays all six once, in a mixed order, before any repeats, and the next round never starts with the track that just played.
+- [ ] Previous steps back through the tracks played, and Next then replays the same ones in the same order. On the first track played, Previous restarts it, in every order.
+- [ ] Choosing a track from the footer's track list plays it and starts over from there: in Ordered, Previous then goes to the track listed before it; in Shuffle and Random, Previous restarts the chosen track.
+- [ ] Changing the order while the playlist plays keeps the current track playing; Next then follows the new order, and Previous restarts the current track.
+- [ ] With a crossfade, the track that fades in is the one Next would have played; the progress bar's crossfade marker still appears in Random and Shuffle.
+
 **Interface**
 - [ ] Clicking outside a context menu doesn't trigger the tile underneath; Esc closes it.
 - [ ] Context menus and the track list open fully on screen, also near the window edges and the first time.

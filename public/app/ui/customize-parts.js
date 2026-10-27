@@ -35,6 +35,45 @@ export function card(title, accent, ...children) {
 	...children);
 }
 
+/** Radio colors, written out in full so Tailwind generates them (DESIGN.md §9.6). */
+const RADIO_ACCENTS = { music: 'accent-music', sfx: 'accent-sfx' };
+
+/**
+ * Radio buttons for one setting, each with its name and a short description below it. Choosing one reports it at once.
+ * @template {string} V
+ * @param {object} options
+ * @param {string} options.name groups the buttons; unique within the dialog
+ * @param {{ value: V, label: string, description: string }[]} options.choices
+ * @param {V} options.value
+ * @param {keyof typeof RADIO_ACCENTS} options.accent
+ * @param {(value: V) => void} options.onChange
+ * @returns {{ element: HTMLElement, update: (value: V) => void }}
+ */
+export function radioGroup({ name, choices, value, accent, onChange }) {
+	const inputs = choices.map((choice) => h('input', {
+		'type': 'radio',
+		'name': name,
+		'value': choice.value,
+		'checked': choice.value === value,
+		'data-radio-value': choice.value,
+		'class': `mt-1 size-4 shrink-0 cursor-pointer ${RADIO_ACCENTS[accent]}`,
+		'onChange': () => onChange(choice.value),
+	}));
+	const element = h('div', { 'class': 'space-y-3', 'role': 'radiogroup', 'data-radio-group': name },
+		choices.map((choice, index) => h('label', { class: 'flex cursor-pointer items-start gap-3' },
+			inputs[index],
+			h('span', { class: 'space-y-0.5' },
+				h('span', { class: 'block text-sm font-medium' }, choice.label),
+				h('span', { class: 'block text-xs text-muted' }, choice.description)))));
+	/** @param {V} newValue */
+	const update = (newValue) => {
+		inputs.forEach((input, index) => {
+			input.checked = choices[index].value === newValue;
+		});
+	};
+	return { element, update };
+}
+
 /**
  * One of several settings in a card: a label on the left, the control on the right.
  * @param {string} label
