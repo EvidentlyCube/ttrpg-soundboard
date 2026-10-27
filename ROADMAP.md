@@ -29,29 +29,7 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## Proposals
 
-### Test playback in the track list
-
-**Goal.** In the playlist dialog's track list, each track has a play / stop button that starts or stops it right away. The open track shows a progress bar you can seek on. Everything shows the playlist's real state: a track started from the footer shows as playing in the dialog, and when a track ends the playlist carries on as usual.
-
-**Design changes.** No facade, event or logic changes are needed; the existing commands and events cover it. Only UI changes.
-- §9.7 (playlist dialog, track accordion): each row gets a play / stop button before the number. The open row gets a progress bar below the title field. A playing row is marked with `data-playing` (blue number and title through a `data-*` variant, §9.6).
-- §9.2: nothing changes, but the footer's bar and the dialog's bar are two views of the same `playlist.progress` events.
-- `TESTING.md`: new manual checks.
-
-**Open questions.**
-1. **What the button does.** On a track that isn't the current one (or when the playlist is idle): `jumpToTrack(id, i, { transition: 'instant' })`, so it is audible at once and a fresh history starts at that track, as a click in the footer's track list does. On the current track: `stopPlaylist(id, { transition: 'instant' })`. Both instant.
-2. **Which track counts as playing.** The one at `trackIndex` while the playlist is `loading`, `playing` or `paused`. A paused track shows the play icon, and pressing it calls `resumePlaylist` rather than restarting it.
-3. **Stop remembers.** Stopping from the dialog follows the playlist's stop mode like any other stop (§8.1), so with Pause, playing it again from the tile continues there. No special case.
-4. **Layout.** The play / stop button sits at the left of each accordion header, before the track number, as a sibling of the row's toggle button, so pressing it doesn't open or close the row. Each open row has a section holding nothing but a progress bar. It looks and seeks like the footer's, without the crossfade band, and follows `playlist.progress` using inline styles only (§9.6). For a track that isn't the current one the bar is disabled: empty, and it ignores presses.
-5. **No time readout and no unplayable-track handling.** The bar has no text, and all tracks are assumed playable.
-
-**Answered by the owner:** all of the above, as written.
-
-**Plan.**
-1. A pure helper `ui/track-playback.js`: given a snapshot's `state` and `trackIndex`, which row is playing, paused or neither, and the position-to-fraction mapping for the bar — unit tests.
-2. The row's play / stop button, following `playlist.stateChanged`, with the initial state from `getPlaylistSnapshot`; manual checks in `TESTING.md`.
-3. The progress bar and seeking in the open row, following `playlist.progress`; manual checks.
-4. `DESIGN.md` update.
+None yet.
 
 ---
 
@@ -70,12 +48,6 @@ None yet.
 These are the next features, in roughly the order they will be built. Each will get its own proposal when its turn comes. **Decided** lists the owner's answers already given; the notes list what else is known and the questions still to settle.
 
 **Decided for all of them.** Customization changes apply immediately and are saved with a 500 ms debounce, as the sound Customize dialog does (DESIGN.md §6.4, §9.7). Re-sorting on screen waits until the dialog closes. Playback state is never remembered across a page reload, so F5 always gives a clean start.
-
-#### 10. Test playback in the track list
-
-A play/stop button next to each track in the playlist dialog, which starts or stops it immediately. The open accordion shows a progress bar with seeking. Everything reflects the playlist's real state, so a track started from the footer shows as playing in the dialog, and when the track ends the playlist carries on as usual.
-
-- **Seam:** the existing facade covers it: `jumpToTrack(id, i, 'instant')`, `stopPlaylist(id, 'instant')`, `seek`, and the `playlist.stateChanged` and `playlist.progress` events. This is mostly UI work.
 
 #### 11. Track start and end points
 
