@@ -58,6 +58,7 @@ The real page has been driven in headless Chromium over the DevTools protocol, w
 - Mouse events need the `buttons` bitmask (1 left, 2 right, 0 on release). Without it Chromium believes a button is still held after a right-click and drops the next click.
 - To test "clicking outside a popup", first check with `elementFromPoint` that the backdrop really is under the point, since a menu can sit on top of tiles.
 - Disabled buttons receive pointer events but no `click`.
+- Text that spills out of a block element leaves the element's own box unchanged, so measure overflowing text with a `Range` over its contents, not with `getBoundingClientRect()` on the element. Hidden tab panels report 0×0 boxes; skip them.
 - The fake engine only records `rampGain` calls, so how the real `WebAudioEngine` turns them into `AudioParam` automation must be checked in a browser. Wrapping `AudioContext.prototype.createGain` in a test page gives access to every gain node; sample `gain.value` over a few seconds. Reading `gain.value` right after scheduling a change still returns the old value, because the audio thread hasn't run yet. That is how a fade-in once started from full volume.
 
 ## Manual checklist
@@ -124,6 +125,7 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] Clicking outside a context menu doesn't trigger the tile underneath; Esc closes it.
 - [ ] Context menus and the track list open fully on screen, also near the window edges and the first time.
 - [ ] The footer shows "No playlist playing" when idle and keeps the same height once music starts; it wraps at 3 bars and scrolls after 6.
+- [ ] Give a sound, a playlist and a track long titles without spaces, and a sound a long file name without spaces. In a narrow and a wide window, tile titles break mid-word and end in an ellipsis after 3 lines; the player bar, the track list, the dialog title and the Tracks tab's rows end in an ellipsis on one line; the `File: …` hint wraps inside the dialog.
 
 **Volume**
 - [ ] Each header volume widget affects only its own category; none goes above `0.0 dB`, and they have no boost block.

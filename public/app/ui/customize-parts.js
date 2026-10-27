@@ -20,7 +20,7 @@ export function sectionLabel(text) {
  * @param {(title: string) => void} options.onTitle
  */
 export function titleField({ value, hint, onTitle }) {
-	const hintText = h('p', { class: 'text-xs text-muted' }, hint);
+	const hintText = h('p', { class: 'text-xs text-muted wrap-anywhere' }, hint);
 	const input = h('input', {
 		'type': 'text',
 		'value': value,

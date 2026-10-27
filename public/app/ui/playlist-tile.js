@@ -43,7 +43,7 @@ export class PlaylistTile extends Component {
 		const idleStatus = `${tracks.length} ${tracks.length === 1 ? 'track' : 'tracks'}`;
 		const status = h('span', { class: 'text-xs text-muted' }, idleStatus);
 		const tooltip = (/** @type {string} */ text) => (this.#playable ? text : `${text}: this browser cannot play any of its tracks`);
-		const label = h('span', { class: 'line-clamp-3 font-medium' }, title);
+		const label = h('span', { class: 'line-clamp-3 font-medium wrap-anywhere' }, title);
 		const button = h('button', {
 			'type': 'button',
 			'class': `${TILE_CLASS} border-l-music data-[active=true]:border-music data-[active=true]:bg-music/20`,

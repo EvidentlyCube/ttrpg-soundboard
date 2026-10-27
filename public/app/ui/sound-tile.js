@@ -41,7 +41,7 @@ export class SoundTile extends Component {
 	render() {
 		const { id, title, format } = this.#sound;
 		const tooltip = (/** @type {string} */ text) => (this.#playable ? text : `${text}: this browser cannot play ${format.toUpperCase()} files`);
-		const label = h('span', { class: 'line-clamp-3 font-medium' }, title);
+		const label = h('span', { class: 'line-clamp-3 font-medium wrap-anywhere' }, title);
 		const tile = h('button', {
 			'type': 'button',
 			'class': `${TILE_CLASS} border-l-sfx pr-10 data-[active=true]:border-sfx data-[active=true]:bg-sfx/15`,
