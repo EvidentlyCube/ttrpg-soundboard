@@ -1,6 +1,6 @@
 import { MAX_CROSSFADE } from '../logic/playback-rules.js';
 import { Component } from './component.js';
-import { playToggle, saveStatus, sectionLabel, tabs, titleField } from './customize-parts.js';
+import { card, labeledRow, playToggle, saveStatus, tabs, titleField } from './customize-parts.js';
 import { h } from './dom.js';
 import { GainControl } from './gain-control.js';
 import { SecondsControl } from './seconds-control.js';
@@ -88,7 +88,7 @@ export class PlaylistEditor extends Component {
 			const slot = h('div');
 			control.mount(slot);
 			this.own(() => control.destroy());
-			return { control, element: h('div', { class: 'space-y-1.5' }, sectionLabel(label), slot) };
+			return { control, element: labeledRow(label, slot) };
 		};
 		const timings = {
 			fadeIn: timing('fadeIn', 'Fade in', SECONDS_LIMITS),
@@ -146,12 +146,11 @@ export class PlaylistEditor extends Component {
 			}
 		}));
 
-		const settingsPanel = h('div', { class: 'space-y-5' },
-			title.element,
-			h('div', { class: 'space-y-1.5' }, sectionLabel('Volume'), gainSlot),
-			timings.fadeIn.element,
-			timings.crossfade.element,
-			timings.fadeOut.element);
+		// The cards' title pills stick out above them, so they need the extra space.
+		const settingsPanel = h('div', { class: 'space-y-8 pt-3' },
+			card('Playlist', 'music', title.element),
+			card('Volume', 'music', gainSlot),
+			card('Fades', 'music', h('div', { class: 'space-y-3' }, timings.fadeIn.element, timings.crossfade.element, timings.fadeOut.element)));
 		const { bar, panels } = tabs([
 			{ id: 'playlist', label: 'Playlist', panel: settingsPanel },
 			{ id: 'tracks', label: `Tracks (${this.#playlist.tracks.length})`, panel: tracksPanel },

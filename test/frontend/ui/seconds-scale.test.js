@@ -21,7 +21,12 @@ describe('crossfadeLimits', () => {
 	});
 
 	it('rounds the limit down to the slider step', () => {
-		assert.deepEqual(crossfadeLimits(tracks([9.9])), { slider: 4.5, field: 4.95 });
+		assert.deepEqual(crossfadeLimits(tracks([9.9])), { slider: 4.9, field: 4.95 });
+	});
+
+	it('never loses a whole step to floating-point noise', () => {
+		// 0.3 / 0.1 is 2.9999… in floating point.
+		assert.deepEqual(crossfadeLimits(tracks([0.6])), { slider: 0.3, field: 0.3 });
 	});
 });
 
@@ -32,11 +37,11 @@ describe('SECONDS_LIMITS', () => {
 });
 
 describe('formatSeconds', () => {
-	it('shows Off for zero and seconds with one decimal otherwise', () => {
+	it('shows Off for zero and seconds with three decimals otherwise', () => {
 		assert.equal(formatSeconds(0), 'Off');
-		assert.equal(formatSeconds(2.5), '2.5 s');
-		assert.equal(formatSeconds(10), '10.0 s');
-		assert.equal(formatSeconds(1.25), '1.3 s');
+		assert.equal(formatSeconds(2.5), '2.500 s');
+		assert.equal(formatSeconds(10), '10.000 s');
+		assert.equal(formatSeconds(0.03), '0.030 s');
 	});
 });
 

@@ -1,14 +1,47 @@
 import { h } from './dom.js';
+import { filledField } from './filled-field.js';
 import { icon } from './icons.js';
+
+/** @typedef {import('./dom.js').Child} Child */
 
 /**
  * Pieces shared by the Customize dialogs (DESIGN.md §9.7). Each returns its element plus the functions that update it;
  * the dialog wires them to the soundboard.
  */
 
-/** @param {string} text */
-export function sectionLabel(text) {
-	return h('span', { class: 'text-xs font-semibold uppercase tracking-widest text-muted' }, text);
+/** Card colors, written out in full so Tailwind generates them (DESIGN.md §9.6). */
+const CARD_ACCENTS = {
+	music: 'group-hover:bg-music group-focus-within:bg-music',
+	sfx: 'group-hover:bg-sfx group-focus-within:bg-sfx',
+};
+
+/**
+ * A raised section with its title as a pill on the top border. It is dimmed, and the pill drawn in the border's color,
+ * until the section is pointed at or something in it has focus; then it lights up and the pill takes the accent color,
+ * so it is clear which part of the dialog is being worked with.
+ * @param {string} title
+ * @param {keyof typeof CARD_ACCENTS} accent
+ * @param {...Child} children
+ */
+export function card(title, accent, ...children) {
+	return h('section', {
+		class: 'group relative rounded-xl border border-line-dim bg-raised-dim px-4 pt-6 pb-4 shadow-md shadow-black/30 transition-colors '
+			+ 'hover:border-line hover:bg-raised focus-within:border-line focus-within:bg-raised',
+	},
+	h('h3', {
+		class: 'absolute -top-3 left-4 rounded-full bg-line-dim px-3 py-0.5 text-xs font-semibold uppercase tracking-widest text-muted transition-colors '
+			+ `group-hover:text-surface group-focus-within:text-surface ${CARD_ACCENTS[accent]}`,
+	}, title),
+	...children);
+}
+
+/**
+ * One of several settings in a card: a label on the left, the control on the right.
+ * @param {string} label
+ * @param {Child} control
+ */
+export function labeledRow(label, control) {
+	return h('div', { class: 'flex items-center gap-3' }, h('span', { class: 'w-20 shrink-0 text-sm text-muted' }, label), control);
 }
 
 /**
@@ -17,26 +50,28 @@ export function sectionLabel(text) {
  * @param {object} options
  * @param {string} options.value
  * @param {string} options.hint shown below the field, such as the file name
+ * @param {'music' | 'sfx'} [options.accent]
  * @param {(title: string) => void} options.onTitle
  */
-export function titleField({ value, hint, onTitle }) {
+export function titleField({ value, hint, accent = 'music', onTitle }) {
 	const hintText = h('p', { class: 'text-xs text-muted wrap-anywhere' }, hint);
-	const input = h('input', {
-		'type': 'text',
-		'value': value,
-		'aria-invalid': 'false',
-		'data-item-title': true,
-		'class': 'w-full rounded-md border border-line bg-surface px-3 py-2 outline-none focus:border-music aria-invalid:border-danger',
-		'onInput': () => {
-			const empty = input.value.trim() === '';
-			input.setAttribute('aria-invalid', String(empty));
-			hintText.textContent = empty ? 'A title cannot be empty; the last one is kept.' : hint;
-			if (!empty) {
-				onTitle(input.value);
-			}
-		},
+	const { element: field, input } = filledField({
+		label: 'Title',
+		accent,
+		align: 'left',
+		width: 'w-full',
+		attributes: { 'value': value, 'aria-invalid': 'false', 'data-invalid': 'false', 'data-item-title': true },
 	});
-	return { element: h('label', { class: 'block space-y-1.5' }, sectionLabel('Title'), input, hintText), input };
+	input.addEventListener('input', () => {
+		const empty = input.value.trim() === '';
+		input.setAttribute('aria-invalid', String(empty));
+		input.dataset.invalid = String(empty);
+		hintText.textContent = empty ? 'A title cannot be empty; the last one is kept.' : hint;
+		if (!empty) {
+			onTitle(input.value);
+		}
+	});
+	return { element: h('div', { class: 'space-y-1.5' }, field, hintText), input };
 }
 
 /**

@@ -16,7 +16,9 @@
 			--color-panel: #15181e;
 			--color-raised: #1d2129;
 			--color-raised-hover: #262b35;
+			--color-raised-dim: #191c23;
 			--color-line: #2c313c;
+			--color-line-dim: #20242d;
 			--color-text: #e7e9ee;
 			--color-muted: #8b93a3;
 			--color-music: #5b8cff;
@@ -24,6 +26,13 @@
 			--color-danger: #f05d5e;
 			--color-boost: #ff922b;
 			--font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+			--animate-warn: warn 0.5s ease-in-out infinite;
+
+			/* A quick pulse between two reds, for settings that can't play out as set. */
+			@keyframes warn {
+				0%, 100% { background-color: var(--color-danger); }
+				50% { background-color: #9e3536; }
+			}
 		}
 
 		@layer base {

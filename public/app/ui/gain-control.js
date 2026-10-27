@@ -1,5 +1,6 @@
 import { Component } from './component.js';
 import { h, on } from './dom.js';
+import { filledField } from './filled-field.js';
 import { BARS_SHARE, formatDb, ITEM_SCALE, parseDb, stepGain } from './gain-scale.js';
 
 /** @typedef {import('./gain-scale.js').GainScale} GainScale */
@@ -18,6 +19,7 @@ export class GainControl extends Component {
 	#scale;
 	#label;
 	#compact;
+	#accent;
 	#onChange;
 	#dragging = false;
 	/** @type {((value: number) => void) | null} */
@@ -29,14 +31,16 @@ export class GainControl extends Component {
 	 * @param {GainScale} [options.scale] defaults to an item's gain
 	 * @param {string} options.label names the control for screen readers
 	 * @param {boolean} [options.compact] narrower, for the header
+	 * @param {'music' | 'sfx'} [options.accent] the color of the focused text field
 	 * @param {(value: number) => void} options.onChange called for every change the user makes
 	 */
-	constructor({ value, scale = ITEM_SCALE, label, compact = false, onChange }) {
+	constructor({ value, scale = ITEM_SCALE, label, compact = false, accent = 'music', onChange }) {
 		super();
 		this.#value = value;
 		this.#scale = scale;
 		this.#label = label;
 		this.#compact = compact;
+		this.#accent = accent;
 		this.#onChange = onChange;
 	}
 
@@ -75,13 +79,13 @@ export class GainControl extends Component {
 			'title': 'Click to type a level in dB',
 			'data-gain-readout': true,
 		});
-		const field = h('input', {
-			'type': 'text',
-			'inputmode': 'decimal',
-			'hidden': true,
-			'aria-label': `${this.#label} in dB`,
-			'class': `${width} shrink-0 rounded-md border border-line bg-surface px-2 py-1 text-right tabular-nums outline-none focus:border-music data-[invalid=true]:border-danger`,
+		const { element: fieldBox, input: field } = filledField({
+			unit: 'dB',
+			accent: this.#accent,
+			width: this.#compact ? 'w-20 text-sm' : 'w-24',
+			attributes: { 'inputmode': 'decimal', 'aria-label': `${this.#label} in dB` },
 		});
+		fieldBox.hidden = true;
 
 		const show = (/** @type {number} */ value) => {
 			const gain = scale.toGain(value);
@@ -150,7 +154,7 @@ export class GainControl extends Component {
 			return gain === null ? null : scale.fromGain(gain);
 		};
 		const finishEditing = (/** @type {number | null} */ value) => {
-			field.hidden = true;
+			fieldBox.hidden = true;
 			readout.hidden = false;
 			if (value !== null) {
 				change(value);
@@ -158,7 +162,7 @@ export class GainControl extends Component {
 		};
 		this.own(on(readout, 'click', () => {
 			readout.hidden = true;
-			field.hidden = false;
+			fieldBox.hidden = false;
 			field.dataset.invalid = 'false';
 			field.value = formatDb(scale.toGain(this.#value)).replace(' dB', '');
 			field.focus();
@@ -185,12 +189,12 @@ export class GainControl extends Component {
 			field.dataset.invalid = 'false';
 		}));
 		this.own(on(field, 'blur', () => {
-			if (!field.hidden) {
+			if (!fieldBox.hidden) {
 				finishEditing(typed());
 			}
 		}));
 
-		return h('div', { 'class': 'flex items-center gap-2', 'data-gain-control': true }, track, readout, field);
+		return h('div', { 'class': 'flex items-center gap-2', 'data-gain-control': true }, track, readout, fieldBox);
 	}
 }
 

@@ -1,5 +1,5 @@
 import { Component } from './component.js';
-import { playToggle, saveStatus, sectionLabel, titleField } from './customize-parts.js';
+import { card, labeledRow, playToggle, saveStatus, titleField } from './customize-parts.js';
 import { h } from './dom.js';
 import { GainControl } from './gain-control.js';
 import { RangeControl } from './range-control.js';
@@ -38,6 +38,7 @@ export class SoundEditor extends Component {
 		const title = titleField({
 			value: this.#sound.title,
 			hint: `File: ${id}`,
+			accent: 'sfx',
 			onTitle: (value) => {
 				status.show('saving');
 				soundboard.customizeSound(id, { title: value });
@@ -46,6 +47,7 @@ export class SoundEditor extends Component {
 		const gain = new GainControl({
 			value: this.#sound.gain,
 			label: 'Volume',
+			accent: 'sfx',
 			onChange: (value) => {
 				status.show('saving');
 				soundboard.customizeSound(id, { gain: value });
@@ -65,6 +67,8 @@ export class SoundEditor extends Component {
 			const control = new RangeControl({
 				...fromStored(this.#sound, durationMs),
 				durationMs,
+				fadeInMs: this.#sound.fadeIn * 1000,
+				fadeOutMs: this.#sound.fadeOut * 1000,
 				onChange: (startMs, endMs) => {
 					status.show('saving');
 					soundboard.customizeSound(id, { startAt: startMs / 1000, endAt: toStoredEnd(endMs, durationMs) });
@@ -85,6 +89,7 @@ export class SoundEditor extends Component {
 				name: key,
 				label,
 				limits: SECONDS_LIMITS,
+				accent: 'sfx',
 				onChange: (value) => {
 					status.show('saving');
 					soundboard.customizeSound(id, { [key]: value });
@@ -93,7 +98,7 @@ export class SoundEditor extends Component {
 			const slot = h('div');
 			control.mount(slot);
 			this.own(() => control.destroy());
-			return { control, element: h('div', { class: 'space-y-1.5' }, sectionLabel(label), slot) };
+			return { control, element: labeledRow(label, slot) };
 		};
 		const fades = { fadeIn: fade('fadeIn', 'Fade in'), fadeOut: fade('fadeOut', 'Fade out') };
 
@@ -110,6 +115,7 @@ export class SoundEditor extends Component {
 				gain.update(event.sound.gain);
 				if (range && durationMs !== null) {
 					range.update(fromStored(event.sound, durationMs));
+					range.showFades(event.sound.fadeIn * 1000, event.sound.fadeOut * 1000);
 				}
 				fades.fadeIn.control.update(event.sound.fadeIn);
 				fades.fadeOut.control.update(event.sound.fadeOut);
@@ -126,12 +132,12 @@ export class SoundEditor extends Component {
 			}
 		}));
 
-		return h('div', { class: 'space-y-5' },
-			title.element,
-			h('div', { class: 'space-y-1.5' }, sectionLabel('Volume'), gainSlot),
-			range && h('div', { class: 'space-y-1.5' }, sectionLabel('Start and end'), rangeSlot),
-			fades.fadeIn.element,
-			fades.fadeOut.element,
+		// The cards' title pills stick out above them, so they need the extra space.
+		return h('div', { class: 'space-y-8 pt-3' },
+			card('Sound', 'sfx', title.element),
+			card('Volume', 'sfx', gainSlot),
+			range && card('Start and end', 'sfx', rangeSlot),
+			card('Fades', 'sfx', h('div', { class: 'space-y-3' }, fades.fadeIn.element, fades.fadeOut.element)),
 			h('div', { class: 'flex items-center justify-between gap-4' }, play.element, status.element));
 	}
 

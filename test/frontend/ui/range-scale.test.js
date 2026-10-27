@@ -3,13 +3,15 @@ import assert from 'node:assert/strict';
 import {
 	clampEnd,
 	clampStart,
-	formatMs,
+	fadeBands,
+	formatTime,
 	fromStored,
 	msAt,
 	nearerHandle,
-	parseMs,
+	parseTime,
 	shareOf,
 	stepFor,
+	toFieldText,
 	toStoredEnd,
 } from '../../../public/app/ui/range-scale.js';
 
@@ -87,23 +89,46 @@ describe('range scale', () => {
 		});
 	});
 
-	describe('formatMs and parseMs', () => {
-		it('formats milliseconds with thousands separators', () => {
-			assert.equal(formatMs(4210), '4,210 ms');
-			assert.equal(formatMs(250), '250 ms');
+	describe('formatting and parsing', () => {
+		it('shows milliseconds as seconds with three decimals', () => {
+			assert.equal(toFieldText(4210), '4.210');
+			assert.equal(toFieldText(30), '0.030');
+			assert.equal(formatTime(1250), '1.250 s');
+			assert.equal(formatTime(0), '0.000 s');
 		});
 
-		it('reads whole milliseconds, with or without separators and a unit', () => {
-			assert.equal(parseMs('1250'), 1250);
-			assert.equal(parseMs(' 1,250 ms '), 1250);
-			assert.equal(parseMs('1 250'), 1250);
-			assert.equal(parseMs('0'), 0);
+		it('reads seconds, with a comma or an optional unit, as whole milliseconds', () => {
+			assert.equal(parseTime('1.25'), 1250);
+			assert.equal(parseTime(' 1,25 s '), 1250);
+			assert.equal(parseTime('2'), 2000);
+			assert.equal(parseTime('0.0304'), 30);
 		});
 
 		it('rejects anything else', () => {
-			for (const text of ['', 'abc', '-5', '1.5', '12 s', '1,2,']) {
-				assert.equal(parseMs(text), null, text);
+			for (const text of ['', 'abc', '-5', '1.2.3', '12 ms', '1,']) {
+				assert.equal(parseTime(text), null, text);
 			}
+		});
+	});
+
+	describe('fadeBands', () => {
+		it('places the fades as shares of the part that plays', () => {
+			assert.deepEqual(fadeBands(1000, 200, 100), { fadeIn: 0.2, fadeOut: 0.1, overlap: null, tooLong: false });
+			assert.deepEqual(fadeBands(1000, 0, 0), { fadeIn: 0, fadeOut: 0, overlap: null, tooLong: false });
+		});
+
+		it('does not mark fades that just meet', () => {
+			assert.equal(fadeBands(1000, 500, 500).overlap, null);
+		});
+
+		it('marks where the fades overlap', () => {
+			assert.deepEqual(fadeBands(1000, 600, 500), { fadeIn: 0.6, fadeOut: 0.5, overlap: { from: 0.5, share: 0.1 }, tooLong: false });
+		});
+
+		it('flags a fade longer than the part that plays, and shows no bands then', () => {
+			assert.deepEqual(fadeBands(1000, 1001, 0), { fadeIn: 0, fadeOut: 0, overlap: null, tooLong: true });
+			assert.deepEqual(fadeBands(1000, 0, 1500), { fadeIn: 0, fadeOut: 0, overlap: null, tooLong: true });
+			assert.equal(fadeBands(1000, 1000, 0).tooLong, false);
 		});
 	});
 });

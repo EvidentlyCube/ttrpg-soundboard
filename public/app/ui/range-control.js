@@ -1,22 +1,22 @@
 import { MIN_CLIP_MS } from '../logic/clip.js';
 import { Component } from './component.js';
 import { h, on } from './dom.js';
-import { clampEnd, clampStart, formatMs, msAt, nearerHandle, parseMs, shareOf, stepFor } from './range-scale.js';
+import { filledField } from './filled-field.js';
+import { clampEnd, clampStart, fadeBands, formatTime, msAt, nearerHandle, parseTime, shareOf, stepFor, toFieldText } from './range-scale.js';
 
 /** @typedef {import('./range-scale.js').Handle} Handle */
 
-const FIELD_CLASS = 'w-24 rounded-md border border-line bg-surface px-2 py-1 text-right tabular-nums outline-none '
-	+ 'focus:border-sfx data-[invalid=true]:border-danger';
-
 /**
  * Chooses the part of a sound that plays (DESIGN.md §9.7): a slider with a start and an end handle that never cross,
- * two fields in milliseconds, the length that plays, and a Reset button. Positions are set with inline styles, so
+ * two fields in seconds, the length that plays, and a Reset button. Positions are set with inline styles, so
  * dragging never changes classes (DESIGN.md §9.6).
  */
 export class RangeControl extends Component {
 	#startMs;
 	#endMs;
 	#durationMs;
+	#fadeInMs;
+	#fadeOutMs;
 	#onChange;
 	/** @type {Handle | null} */
 	#dragging = null;
@@ -28,14 +28,31 @@ export class RangeControl extends Component {
 	 * @param {number} options.startMs
 	 * @param {number} options.endMs
 	 * @param {number} options.durationMs the length of the file
+	 * @param {number} [options.fadeInMs] shown on the part that plays
+	 * @param {number} [options.fadeOutMs]
 	 * @param {(startMs: number, endMs: number) => void} options.onChange called for every change the user makes
 	 */
-	constructor({ startMs, endMs, durationMs, onChange }) {
+	constructor({ startMs, endMs, durationMs, fadeInMs = 0, fadeOutMs = 0, onChange }) {
 		super();
 		this.#startMs = startMs;
 		this.#endMs = endMs;
 		this.#durationMs = durationMs;
+		this.#fadeInMs = fadeInMs;
+		this.#fadeOutMs = fadeOutMs;
 		this.#onChange = onChange;
+	}
+
+	/**
+	 * Shows changed fades on the part that plays.
+	 * @param {number} fadeInMs
+	 * @param {number} fadeOutMs
+	 */
+	showFades(fadeInMs, fadeOutMs) {
+		if (fadeInMs !== this.#fadeInMs || fadeOutMs !== this.#fadeOutMs) {
+			this.#fadeInMs = fadeInMs;
+			this.#fadeOutMs = fadeOutMs;
+			this.#show?.();
+		}
 	}
 
 	/**
@@ -53,7 +70,26 @@ export class RangeControl extends Component {
 	/** @override */
 	render() {
 		const durationMs = this.#durationMs;
-		const lit = h('div', { class: 'absolute inset-y-0 rounded-full bg-sfx', style: { left: '0%', width: '100%' } });
+		// The fades are drawn inside the part that plays, in shares of its length. Where they overlap, or when one is longer
+		// than the whole part, they can't play out fully, which is shown pulsing between two reds.
+		const band = (/** @type {string} */ color) => h('div', { class: `absolute inset-y-0 ${color}`, style: { left: '0%', width: '0%' } });
+		const bands = {
+			fadeIn: band('bg-music'),
+			fadeOut: band('bg-music'),
+			overlap: band('bg-danger animate-warn'),
+			tooLong: band('bg-danger animate-warn'),
+		};
+		const lit = h('div', { class: 'absolute inset-y-0 overflow-hidden rounded-full bg-sfx', style: { left: '0%', width: '100%' } },
+			bands.fadeIn, bands.fadeOut, bands.overlap, bands.tooLong);
+		/**
+		 * @param {HTMLElement} element
+		 * @param {number} from share of the part that plays
+		 * @param {number} share
+		 */
+		const place = (element, from, share) => {
+			element.style.left = `${from * 100}%`;
+			element.style.width = `${share * 100}%`;
+		};
 		/**
 		 * @param {Handle} which
 		 * @param {string} label
@@ -66,7 +102,7 @@ export class RangeControl extends Component {
 			'aria-valuemax': String(durationMs),
 			'data-range-handle': which,
 			'class': 'absolute top-0 h-8 w-3 -translate-x-1/2 cursor-ew-resize rounded-sm bg-text shadow outline-none '
-				+ 'focus-visible:ring-2 focus-visible:ring-sfx focus-visible:ring-offset-2 focus-visible:ring-offset-panel',
+				+ 'focus-visible:ring-2 focus-visible:ring-sfx focus-visible:ring-offset-2 focus-visible:ring-offset-raised',
 			'style': { left: '0%' },
 		});
 		const handles = { start: handle('start', 'Start point'), end: handle('end', 'End point') };
@@ -80,18 +116,21 @@ export class RangeControl extends Component {
 		 * @param {Handle} which
 		 * @param {string} label
 		 */
-		const field = (which, label) => h('input', {
-			'type': 'text',
-			'inputmode': 'numeric',
-			'aria-label': `${label} in milliseconds`,
-			'data-range-field': which,
-			'class': FIELD_CLASS,
+		const field = (which, label) => filledField({
+			label,
+			unit: 's',
+			accent: 'sfx',
+			attributes: { 'inputmode': 'decimal', 'aria-label': `${label} point in seconds`, 'data-range-field': which },
 		});
-		const fields = { start: field('start', 'Start point'), end: field('end', 'End point') };
-		const length = h('span', { 'class': 'ml-auto text-muted tabular-nums', 'data-range-length': true });
+		const startField = field('start', 'Start');
+		const endField = field('end', 'End');
+		const fields = { start: startField.input, end: endField.input };
+		const length = h('p', { 'class': 'text-center text-xs text-muted tabular-nums', 'data-range-length': true });
+		// Solid and outlined in the bar's color, so it sits on the bar like a knot in it.
 		const reset = h('button', {
 			'type': 'button',
-			'class': 'cursor-pointer rounded-md px-2 py-1 text-sm text-muted hover:bg-raised-hover hover:text-text',
+			'class': 'cursor-pointer rounded-full border-2 border-line bg-surface px-3 py-0.5 text-xs text-muted transition-colors '
+				+ 'hover:border-sfx hover:text-text focus-visible:border-sfx focus-visible:text-text focus-visible:outline-none',
 			'data-range-reset': true,
 		}, 'Reset');
 
@@ -100,16 +139,21 @@ export class RangeControl extends Component {
 			for (const which of /** @type {Handle[]} */ (['start', 'end'])) {
 				handles[which].style.left = `${shareOf(points[which], durationMs) * 100}%`;
 				handles[which].setAttribute('aria-valuenow', String(points[which]));
-				handles[which].setAttribute('aria-valuetext', formatMs(points[which]));
+				handles[which].setAttribute('aria-valuetext', formatTime(points[which]));
 				// A field being typed in keeps what the user typed.
 				if (document.activeElement !== fields[which]) {
-					fields[which].value = String(points[which]);
+					fields[which].value = toFieldText(points[which]);
 				}
 			}
 			const startShare = shareOf(points.start, durationMs);
 			lit.style.left = `${startShare * 100}%`;
 			lit.style.width = `${(shareOf(points.end, durationMs) - startShare) * 100}%`;
-			length.textContent = `Plays ${formatMs(points.end - points.start)} of ${formatMs(durationMs)}`;
+			const fades = fadeBands(points.end - points.start, this.#fadeInMs, this.#fadeOutMs);
+			place(bands.fadeIn, 0, fades.fadeIn);
+			place(bands.fadeOut, 1 - fades.fadeOut, fades.fadeOut);
+			place(bands.overlap, fades.overlap?.from ?? 0, fades.overlap?.share ?? 0);
+			place(bands.tooLong, 0, fades.tooLong ? 1 : 0);
+			length.textContent = `Plays ${formatTime(points.end - points.start)} of ${formatTime(durationMs)}`;
 		};
 		/**
 		 * @param {number} startMs
@@ -183,12 +227,12 @@ export class RangeControl extends Component {
 			const input = fields[which];
 			/** Applies the typed value; returns false when it can't be read. */
 			const apply = () => {
-				const ms = parseMs(input.value);
+				const ms = parseTime(input.value);
 				if (ms === null) {
 					return false;
 				}
 				move(which, ms);
-				input.value = String(which === 'start' ? this.#startMs : this.#endMs);
+				input.value = toFieldText(which === 'start' ? this.#startMs : this.#endMs);
 				return true;
 			};
 			this.own(on(input, 'keydown', (event) => {
@@ -199,7 +243,7 @@ export class RangeControl extends Component {
 					// Only this edit is cancelled; the dialog around the control stays open. Restoring the value first means
 					// leaving the field has nothing to apply.
 					event.stopPropagation();
-					input.value = String(which === 'start' ? this.#startMs : this.#endMs);
+					input.value = toFieldText(which === 'start' ? this.#startMs : this.#endMs);
 					input.dataset.invalid = 'false';
 					input.blur();
 				}
@@ -216,12 +260,16 @@ export class RangeControl extends Component {
 		}
 		this.own(on(reset, 'click', () => change(0, durationMs)));
 
-		return h('div', { 'class': 'space-y-2', 'data-range-control': true },
+		return h('div', { 'class': 'space-y-3', 'data-range-control': true },
 			track,
-			h('div', { class: 'flex flex-wrap items-center gap-x-4 gap-y-2 text-sm' },
-				h('label', { class: 'flex items-center gap-2' }, 'Start', fields.start, h('span', { class: 'text-muted' }, 'ms')),
-				h('label', { class: 'flex items-center gap-2' }, 'End', fields.end, h('span', { class: 'text-muted' }, 'ms')),
-				length,
-				reset));
+			h('div', { class: 'flex items-center text-sm' },
+				startField.element,
+				// A bar in the fields' underline color joins them, with Reset in its middle.
+				h('div', { class: 'flex flex-1 items-center justify-center px-3' },
+					h('div', { class: 'h-0.5 flex-1 bg-line' }),
+					reset,
+					h('div', { class: 'h-0.5 flex-1 bg-line' })),
+				endField.element),
+			length);
 	}
 }

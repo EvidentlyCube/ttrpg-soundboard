@@ -176,13 +176,13 @@ function normalizeChanges(changes, { keys, validate }) {
 	if (typeof changes.gain === 'number') {
 		normalized.gain = Math.round(changes.gain * 10_000) / 10_000;
 	}
+	// Every time keeps whole milliseconds, which is what the dialogs show.
 	for (const key of SECONDS_KEYS) {
 		const seconds = changes[key];
 		if (typeof seconds === 'number') {
-			normalized[key] = Math.round(seconds * 100) / 100;
+			normalized[key] = Math.round(seconds * 1000) / 1000;
 		}
 	}
-	// Points keep whole milliseconds, which is what the dialog shows.
 	if (typeof changes.startAt === 'number') {
 		normalized.startAt = Math.round(changes.startAt * 1000) / 1000;
 	}

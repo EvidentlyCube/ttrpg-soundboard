@@ -1,18 +1,23 @@
 import { Component } from './component.js';
 import { h, on } from './dom.js';
+import { filledField } from './filled-field.js';
 import { formatSeconds, parseSeconds, SLIDER_STEP } from './seconds-scale.js';
 
 /** @typedef {import('./seconds-scale.js').SecondsLimits} SecondsLimits */
 
+/** Slider colors, written out in full so Tailwind generates them (DESIGN.md §9.6). */
+const SLIDER_ACCENTS = { music: 'accent-music', sfx: 'accent-sfx' };
+
 /**
- * A duration in seconds for a playlist's crossfade or fades (DESIGN.md §9.7): a slider in half-second steps and a
- * readout that turns into a text field for exact values, both stopping at the given limits.
+ * A duration in seconds for a crossfade or a fade (DESIGN.md §9.7): a slider in tenth-of-a-second steps and a readout
+ * that turns into a text field for exact values, both stopping at the given limits.
  */
 export class SecondsControl extends Component {
 	#value;
 	#name;
 	#label;
 	#limits;
+	#accent;
 	#describe;
 	#onChange;
 	/** @type {((value: number) => void) | null} */
@@ -24,15 +29,17 @@ export class SecondsControl extends Component {
 	 * @param {string} options.name identifies the control in the page, such as `crossfade`
 	 * @param {string} options.label names the control for screen readers
 	 * @param {SecondsLimits} options.limits
+	 * @param {keyof typeof SLIDER_ACCENTS} [options.accent] the color of the slider and of the focused field
 	 * @param {(value: number) => string | null} [options.describe] a note shown below, such as what limits the value
 	 * @param {(value: number) => void} options.onChange called for every change the user makes
 	 */
-	constructor({ value, name, label, limits, describe = () => null, onChange }) {
+	constructor({ value, name, label, limits, accent = 'music', describe = () => null, onChange }) {
 		super();
 		this.#value = value;
 		this.#name = name;
 		this.#label = label;
 		this.#limits = limits;
+		this.#accent = accent;
 		this.#describe = describe;
 		this.#onChange = onChange;
 	}
@@ -58,7 +65,7 @@ export class SecondsControl extends Component {
 			'step': String(SLIDER_STEP),
 			'aria-label': this.#label,
 			'data-seconds-slider': true,
-			'class': 'w-60 shrink-0 cursor-pointer accent-music',
+			'class': `w-56 shrink-0 cursor-pointer ${SLIDER_ACCENTS[this.#accent]}`,
 		});
 		const readout = h('button', {
 			'type': 'button',
@@ -66,13 +73,13 @@ export class SecondsControl extends Component {
 			'title': 'Click to type a value in seconds',
 			'data-seconds-readout': true,
 		});
-		const field = h('input', {
-			'type': 'text',
-			'inputmode': 'decimal',
-			'hidden': true,
-			'aria-label': `${this.#label} in seconds`,
-			'class': 'w-24 shrink-0 rounded-md border border-line bg-surface px-2 py-1 text-right tabular-nums outline-none focus:border-music data-[invalid=true]:border-danger',
+		const { element: fieldBox, input: field } = filledField({
+			unit: 's',
+			accent: this.#accent,
+			width: 'w-24',
+			attributes: { 'inputmode': 'decimal', 'aria-label': `${this.#label} in seconds` },
 		});
+		fieldBox.hidden = true;
 		const note = h('p', { class: 'text-xs text-muted' });
 
 		const show = (/** @type {number} */ value) => {
@@ -100,7 +107,7 @@ export class SecondsControl extends Component {
 			return seconds === null ? null : Math.min(seconds, limits.field);
 		};
 		const finishEditing = (/** @type {number | null} */ value) => {
-			field.hidden = true;
+			fieldBox.hidden = true;
 			readout.hidden = false;
 			if (value !== null) {
 				change(value);
@@ -108,7 +115,7 @@ export class SecondsControl extends Component {
 		};
 		this.own(on(readout, 'click', () => {
 			readout.hidden = true;
-			field.hidden = false;
+			fieldBox.hidden = false;
 			field.dataset.invalid = 'false';
 			field.value = this.#value > 0 ? String(this.#value) : '0';
 			field.focus();
@@ -135,13 +142,13 @@ export class SecondsControl extends Component {
 			field.dataset.invalid = 'false';
 		}));
 		this.own(on(field, 'blur', () => {
-			if (!field.hidden) {
+			if (!fieldBox.hidden) {
 				finishEditing(typed());
 			}
 		}));
 
 		return h('div', { 'class': 'space-y-1', 'data-seconds-control': this.#name },
-			h('div', { class: 'flex items-center gap-2' }, slider, readout, field),
+			h('div', { class: 'flex items-center gap-2' }, slider, readout, fieldBox),
 			note);
 	}
 }

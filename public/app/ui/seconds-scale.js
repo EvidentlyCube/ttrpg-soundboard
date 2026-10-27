@@ -2,7 +2,7 @@ import { MAX_CROSSFADE } from '../logic/playback-rules.js';
 
 /** The slider covers the fades and crossfades nearly everyone uses; longer ones are typed. */
 const SLIDER_MAX = 10;
-export const SLIDER_STEP = 0.5;
+export const SLIDER_STEP = 0.1;
 
 /** @typedef {{ slider: number, field: number }} SecondsLimits the highest value of the slider and of the typed field */
 
@@ -20,16 +20,18 @@ const SECONDS_PATTERN = /^\s*(\d+(?:[.,]\d+)?)\s*s?\s*$/iu;
 export function crossfadeLimits(tracks) {
 	const halves = tracks.flatMap(({ duration }) => (duration === null ? [] : [duration / 2]));
 	const field = Math.min(MAX_CROSSFADE, ...halves);
-	const slider = Math.floor(Math.min(SLIDER_MAX, field) / SLIDER_STEP) * SLIDER_STEP;
+	// The tolerance and the final rounding keep floating-point noise (0.3 / 0.1 = 2.999…) from costing a whole step.
+	const steps = Math.floor(Math.min(SLIDER_MAX, field) / SLIDER_STEP + 1e-9);
+	const slider = Math.round(steps * SLIDER_STEP * 100) / 100;
 	return { slider, field: Math.floor(field * 100) / 100 };
 }
 
 /**
- * `Off`, or seconds with one decimal: `2.5 s`.
+ * `Off`, or seconds with three decimals: `2.500 s`.
  * @param {number} seconds
  */
 export function formatSeconds(seconds) {
-	return seconds <= 0 ? 'Off' : `${seconds.toFixed(1)} s`;
+	return seconds <= 0 ? 'Off' : `${seconds.toFixed(3)} s`;
 }
 
 /**

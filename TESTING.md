@@ -87,13 +87,19 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] Close the lid while the dialog is open: the resume splash covers it, and the dialog is still there afterwards.
 
 **Sound start and end points, and fades**
-- [ ] The Start and end slider spans the whole sound. Dragging either handle moves it; pressing the bar moves the nearer handle there; the handles never cross or come closer than 10 ms. The part between them is amber, and the readout says how much plays.
-- [ ] On a focused handle the arrows step 10 ms, Shift + arrow 100 ms, and Home and End go to its limits.
-- [ ] Typing in Start or End (`1250`, `1,250 ms`) applies on Enter or when leaving the field; out-of-range values are clamped; nonsense is marked red on Enter and dropped when leaving; Esc restores the field and leaves the dialog open.
+- [ ] The Start and end slider spans the whole sound. Dragging either handle moves it; pressing the bar moves the nearer handle there; the handles never cross or come closer than 10 ms. The part between them is amber, and the centered readout says how much plays (`Plays 0.670 s of 1.670 s`).
+- [ ] On a focused handle the arrows step 0.010 s, Shift + arrow 0.100 s, and Home and End go to its limits.
+- [ ] The Start and End fields sit at the left and right, joined by a bar with Reset in its middle, and show seconds with three decimals and an `s` inside the field. Typing `1.25` or `1,25 s` applies on Enter or when leaving the field; out-of-range values are clamped; nonsense is marked red on Enter and dropped when leaving; Esc restores the field and leaves the dialog open.
 - [ ] Reset plays the whole file again. With the end handle all the way right, the options file has `"endAt": null`.
+- [ ] The fades show on the amber part in blue: the fade-in from the start handle, the fade-out up to the end handle. Where they overlap, that stretch pulses between two reds; with a fade longer than the whole part, all of it does. The bands follow the fade sliders and the handles as they move.
+- [ ] Fade readouts show three decimals (`0.030 s`); a fade typed as `0.035` is still `0.035 s` after a reload.
 - [ ] Presses, from the tile and the dialog's Play, start at the start point and stop at the end point, for a small (buffered) sound and for a large (streamed) one over 256 KB. A copy already playing keeps the points it started with.
 - [ ] With a fade-in and a fade-out, presses rise from silence and fall to silence exactly at the end point, without clicks. A fade-out longer than the sound starts at once. Stop All still cuts at once.
 - [ ] Points and fades survive a reload.
+
+**Customize dialog look**
+- [ ] Both dialogs group their settings in cards (sound: Sound, Volume, Start and end, Fades; playlist: Playlist, Volume, Fades) with the title as a pill on the top border. A card is dimmed with a grey pill until it is hovered or something in it has focus; then it lights up and the pill turns amber (sound) or blue (playlist).
+- [ ] Text fields are filled: a background with an underline that takes the dialog's color on focus and turns red when invalid. The title field's floating label sits at the top, and drops into the middle when the field is emptied and left. The dB and seconds fields that open from the readouts show their unit inside the field.
 
 **Customize a playlist**
 - [ ] Right-click a playlist → Customize: the dialog shows the title, "Folder: …", the volume and Play.

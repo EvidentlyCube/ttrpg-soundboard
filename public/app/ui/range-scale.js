@@ -1,13 +1,13 @@
 import { MIN_CLIP_MS } from '../logic/clip.js';
 
 /**
- * The math behind a sound's start and end points in its Customize dialog (DESIGN.md §9.7). Everything here is in whole
- * milliseconds, the unit the dialog shows; the library stores seconds.
+ * The math behind a sound's start and end points in its Customize dialog (DESIGN.md §9.7). Everything here works in
+ * whole milliseconds, the precision the points have; the dialog shows them as seconds with three decimals.
  */
 
 const SMALL_STEP_MS = 10;
 const LARGE_STEP_MS = 100;
-const MS_PATTERN = /^\s*(\d{1,3}(?:[ ,]\d{3})+|\d+)\s*(?:ms)?\s*$/iu;
+const TIME_PATTERN = /^\s*(\d+(?:[.,]\d+)?)\s*s?\s*$/iu;
 
 /** @typedef {'start' | 'end'} Handle */
 
@@ -97,19 +97,44 @@ export function fromStored({ startAt, endAt }, durationMs) {
 }
 
 /**
- * `4,210 ms`.
- * @param {number} ms
+ * Where the fades sit on the part that plays, as shares of its length: the fade-in from its start, the fade-out up to
+ * its end, and where they overlap. A fade longer than the whole part is flagged instead, since it can never finish.
+ * @param {number} clipMs the length that plays
+ * @param {number} fadeInMs
+ * @param {number} fadeOutMs
+ * @returns {{ fadeIn: number, fadeOut: number, overlap: { from: number, share: number } | null, tooLong: boolean }}
  */
-export function formatMs(ms) {
-	return `${ms.toLocaleString('en-US')} ms`;
+export function fadeBands(clipMs, fadeInMs, fadeOutMs) {
+	if (clipMs <= 0 || fadeInMs > clipMs || fadeOutMs > clipMs) {
+		return { fadeIn: 0, fadeOut: 0, overlap: null, tooLong: clipMs > 0 };
+	}
+	const overlapMs = fadeInMs + fadeOutMs - clipMs;
+	const overlap = overlapMs > 0 ? { from: (clipMs - fadeOutMs) / clipMs, share: overlapMs / clipMs } : null;
+	return { fadeIn: fadeInMs / clipMs, fadeOut: fadeOutMs / clipMs, overlap, tooLong: false };
 }
 
 /**
- * Reads typed milliseconds, such as `1250`, `1,250` or `1 250 ms`.
- * @param {string} text
- * @returns {number | null} null when the text is not a whole number of milliseconds
+ * A point or length in seconds with three decimals, for a field: `4.210`.
+ * @param {number} ms
  */
-export function parseMs(text) {
-	const match = MS_PATTERN.exec(text);
-	return match ? Number(match[1].replaceAll(/[ ,]/gu, '')) : null;
+export function toFieldText(ms) {
+	return (ms / 1000).toFixed(3);
+}
+
+/**
+ * A point or length for reading: `4.210 s`.
+ * @param {number} ms
+ */
+export function formatTime(ms) {
+	return `${toFieldText(ms)} s`;
+}
+
+/**
+ * Reads typed seconds, such as `1.25`, `1,25` or `1.250 s`, as whole milliseconds.
+ * @param {string} text
+ * @returns {number | null} null when the text is not a number of seconds
+ */
+export function parseTime(text) {
+	const match = TIME_PATTERN.exec(text);
+	return match ? Math.round(Number(match[1].replace(',', '.')) * 1000) : null;
 }

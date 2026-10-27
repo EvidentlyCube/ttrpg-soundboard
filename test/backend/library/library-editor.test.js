@@ -120,10 +120,10 @@ describe('LibraryEditor.updateSound', () => {
 		assert.equal(lib.files.get('Alpha.mp3')?.gain, 1);
 	});
 
-	it('saves start and end points rounded to 3 decimals, and fades rounded to 2', async () => {
+	it('saves start and end points and fades rounded to whole milliseconds', async () => {
 		const editor = new LibraryEditor(library());
-		const updated = await editor.updateSound('Alpha.mp3', { startAt: 0.12345, endAt: 2.0004, fadeIn: 0.123, fadeOut: 1 });
-		const expected = { startAt: 0.123, endAt: 2, fadeIn: 0.12, fadeOut: 1 };
+		const updated = await editor.updateSound('Alpha.mp3', { startAt: 0.12345, endAt: 2.0004, fadeIn: 0.0354, fadeOut: 1 });
+		const expected = { startAt: 0.123, endAt: 2, fadeIn: 0.035, fadeOut: 1 };
 		assert.deepEqual({ startAt: updated.startAt, endAt: updated.endAt, fadeIn: updated.fadeIn, fadeOut: updated.fadeOut }, expected);
 		assert.deepEqual(await readOptions('Alpha.mp3'), { title: 'Alpha', futureKey: 'kept', ...expected });
 	});
@@ -227,20 +227,20 @@ describe('LibraryEditor.updatePlaylist', () => {
 		assert.deepEqual(lib.playlists.map((entry) => entry.id), ['Combat', 'Ambient']);
 	});
 
-	it('saves a crossfade, rounded to 2 decimals', async () => {
+	it('saves a crossfade, rounded to whole milliseconds', async () => {
 		const lib = library();
 		const editor = new LibraryEditor(lib);
-		const updated = await editor.updatePlaylist('Combat', { crossfade: 2.4999 });
-		assert.equal(updated.crossfade, 2.5);
-		assert.equal((await readOptions('Combat')).crossfade, 2.5);
+		const updated = await editor.updatePlaylist('Combat', { crossfade: 2.45678 });
+		assert.equal(updated.crossfade, 2.457);
+		assert.equal((await readOptions('Combat')).crossfade, 2.457);
 	});
 
-	it('saves fades, rounded to 2 decimals', async () => {
+	it('saves fades, rounded to whole milliseconds', async () => {
 		const editor = new LibraryEditor(library());
-		const updated = await editor.updatePlaylist('Combat', { fadeIn: 1.234, fadeOut: 5 });
-		assert.deepEqual([updated.fadeIn, updated.fadeOut], [1.23, 5]);
+		const updated = await editor.updatePlaylist('Combat', { fadeIn: 1.2344, fadeOut: 5 });
+		assert.deepEqual([updated.fadeIn, updated.fadeOut], [1.234, 5]);
 		const saved = await readOptions('Combat');
-		assert.deepEqual([saved.fadeIn, saved.fadeOut], [1.23, 5]);
+		assert.deepEqual([saved.fadeIn, saved.fadeOut], [1.234, 5]);
 	});
 
 	it('rejects start and end points for a playlist', async () => {
