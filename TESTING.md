@@ -145,6 +145,12 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] Changing the order while the playlist plays keeps the current track playing; Next then follows the new order, and Previous restarts the current track.
 - [ ] With a crossfade, the track that fades in is the one Next would have played; the progress bar's crossfade marker still appears in Random and Shuffle.
 
+**Track looping** (use "Music Order", whose tracks are 10 s long)
+- [ ] "Repeat the current track" in the Playback order card is saved (`"trackLooping"`) and survives a reload.
+- [ ] With it on, the playing track starts over at its end, with no gap for an Ogg file and at most a tiny one for an MP3, and the time and progress bar go back to the start. Next, Previous and the track list still move on, and the new track repeats in turn.
+- [ ] Turning it on mid-track makes that track repeat; turning it off lets it finish and move on in the playlist's order.
+- [ ] With a crossfade set, a repeating track has no crossfade marker and no crossfade at its loop point, but Next still crossfades. Turning it on during a crossfade makes the incoming track repeat.
+
 **Interface**
 - [ ] Clicking outside a context menu doesn't trigger the tile underneath; Esc closes it.
 - [ ] Context menus and the track list open fully on screen, also near the window edges and the first time.

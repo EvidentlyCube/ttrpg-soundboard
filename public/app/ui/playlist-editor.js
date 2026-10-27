@@ -1,7 +1,7 @@
 import { PLAYBACK_ORDERS } from '../logic/order-strategies.js';
 import { MAX_CROSSFADE } from '../logic/playback-rules.js';
 import { Component } from './component.js';
-import { card, labeledRow, playToggle, radioGroup, saveStatus, tabs, titleField } from './customize-parts.js';
+import { card, checkbox, labeledRow, playToggle, radioGroup, saveStatus, tabs, titleField } from './customize-parts.js';
 import { h } from './dom.js';
 import { GainControl } from './gain-control.js';
 import { SecondsControl } from './seconds-control.js';
@@ -116,6 +116,18 @@ export class PlaylistEditor extends Component {
 			},
 		});
 
+		const looping = checkbox({
+			name: 'track-looping',
+			label: 'Repeat the current track',
+			description: 'It plays again until you move to another track.',
+			checked: this.#playlist.trackLooping,
+			accent: 'music',
+			onChange: (checked) => {
+				status.show('saving');
+				soundboard.customizePlaylist(id, { trackLooping: checked });
+			},
+		});
+
 		const play = playToggle(() => soundboard.togglePlaylist(id));
 		play.show(soundboard.getPlaylistSnapshot(id).state !== 'idle');
 
@@ -128,6 +140,7 @@ export class PlaylistEditor extends Component {
 			if (event.playlist.id === id) {
 				gain.update(event.playlist.gain);
 				order.update(event.playlist.order);
+				looping.update(event.playlist.trackLooping);
 				for (const key of /** @type {TimingKey[]} */ (Object.keys(timings))) {
 					timings[key].control.update(event.playlist[key]);
 				}
@@ -171,7 +184,7 @@ export class PlaylistEditor extends Component {
 		const settingsPanel = h('div', { class: 'space-y-8 pt-3' },
 			card('Playlist', 'music', title.element),
 			card('Volume', 'music', gainSlot),
-			card('Playback order', 'music', order.element),
+			card('Playback order', 'music', order.element, h('div', { class: 'mt-4 border-t border-line pt-4' }, looping.element)),
 			card('Fades', 'music', h('div', { class: 'space-y-3' }, timings.fadeIn.element, timings.crossfade.element, timings.fadeOut.element)));
 		const { bar, panels } = tabs([
 			{ id: 'playlist', label: 'Playlist', panel: settingsPanel },

@@ -35,8 +35,49 @@ export function card(title, accent, ...children) {
 	...children);
 }
 
-/** Radio colors, written out in full so Tailwind generates them (DESIGN.md §9.6). */
-const RADIO_ACCENTS = { music: 'accent-music', sfx: 'accent-sfx' };
+/** Radio button and checkbox colors, written out in full so Tailwind generates them (DESIGN.md §9.6). */
+const CHOICE_ACCENTS = { music: 'accent-music', sfx: 'accent-sfx' };
+
+/**
+ * A choice's name with a short description below it, next to its radio button or checkbox.
+ * @param {HTMLInputElement} input
+ * @param {string} label
+ * @param {string} description
+ */
+function choiceRow(input, label, description) {
+	return h('label', { class: 'flex cursor-pointer items-start gap-3' },
+		input,
+		h('span', { class: 'space-y-0.5' },
+			h('span', { class: 'block text-sm font-medium' }, label),
+			h('span', { class: 'block text-xs text-muted' }, description)));
+}
+
+/**
+ * A checkbox for one on/off setting, with its name and a short description. Changing it reports it at once.
+ * @param {object} options
+ * @param {string} options.name identifies the checkbox in the page
+ * @param {string} options.label
+ * @param {string} options.description
+ * @param {boolean} options.checked
+ * @param {keyof typeof CHOICE_ACCENTS} options.accent
+ * @param {(checked: boolean) => void} options.onChange
+ * @returns {{ element: HTMLElement, update: (checked: boolean) => void }}
+ */
+export function checkbox({ name, label, description, checked, accent, onChange }) {
+	const input = h('input', {
+		'type': 'checkbox',
+		'checked': checked,
+		'data-checkbox': name,
+		'class': `mt-1 size-4 shrink-0 cursor-pointer ${CHOICE_ACCENTS[accent]}`,
+		'onChange': () => onChange(input.checked),
+	});
+	return {
+		element: choiceRow(input, label, description),
+		update: (newChecked) => {
+			input.checked = newChecked;
+		},
+	};
+}
 
 /**
  * Radio buttons for one setting, each with its name and a short description below it. Choosing one reports it at once.
@@ -45,7 +86,7 @@ const RADIO_ACCENTS = { music: 'accent-music', sfx: 'accent-sfx' };
  * @param {string} options.name groups the buttons; unique within the dialog
  * @param {{ value: V, label: string, description: string }[]} options.choices
  * @param {V} options.value
- * @param {keyof typeof RADIO_ACCENTS} options.accent
+ * @param {keyof typeof CHOICE_ACCENTS} options.accent
  * @param {(value: V) => void} options.onChange
  * @returns {{ element: HTMLElement, update: (value: V) => void }}
  */
@@ -56,15 +97,11 @@ export function radioGroup({ name, choices, value, accent, onChange }) {
 		'value': choice.value,
 		'checked': choice.value === value,
 		'data-radio-value': choice.value,
-		'class': `mt-1 size-4 shrink-0 cursor-pointer ${RADIO_ACCENTS[accent]}`,
+		'class': `mt-1 size-4 shrink-0 cursor-pointer ${CHOICE_ACCENTS[accent]}`,
 		'onChange': () => onChange(choice.value),
 	}));
 	const element = h('div', { 'class': 'space-y-3', 'role': 'radiogroup', 'data-radio-group': name },
-		choices.map((choice, index) => h('label', { class: 'flex cursor-pointer items-start gap-3' },
-			inputs[index],
-			h('span', { class: 'space-y-0.5' },
-				h('span', { class: 'block text-sm font-medium' }, choice.label),
-				h('span', { class: 'block text-xs text-muted' }, choice.description)))));
+		choices.map((choice, index) => choiceRow(inputs[index], choice.label, choice.description)));
 	/** @param {V} newValue */
 	const update = (newValue) => {
 		inputs.forEach((input, index) => {
