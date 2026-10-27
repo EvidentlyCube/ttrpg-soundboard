@@ -29,7 +29,55 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## Proposals
 
-None yet.
+### 7. Playback order
+
+**Goal.** In the playlist dialog, choose how a playlist moves through its tracks: **Ordered** (the default, alphabetical), **Random** (each next track picked at random, never the same twice in a row), or **Shuffle** (all tracks once in a shuffled order, then a new shuffle). Previous and Next work like undo and redo over the tracks the playlist has played, so going back and forward again replays the same tracks. The choice applies at once and is saved 500 ms later.
+
+**Decided** (from the backlog): the three orders as described above; Previous and Next as undo and redo, with a new pick only when Next goes past the end of what was played; the 3-second rule for Previous stays; the track list keeps the alphabetical order with the current track marked; a changed order applies from the next new pick; nothing is remembered across a reload.
+
+**Why two tracks are not enough to test it.** With two tracks, Random ("never the same twice") and Shuffle ("a new round never starts with the track that just played") both come down to strict alternation, exactly like Ordered. Nothing about the new orders can be heard or seen. Automated tests don't need the fixture, since they use fake libraries of any size, but manual testing does (question 6).
+
+**Design changes.**
+
+- **§2.3.** Playlist options files may hold `order`: `"ordered"` (the default), `"random"` or `"shuffle"`. Any other value fails validation like other bad keys.
+- **§5.1, §5.2.** `Playlist` gets `order`. `updatePlaylist` and `PATCH /api/playlists/<id>` accept it. `/api/library` includes it for every playlist.
+- **§6, §6.1.** `customizePlaylist(playlistId, { …, order? })`; an unknown order is an `InvalidCommandError`. `savePlaylistOptions` sends it with the rest of the playlist's options. `Soundboard` takes an optional `random` function (default `Math.random`), passed down to the players, so tests can use a seeded generator.
+- **§8.2.** `PlaybackRules.order` is read from the playlist. The order strategies change shape, because Random and Shuffle need state and must not pick twice for the same moment:
+  - A **strategy** (`logic/order-strategies.js`) is created when the playlist starts: `{ first(), next(lastIndex), played(index) }`. Ordered steps through the indices (wrapping, as `loop` is always on). Random picks uniformly among all tracks but the last one. Shuffle deals a shuffled round, and deals a new round when it runs out, never starting it with the track that just played. `played(index)` tells Shuffle that a chosen track counts as played in this round.
+  - A **track queue** (`logic/track-queue.js`, new) holds the played tracks and a cursor. `next()` moves forward through tracks already played, and only past the end asks the strategy for a new pick, which is appended. `previous()` steps back. `choose(index)` (a track picked in the track list) drops everything after the cursor and appends the choice. `peekNext()` returns the track that `next()` would move to, picking and remembering it if needed, so the crossfade timer, the crossfade marker and the natural end of a track all agree on one upcoming track.
+  - The queue keeps at most 500 tracks; the oldest are dropped.
+- **§8.1.** `play()` starts a new queue: Ordered from the first track, Random from a random one, Shuffle from the first track of its first round. `next()`, `previous()` and `jumpTo()` go through the queue; the 3-second rule for Previous is unchanged. A changed order replaces the strategy at once. A pick that was only peeked at (to plan a crossfade) is dropped and picked again with the new order. Tracks already played after the cursor (after going back) stay.
+- **§8.4.** The crossfade uses `peekNext()` instead of asking the strategy each time.
+- **§9.7.** A **Playback order** card in the playlist dialog's "Playlist" tab, between Volume and Fades: three radio buttons, each with a one-line description below its name.
+- **§10.** The new files and the new fixture playlist.
+
+**Open questions.**
+
+1. **Names in the file.** *Recommended: `"ordered"`, `"random"` and `"shuffle"`, matching the UI, and renaming today's internal `"sequential"` to `"ordered"`,* so one name is used everywhere.
+2. **Previous before the first played track.** The queue has nothing before the track the playlist started with. *Recommended:*
+   - **Ordered** keeps today's behavior: step to the alphabetically previous track (wrapping to the last), added to the front of the queue.
+   - **Random and Shuffle** restart the current track, since nothing earlier was played.
+3. **Choosing a track from the track list.** *Recommended: as the backlog suggests.* It plays the track, drops anything after the cursor (as typing does after an undo) and appends the choice. In Shuffle it counts as played for the current round, so the round doesn't play it again.
+4. **Changing the order while playing.** *Recommended: as described under §8.1.* The new order applies to the next new pick; tracks you can redo with Next stay as they were.
+5. **How long the history is.** *Recommended: 500 tracks.* That is many hours of play, and a few kilobytes at most.
+6. **Fixture.** *Recommended: add a playlist `Music Order/` to `test_fixtures/example_soundboard/` with 6 MP3 tracks of about 10 s each, cut with ffmpeg from the existing fixture songs at different points, and tagged "Order 1" to "Order 6".*
+   - Six tracks make Random and Shuffle clearly different from Ordered within a minute of listening, and the titles show in the footer which track is playing.
+   - The tests that list every fixture file (titles, durations, scanning, bootstrap) get the new entries.
+   - The fixture is yours; please confirm I may add to it.
+7. **The radio buttons' descriptions.** *Recommended:*
+   - Ordered: "First to last, as listed."
+   - Random: "Any track next, never the same one twice in a row."
+   - Shuffle: "Every track once in a shuffled order, then shuffled again."
+
+**Plan.**
+
+1. **Server.** `order` in playlist options validation, `Playlist`, `/api/library`, `updatePlaylist` and `PATCH /api/playlists/<id>`. *Tests:* valid and invalid values in files, the default, saving, and the route's `400`.
+2. **Order strategies.** Ordered, Random and Shuffle with an injected random function, plus a seeded generator in `test/helpers/`. *Tests:* Random never repeats a track (and handles one track); every Shuffle round holds each track once and never starts with the track that ended the previous round; `played()` removes a chosen track from Shuffle's round; the same seed gives the same sequence.
+3. **Track queue.** *Tests:* redo replays the same tracks; a new pick only past the end; `choose()` drops what was after the cursor; `peekNext()` picks once and `next()` then moves there; a changed strategy drops only a peeked pick; Previous before the start (Ordered and the others); the 500-track cap.
+4. **Player and facade.** `PlaylistPlayer` uses the queue; `resolvePlaybackRules` reads `order`; `setRules` swaps the strategy; `customizePlaylist` accepts `order`; `Soundboard` takes `random`. *Tests:* each order through the player, crossfades into the peeked track, a changed order while playing, saving, validation, and the randomized invariant test run with all three orders.
+5. **Fixture.** The `Music Order/` playlist, and the fixture tests updated.
+6. **UI.** The Playback order card, plus checks in `TESTING.md`. Checked with the manual checklist and a headless Chromium run.
+7. **Design update.** `DESIGN.md` in its own commit. Then this proposal and its backlog entry are removed.
 
 ---
 
