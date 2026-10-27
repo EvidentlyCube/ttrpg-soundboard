@@ -47,13 +47,13 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 - **§9.2.** The progress bar and time jump back to the start at each loop, since the position does.
 - **§9.7.** A checkbox in the Playback order card, below the radio buttons: "Repeat the current track", with the description "It plays again until you move to another track." A shared `checkbox()` part goes in `customize-parts.js` next to `radioGroup`, for the next features.
 
-**Open questions.**
+**Owner's answers.**
 
-1. **Crossfade at the loop point.** *Recommended: no crossfade; loop seamlessly,* as the backlog expected. Music made to loop then sounds unbroken, and a track that wasn't made to loop has an audible seam either way. The alternative, crossfading into a new start of itself, would reuse the crossfade setting but needs a second element loading in the background before every loop.
-2. **Toggling while a track plays.** *Recommended: at once.* Turning it on makes the playing track loop at its end; turning it off lets it finish and moves on in the usual order.
-3. **Where the checkbox goes.** *Recommended: inside the Playback order card,* since both decide what plays next. The alternative is a card of its own.
-4. **Gapless MP3s.** Browsers decide how seamless an MP3 loop is: MP3 files carry a few milliseconds of padding, and only some browsers read the encoder's gapless information. *Recommended: accept what the browser does,* and check it by hand in Safari, Chrome and Firefox. Ogg files loop cleanly.
-5. **Start and end points later (feature 11).** Media elements loop the whole file, so when tracks get start and end points the stream voice will need its own loop between them (seeking back from the end-point timer it already has). *Recommended: leave that to feature 11,* and note it there.
+1. **No crossfade at the loop point:** a looping track loops seamlessly.
+2. **Toggling applies at once.** During a crossfade the incoming track is already the current one, so it is the one that loops; the outgoing track just finishes its fade.
+3. **The checkbox goes in the Playback order card.**
+4. **MP3 gaps are accepted** as the browser plays them; start and end points can trim a track later.
+5. **Looping between start and end points is left to feature 11,** with a note there.
 
 **Plan.**
 
@@ -113,7 +113,8 @@ As for sounds (DESIGN.md §7, §9.7), per track, shown on or below the track's p
 - **Seam:** `planTrack(track, rules) → { startAt, endAt }` (DESIGN.md §8.2). `startAt` is already applied by seeking after loading.
 - **Decided:** the selected range *is* the track as far as playback is concerned. The footer's time, the progress bar and seeking all cover only the part between the start and end points.
 - **Decided:** as for sounds, changed points take effect from the next time a track starts; a playing track keeps its range. The voices' `startAt` and `endAt` options (DESIGN.md §6.3) and the dialog's range control can be reused. Track files already accept `startAt`, `endAt`, `fadeIn` and `fadeOut` (§2.3); tracks just ignore them so far.
-- **Notes:** `endAt` needs a clock timer bound to the current generation that treats reaching `endAt` like `ended`; a crossfade then starts at `endAt − crossfade`. The track dialog's own editor still shows the whole file, since that is where the points are chosen.
+- **Notes:** `endAt` needs a clock timer bound to the current generation that treats reaching `endAt` like `ended`; a crossfade then starts at `endAt − crossfade`.
+- **Track looping (feature 8)** loops voices with the browser's own looping, which covers the whole file. With start and end points, a looping stream voice must instead seek back to `startAt` when it reaches `endAt` (from the end-point timer it already has); buffer voices can use `loopStart` and `loopEnd`. The track dialog's own editor still shows the whole file, since that is where the points are chosen.
 
 #### 12. Track volume
 
