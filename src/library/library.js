@@ -28,6 +28,7 @@ import { sortBy } from './sort.js';
  * @property {number} crossfade seconds; 0 is off
  * @property {number} fadeIn seconds, when the playlist starts; 0 is off
  * @property {number} fadeOut seconds, when it stops; 0 is off
+ * @property {import('./validate.js').PlaybackOrder} order how it moves through its tracks
  * @property {AudioFile[]} tracks in path order
  * @property {string[]} includedSubdirectories
  */
@@ -78,6 +79,7 @@ export function buildLibrary(scan, optionsByPath) {
 					crossfade: options?.crossfade ?? 0,
 					fadeIn: options?.fadeIn ?? 0,
 					fadeOut: options?.fadeOut ?? 0,
+					order: options?.order ?? 'ordered',
 					tracks: playlist.tracks.map(toAudioFile),
 					includedSubdirectories: options?.includedSubdirectories ?? [],
 				};

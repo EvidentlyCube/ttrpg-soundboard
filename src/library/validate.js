@@ -10,8 +10,9 @@
  */
 /**
  * @typedef {{ title?: string, gain?: number, crossfade?: number, fadeIn?: number, fadeOut?: number,
- * 	includedSubdirectories?: string[] }} PlaylistOptions
+ * 	order?: PlaybackOrder, includedSubdirectories?: string[] }} PlaylistOptions
  */
+/** @typedef {typeof PLAYBACK_ORDERS[number]} PlaybackOrder */
 /** @typedef {{ master: number, music: number, sfx: number }} Volumes */
 /** @typedef {{ version: number, volumes?: Partial<Volumes> }} SettingsFile */
 
@@ -25,6 +26,9 @@ export const MAX_GAIN = 4;
 
 /** The longest crossfade, fade-in or fade-out a playlist or sound may have, in seconds. */
 export const MAX_CROSSFADE = 30;
+
+/** How a playlist moves through its tracks; the first is the default. */
+export const PLAYBACK_ORDERS = /** @type {const} */ (['ordered', 'random', 'shuffle']);
 
 /** How much of a sound must stay between its start and end points, in milliseconds. */
 export const MIN_CLIP_MS = 10;
@@ -82,6 +86,9 @@ export function validatePlaylistOptions(value) {
 		return [NOT_AN_OBJECT];
 	}
 	const problems = [...checkTitle(value), ...checkGain(value), ...checkSeconds(value, ['crossfade', 'fadeIn', 'fadeOut'])];
+	if ('order' in value && !(/** @type {readonly unknown[]} */ (PLAYBACK_ORDERS)).includes(value.order)) {
+		problems.push('"order" must be "ordered", "random" or "shuffle"');
+	}
 	if (
 		'includedSubdirectories' in value
 		&& !(Array.isArray(value.includedSubdirectories) && value.includedSubdirectories.every((entry) => typeof entry === 'string'))

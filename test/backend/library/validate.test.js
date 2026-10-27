@@ -133,6 +133,15 @@ describe('validatePlaylistOptions', () => {
 		]);
 	});
 
+	it('accepts the three playback orders and rejects anything else', () => {
+		for (const order of ['ordered', 'random', 'shuffle']) {
+			assert.deepEqual(validatePlaylistOptions({ order }), [], order);
+		}
+		for (const order of ['sequential', 'Random', '', 1, null]) {
+			assert.deepEqual(validatePlaylistOptions({ order }), ['"order" must be "ordered", "random" or "shuffle"'], String(order));
+		}
+	});
+
 	it('accepts a crossfade from 0 to 30 seconds and rejects others', () => {
 		for (const crossfade of [0, 2.5, 30]) {
 			assert.deepEqual(validatePlaylistOptions({ crossfade }), [], String(crossfade));

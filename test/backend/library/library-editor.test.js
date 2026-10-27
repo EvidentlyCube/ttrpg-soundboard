@@ -243,6 +243,16 @@ describe('LibraryEditor.updatePlaylist', () => {
 		assert.deepEqual([saved.fadeIn, saved.fadeOut], [1.234, 5]);
 	});
 
+	it('saves the playback order, and only for playlists', async () => {
+		const lib = library();
+		const editor = new LibraryEditor(lib);
+		const updated = await editor.updatePlaylist('Combat', { order: 'random' });
+		assert.equal(updated.order, 'random');
+		assert.equal((await readOptions('Combat')).order, 'random');
+		await assert.rejects(editor.updatePlaylist('Combat', /** @type {any} */ ({ order: 'backwards' })), /"order" must be "ordered", "random" or "shuffle"/);
+		await assert.rejects(editor.updateSound('Alpha.mp3', /** @type {any} */ ({ order: 'random' })), /Unknown option "order"/);
+	});
+
 	it('rejects start and end points for a playlist', async () => {
 		const editor = new LibraryEditor(library());
 		await assert.rejects(editor.updatePlaylist('Combat', /** @type {any} */ ({ startAt: 1 })), /Unknown option "startAt"/);
