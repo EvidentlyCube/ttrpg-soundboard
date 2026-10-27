@@ -116,6 +116,11 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] A track started from the tile, the footer or its next button shows as playing in the dialog, and the row follows when the playlist moves on to the next track by itself.
 - [ ] A paused track shows the play button; pressing it resumes the track rather than restarting it.
 - [ ] An open row has a progress bar and nothing else with it. It is disabled (dim cursor, ignores presses) when the track isn't the current one, and fills while it plays. Pressing it seeks, as in the footer, also while paused.
+- [ ] The track list runs edge to edge between the tab bar and the Play row, and the last track is fully visible, not covered by the Play row, when scrolled to the bottom.
+- [ ] Hovering anywhere on a header, including the play button, tints the whole row blue; the open row's header has a stronger tint and a blue title.
+- [ ] An open row shows two cards, "Progress" and "Track", that light up on hover or focus like those on the first tab.
+- [ ] The bar of a track that isn't the current one is drawn as diagonal stripes with a "not allowed" cursor, and turns solid when the track plays.
+- [ ] With a crossfade set, the playing track's bar shows the lighter crossfade section at its end, as the footer's does, and none while the track repeats.
 - [ ] Opening the dialog while a track is already playing shows its button and bar in the right state at once.
 - [ ] A playlist with many tracks scrolls inside the dialog, with the tabs and the Play row staying in place.
 

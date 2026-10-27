@@ -186,7 +186,8 @@ export class PlaylistEditor extends Component {
 				status.show('saving');
 			},
 		});
-		const tracksPanel = h('div');
+		// The track list runs edge to edge, between the tab bar and the Play row, so it cancels the dialog's padding and the gaps around it.
+		const tracksPanel = h('div', { class: '-mx-5 -mt-5 mb-0' });
 		tracks.mount(tracksPanel);
 		this.own(() => tracks.destroy());
 		this.own(soundboard.on('track.saved', (event) => {

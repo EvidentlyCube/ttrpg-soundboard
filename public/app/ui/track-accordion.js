@@ -1,5 +1,5 @@
 import { Component } from './component.js';
-import { titleField } from './customize-parts.js';
+import { card, titleField } from './customize-parts.js';
 import { h } from './dom.js';
 import { icon } from './icons.js';
 import { formatTime } from './format.js';
@@ -36,10 +36,10 @@ export class TrackAccordion extends Component {
 	/** @override */
 	render() {
 		/** @type {Map<string, { title: HTMLElement, toggle: HTMLButtonElement, body: HTMLElement, play: HTMLButtonElement,
-		 * 	bar: HTMLElement, fill: HTMLElement }>} */
+		 * 	bar: HTMLElement, fill: HTMLElement, crossfadeBand: HTMLElement }>} */
 		const rows = new Map();
 		const playlistId = this.#playlist.id;
-		const list = h('ol', { 'class': 'divide-y divide-line rounded-lg border border-line', 'data-track-accordion': true });
+		const list = h('ol', { 'class': 'divide-y divide-line', 'data-track-accordion': true });
 
 		const open = (/** @type {string | null} */ trackId) => {
 			this.#openId = trackId;
@@ -55,10 +55,10 @@ export class TrackAccordion extends Component {
 		let { state, trackIndex: currentIndex, duration } = snapshot;
 
 		this.#playlist.tracks.forEach((track, index) => {
-			const title = h('span', { class: 'min-w-0 flex-1 truncate' }, track.title);
+			const title = h('span', { class: 'min-w-0 flex-1 truncate group-aria-expanded:text-music' }, track.title);
 			const play = h('button', {
 				'type': 'button',
-				'class': 'ml-2 flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted hover:bg-raised-hover hover:text-text data-[playback=playing]:text-music data-[playback=paused]:text-music',
+				'class': 'ml-2 flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted hover:text-text data-[playback=playing]:text-music data-[playback=paused]:text-music',
 				'data-track-play': track.id,
 				'data-playback': 'idle',
 				'onClick': () => {
@@ -74,7 +74,7 @@ export class TrackAccordion extends Component {
 			});
 			const toggle = h('button', {
 				'type': 'button',
-				'class': 'group flex min-w-0 flex-1 cursor-pointer items-center gap-3 py-2 pr-3 pl-2 text-left text-sm hover:bg-raised-hover',
+				'class': 'group flex min-w-0 flex-1 cursor-pointer items-center gap-3 py-2 pr-3 pl-2 text-left text-sm',
 				'aria-expanded': 'false',
 				'data-track-row': track.id,
 				'onClick': () => open(this.#openId === track.id ? null : track.id),
@@ -84,9 +84,14 @@ export class TrackAccordion extends Component {
 			h('span', { class: 'shrink-0 tabular-nums text-muted' }, formatTime(track.duration)),
 			icon('chevronDown', 'size-4 shrink-0 text-muted transition-transform group-aria-expanded:rotate-180'));
 
-			const fill = h('div', { class: 'h-full rounded-full bg-music', style: { width: '0%' } });
+			const fill = h('div', { class: 'absolute inset-y-0 left-0 rounded-full bg-music', style: { width: '0%' } });
+			const crossfadeBand = h('div', {
+				class: 'absolute inset-y-0 right-0 rounded-r-full bg-music/40',
+				title: 'Crossfade into the next track',
+				hidden: true,
+			});
 			const bar = h('div', {
-				'class': 'flex items-center py-2 data-[enabled=false]:cursor-not-allowed data-[enabled=true]:cursor-pointer',
+				'class': 'group flex items-center py-2 data-[enabled=false]:cursor-not-allowed data-[enabled=true]:cursor-pointer',
 				'data-track-progress': track.id,
 				'data-enabled': 'false',
 				'aria-disabled': 'true',
@@ -100,10 +105,17 @@ export class TrackAccordion extends Component {
 						this.#soundboard.seek(playlistId, seconds);
 					}
 				},
-			}, h('div', { class: 'relative h-1.5 w-full rounded-full bg-line' }, fill));
-			const body = h('div', { 'class': 'space-y-4 px-3 pt-1 pb-4', 'hidden': true, 'data-track-body': track.id }, bar, this.#settings(track));
-			rows.set(track.id, { title, toggle, body, play, bar, fill });
-			list.append(h('li', {}, h('div', { class: 'flex items-center' }, play, toggle), body));
+			}, h('div', {
+				// Diagonal stripes instead of a plain bar mark a track that isn't playing, where the bar does nothing.
+				class: 'relative h-1.5 w-full rounded-full group-data-[enabled=true]:bg-line '
+					+ 'group-data-[enabled=false]:bg-[repeating-linear-gradient(135deg,var(--color-line)_0_4px,transparent_4px_8px)]',
+			}, crossfadeBand, fill));
+			// The cards' title pills stick out above them, so they need the extra space.
+			const body = h('div', { 'class': 'space-y-8 px-4 pt-5 pb-5', 'hidden': true, 'data-track-body': track.id },
+				card('Progress', 'music', bar),
+				card('Track', 'music', this.#settings(track)));
+			rows.set(track.id, { title, toggle, body, play, bar, fill, crossfadeBand });
+			list.append(h('li', {}, h('div', { class: 'flex items-center hover:bg-music/15 has-[[aria-expanded=true]]:bg-music/20' }, play, toggle), body));
 		});
 
 		const showPlayback = () => {
@@ -122,31 +134,41 @@ export class TrackAccordion extends Component {
 				row.bar.setAttribute('aria-disabled', String(playback === 'idle'));
 				if (playback === 'idle') {
 					row.fill.style.width = '0%';
+					row.crossfadeBand.hidden = true;
 				}
 			});
 		};
-		showPlayback();
-		if (currentIndex !== null) {
-			const row = rows.get(this.#playlist.tracks[currentIndex]?.id ?? '');
-			if (row) {
-				row.fill.style.width = `${progressFraction(snapshot.position, duration) * 100}%`;
+		/**
+		 * Only the current track's row shows progress; the others stay empty.
+		 * @param {number} position
+		 * @param {number | null} crossfadeFrom
+		 */
+		const showProgress = (position, crossfadeFrom) => {
+			const row = currentIndex === null ? undefined : rows.get(this.#playlist.tracks[currentIndex]?.id ?? '');
+			if (!row) {
+				return;
 			}
-		}
+			row.fill.style.width = `${progressFraction(position, duration) * 100}%`;
+			row.crossfadeBand.hidden = crossfadeFrom === null || !duration;
+			if (crossfadeFrom !== null && duration) {
+				row.crossfadeBand.style.width = `${Math.max(0, 100 - (crossfadeFrom / duration) * 100)}%`;
+			}
+		};
+		showPlayback();
+		showProgress(snapshot.position, snapshot.crossfadeFrom);
 		this.own(this.#soundboard.on('playlist.stateChanged', (event) => {
 			if (event.playlistId === playlistId) {
 				state = event.state;
 				currentIndex = event.trackIndex;
 				duration = event.duration;
 				showPlayback();
+				showProgress(this.#soundboard.getPlaylistSnapshot(playlistId).position, event.crossfadeFrom);
 			}
 		}));
 		this.own(this.#soundboard.on('playlist.progress', (event) => {
-			if (event.playlistId === playlistId && currentIndex !== null) {
+			if (event.playlistId === playlistId) {
 				duration = event.duration;
-				const row = rows.get(this.#playlist.tracks[currentIndex]?.id ?? '');
-				if (row) {
-					row.fill.style.width = `${progressFraction(event.position, event.duration) * 100}%`;
-				}
+				showProgress(event.position, event.crossfadeFrom);
 			}
 		}));
 
