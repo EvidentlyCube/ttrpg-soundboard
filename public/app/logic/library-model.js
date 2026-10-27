@@ -127,6 +127,9 @@ export class LibraryModel {
 			}
 			playlist.order = changes.order;
 		}
+		if (changes.trackLooping !== undefined) {
+			playlist.trackLooping = changes.trackLooping;
+		}
 		this.#playlists.set(id, playlist);
 		this.#json = {
 			...this.#json,

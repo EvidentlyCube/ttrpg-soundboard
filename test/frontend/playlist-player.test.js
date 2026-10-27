@@ -24,6 +24,7 @@ function playlistOf(count, { gain = 1, trackGains = [] } = {}) {
 		fadeIn: 0,
 		fadeOut: 0,
 		order: 'ordered',
+		trackLooping: false,
 		tracks: Array.from({ length: count }, (_, i) => ({ id: `Combat/${i}.mp3`, title: `Track ${i}`, format: 'mp3', size: 1000, gain: trackGains[i] ?? 1, duration: 10, startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0, url: `/t${i}` })),
 	};
 }
@@ -118,7 +119,7 @@ describe('PlaylistPlayer', () => {
 		});
 
 		it('stops after the last track when not looping', () => {
-			const { player, advance, engine } = setup({ tracks: 2, rules: { loop: false } });
+			const { player, advance, engine } = setup({ tracks: 2, rules: { playlistLooping: false } });
 			player.play();
 			advance(30);
 			assert.equal(player.state, 'idle');
@@ -176,7 +177,7 @@ describe('PlaylistPlayer', () => {
 		});
 
 		it('stops when next runs past the last track without looping', () => {
-			const { player, advance } = setup({ tracks: 2, rules: { loop: false } });
+			const { player, advance } = setup({ tracks: 2, rules: { playlistLooping: false } });
 			player.jumpTo(1);
 			advance(1);
 			player.next();
@@ -333,6 +334,64 @@ describe('PlaylistPlayer', () => {
 			assert.equal(urlOf(context), `/t${playing}`, 'the current track keeps playing');
 			context.player.next('instant');
 			assert.equal(urlOf(context), `/t${(playing + 1) % 6}`);
+		});
+	});
+
+	describe('track looping', () => {
+		it('loops the current track instead of moving on', () => {
+			const { player, advance, current, engine, states } = setup({ rules: { trackLooping: true } });
+			player.play();
+			advance(0.1 + 25);
+			assert.equal(current().url, '/t0');
+			assert.equal(current().looping, true);
+			assert.equal(current().loops, 2);
+			assert.equal(engine.voices.length, 1);
+			assert.deepEqual(states(), ['loading:0', 'playing:0']);
+		});
+
+		it('moves on with next, and the new track loops in turn', () => {
+			const { player, advance, current } = setup({ rules: { trackLooping: true } });
+			player.play();
+			advance(0.1);
+			player.next();
+			advance(0.1 + 15);
+			assert.equal(current().url, '/t1');
+			assert.equal(current().loops, 1);
+		});
+
+		it('applies a change at once: on makes the playing track loop, off lets it finish and move on', () => {
+			const { player, advance, current } = setup();
+			player.play();
+			advance(0.1 + 5);
+			player.setRules({ ...DEFAULT_PLAYBACK_RULES, trackLooping: true });
+			advance(10);
+			assert.equal(current().url, '/t0');
+			player.setRules({ ...DEFAULT_PLAYBACK_RULES, trackLooping: false });
+			advance(5);
+			assert.equal(current().url, '/t1');
+			assert.equal(current().looping, false);
+		});
+
+		it('has no crossfade at the loop point, but still crossfades when the track changes', () => {
+			const { player, advance, engine, eventsOf } = setup({ rules: { trackLooping: true, crossfade: 2 } });
+			player.play();
+			advance(0.1);
+			assert.equal(player.snapshot().crossfadeFrom, null);
+			advance(12);
+			assert.ok(eventsOf('playlist.progress').every((event) => event.type === 'playlist.progress' && event.crossfadeFrom === null));
+			assert.equal(engine.voices.length, 1, 'no second voice at the loop point');
+			player.next();
+			assert.equal(engine.voices[1].url, '/t1');
+			assert.deepEqual(engine.voices[0].gainRamps.at(-1), [0, 2], 'the looping track crossfades out when the user moves on');
+		});
+
+		it('turning looping on during a crossfade makes the incoming track loop', () => {
+			const { player, advance, engine } = setup({ rules: { crossfade: 2 } });
+			player.play();
+			advance(0.1 + 8.5);
+			player.setRules({ ...DEFAULT_PLAYBACK_RULES, crossfade: 2, trackLooping: true });
+			assert.equal(engine.voices[1].looping, true);
+			assert.equal(engine.voices[0].looping, false);
 		});
 	});
 
@@ -947,7 +1006,7 @@ describe('PlaylistPlayer', () => {
 			const orders = /** @type {const} */ (['ordered', 'random', 'shuffle']);
 			for (let run = 0; run < 400; run++) {
 				const fades = run % 2 === 0 ? {} : { crossfade: 1.5, fadeOut: 1, fadeIn: 0.5 };
-				const rules = { ...fades, order: orders[run % 3] };
+				const rules = { ...fades, order: orders[run % 3], trackLooping: run % 5 === 1 };
 				const { player, engine, advance, clock } = setup({ tracks: 1 + (run % 4), rules, seed: run });
 				if (run % 5 === 0) {
 					engine.script('/t1', { loadError: 'broken' });

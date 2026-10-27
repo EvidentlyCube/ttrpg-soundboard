@@ -96,7 +96,7 @@ export class PlaylistPlayer {
 		this.#rules = rules;
 		this.#isPlayable = isPlayable;
 		this.#gain = playlist.gain;
-		this.#history = new PlayHistory({ trackCount: playlist.tracks.length, order: rules.order, random, loop: rules.loop });
+		this.#history = new PlayHistory({ trackCount: playlist.tracks.length, order: rules.order, random, loop: rules.playlistLooping });
 	}
 
 	get id() {
@@ -283,6 +283,10 @@ export class PlaylistPlayer {
 		if (rules.order !== this.#rules.order) {
 			this.#history.setOrder(rules.order);
 		}
+		if (rules.trackLooping !== this.#rules.trackLooping) {
+			// Only the current track; one fading out in a crossfade just finishes its fade.
+			this.#current?.voice.setLooping(rules.trackLooping);
+		}
 		this.#rules = rules;
 		this.#planCrossfade();
 		// Progress events carry the crossfade point; send one now so the display follows even while paused.
@@ -323,8 +327,12 @@ export class PlaylistPlayer {
 	 */
 	#crossfadePoint(current) {
 		const { duration } = current.voice;
+		// A looping track starts over seamlessly instead of crossfading into the next one.
+		if (this.#rules.crossfade <= 0 || this.#rules.trackLooping || !Number.isFinite(duration)) {
+			return null;
+		}
 		const next = this.#history.upcoming();
-		if (this.#rules.crossfade <= 0 || !Number.isFinite(duration) || next === null) {
+		if (next === null) {
 			return null;
 		}
 		return Math.max(0, duration - this.#overlap(current, next));
@@ -355,7 +363,7 @@ export class PlaylistPlayer {
 	#planCrossfade() {
 		this.#cancelCrossfade();
 		const current = this.#current;
-		if (!current || !current.loaded || this.#state !== 'playing' || this.#rules.crossfade <= 0) {
+		if (!current || !current.loaded || this.#state !== 'playing' || this.#rules.crossfade <= 0 || this.#rules.trackLooping) {
 			return;
 		}
 		const next = this.#history.upcoming();
@@ -413,6 +421,7 @@ export class PlaylistPlayer {
 		voice.on('loaded', () => this.#onLoaded(current));
 		voice.on('ended', () => this.#onEnded(current));
 		voice.onError((error) => this.#onError(current, error.message));
+		voice.setLooping(this.#rules.trackLooping);
 		if (timing.fadeInSeconds > 0) {
 			voice.rampGain(0, 0);
 			voice.rampGain(1, timing.fadeInSeconds);

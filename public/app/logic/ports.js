@@ -25,7 +25,7 @@
 /**
  * Timings are in seconds; 0 is off.
  * @typedef {{ id: string, title: string, gain: number, crossfade: number, fadeIn: number, fadeOut: number,
- * 	order: PlaybackOrder, tracks: AudioFileJson[] }} PlaylistJson
+ * 	order: PlaybackOrder, trackLooping: boolean, tracks: AudioFileJson[] }} PlaylistJson
  */
 /** @typedef {import('./order-strategies.js').PlaybackOrder} PlaybackOrder */
 /** @typedef {{ version: number, playlists: PlaylistJson[], sounds: AudioFileJson[] }} LibraryJson */
@@ -97,7 +97,7 @@
  * The options a Customize dialog changes, in seconds where they are times. The crossfade is for playlists only, the
  * start and end points for sounds only.
  * @typedef {{ title?: string, gain?: number, crossfade?: number, fadeIn?: number, fadeOut?: number, startAt?: number,
- * 	endAt?: number | null, order?: PlaybackOrder }} ItemOptions
+ * 	endAt?: number | null, order?: PlaybackOrder, trackLooping?: boolean }} ItemOptions
  */
 
 /**

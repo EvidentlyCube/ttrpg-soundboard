@@ -391,6 +391,16 @@ describe('Soundboard', () => {
 			assert.equal(api.playlistSaves[0].options.order, 'shuffle');
 		});
 
+		it('applies track looping to the playing track at once, and saves it', async () => {
+			const { soundboard, api, clock, engine } = await started();
+			soundboard.togglePlaylist('Combat');
+			soundboard.customizePlaylist('Combat', { trackLooping: true });
+			assert.equal(engine.liveVoicesOn('music')[0].looping, true);
+			clock.advance(500);
+			assert.equal(api.playlistSaves[0].options.trackLooping, true);
+			assert.throws(() => soundboard.dispatch({ type: 'playlist.customize', playlistId: 'Combat', trackLooping: 'yes' }), InvalidCommandError);
+		});
+
 		it('rejects an unknown order', async () => {
 			const { soundboard } = await started();
 			assert.throws(() => soundboard.customizePlaylist('Combat', /** @type {any} */ ({ order: 'backwards' })), InvalidCommandError);
@@ -403,7 +413,7 @@ describe('Soundboard', () => {
 			clock.advance(500);
 			assert.deepEqual(api.playlistSaves, [{
 				playlistId: 'Tavern',
-				options: { title: 'Tavern', gain: 2, crossfade: 0, fadeIn: 0, fadeOut: 0, order: 'ordered' },
+				options: { title: 'Tavern', gain: 2, crossfade: 0, fadeIn: 0, fadeOut: 0, order: 'ordered', trackLooping: false },
 				keepalive: false,
 			}]);
 			await settle();

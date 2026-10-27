@@ -263,12 +263,12 @@ export class Soundboard {
 				player.resume();
 				return;
 			case 'playlist.customize': {
-				const { title, gain, crossfade, fadeIn, fadeOut, order } = command;
-				const playlist = loaded.library.updatePlaylist(player.id, { title, gain, crossfade, fadeIn, fadeOut, order });
+				const { title, gain, crossfade, fadeIn, fadeOut, order, trackLooping } = command;
+				const playlist = loaded.library.updatePlaylist(player.id, { title, gain, crossfade, fadeIn, fadeOut, order, trackLooping });
 				if (gain !== undefined) {
 					player.setGain(playlist.gain);
 				}
-				if (crossfade !== undefined || fadeIn !== undefined || fadeOut !== undefined || order !== undefined) {
+				if ([crossfade, fadeIn, fadeOut, order, trackLooping].some((value) => value !== undefined)) {
 					player.setRules(resolvePlaybackRules(playlist));
 				}
 				this.#optionsSync.schedule({ kind: 'playlist', id: playlist.id }, {
@@ -278,6 +278,7 @@ export class Soundboard {
 					fadeIn: playlist.fadeIn,
 					fadeOut: playlist.fadeOut,
 					order: playlist.order,
+					trackLooping: playlist.trackLooping,
 				});
 				this.#events.emit({ type: 'playlist.changed', playlist });
 				return;
@@ -383,13 +384,14 @@ export class Soundboard {
 	/**
 	 * Like `customizeSound`, for a playlist: a new gain reaches its playing and fading tracks at once, and new timings
 	 * are used from the next change of track, start or stop. A new order refills the history around the current track
-	 * (DESIGN.md §8.1). Saving is reported with `playlist.saved` or `playlist.saveFailed`.
+	 * (DESIGN.md §8.1), and track looping applies to the current track at once. Saving is reported with `playlist.saved`
+	 * or `playlist.saveFailed`.
 	 * @param {string} playlistId
 	 * @param {ItemOptions} changes `crossfade`, `fadeIn` and `fadeOut` in seconds, from 0 to MAX_CROSSFADE; `order` one of
 	 * 	PLAYBACK_ORDERS
 	 */
-	customizePlaylist(playlistId, { title, gain, crossfade, fadeIn, fadeOut, order }) {
-		this.dispatch({ type: 'playlist.customize', playlistId, title, gain, crossfade, fadeIn, fadeOut, order });
+	customizePlaylist(playlistId, { title, gain, crossfade, fadeIn, fadeOut, order, trackLooping }) {
+		this.dispatch({ type: 'playlist.customize', playlistId, title, gain, crossfade, fadeIn, fadeOut, order, trackLooping });
 	}
 
 	/**

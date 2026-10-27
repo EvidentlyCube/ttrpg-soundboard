@@ -315,7 +315,8 @@ export class FakeVoice {
 		const remaining = Math.max(0, this.#end - this.#position);
 		this.#endTimer = this.#clock.setTimeout(() => {
 			this.#endTimer = null;
-			if (this.looping) {
+			// A stopped voice no longer loops; a leaky one still fires its stale `ended` below.
+			if (this.looping && !this.stopped) {
 				this.loops++;
 				this.#position = this.startAt;
 				this.#startedAt = this.#clock.now();
