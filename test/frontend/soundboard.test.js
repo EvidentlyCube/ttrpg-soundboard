@@ -8,6 +8,9 @@ import { FakeClock } from '../helpers/fake-clock.js';
 
 /** @typedef {import('../../public/app/logic/soundboard.js').SoundboardEvent} SoundboardEvent */
 
+/** What every sound and track has without start and end points or fades. */
+const NO_CLIP = { startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0 };
+
 const EVENT_TYPES = /** @type {const} */ ([
 	'app.ready', 'app.startFailed', 'audio.suspended', 'audio.resumed',
 	'sound.activeChanged', 'sound.error',
@@ -218,7 +221,7 @@ describe('Soundboard', () => {
 			soundboard.customizeSound('Boom.mp3', { title: ' Thunder ' });
 			assert.deepEqual(eventsOf('sound.changed'), [{
 				type: 'sound.changed',
-				sound: { id: 'Boom.mp3', title: 'Thunder', format: 'mp3', size: 1000, gain: 1, duration: 1.5, url: '/media/Boom.mp3' },
+				sound: { id: 'Boom.mp3', title: 'Thunder', format: 'mp3', size: 1000, gain: 1, duration: 1.5, ...NO_CLIP, url: '/media/Boom.mp3' },
 			}]);
 			assert.deepEqual(soundboard.getLibrary()?.sounds.map((sound) => sound.title), ['Rain', 'Thunder']);
 		});
@@ -230,7 +233,11 @@ describe('Soundboard', () => {
 			clock.advance(499);
 			assert.deepEqual(api.soundSaves, []);
 			clock.advance(1);
-			assert.deepEqual(api.soundSaves, [{ soundId: 'Boom.mp3', options: { title: 'Thunder', gain: 0.5 }, keepalive: false }]);
+			assert.deepEqual(api.soundSaves, [{
+				soundId: 'Boom.mp3',
+				options: { title: 'Thunder', gain: 0.5, startAt: 0, endAt: null },
+				keepalive: false,
+			}]);
 			await settle();
 			assert.deepEqual(eventsOf('sound.saved'), [{ type: 'sound.saved', soundId: 'Boom.mp3' }]);
 		});
@@ -263,6 +270,48 @@ describe('Soundboard', () => {
 			clock.advance(1000);
 			assert.deepEqual(api.soundSaves, []);
 			assert.deepEqual(events, []);
+		});
+	});
+
+	describe('sound start and end points', () => {
+		it('plays later presses from the new points and leaves playing instances alone', async () => {
+			const { soundboard, engine } = await started();
+			soundboard.playSound('Rain.ogg');
+			soundboard.customizeSound('Rain.ogg', { startAt: 5, endAt: 7.5 });
+			soundboard.playSound('Rain.ogg');
+			assert.deepEqual(engine.voices.map((voice) => [voice.startAt, voice.endAt]), [[0, null], [5, 7.5]]);
+		});
+
+		it('rounds the points to whole milliseconds and announces them', async () => {
+			const { soundboard, eventsOf } = await started();
+			soundboard.customizeSound('Rain.ogg', { startAt: 1.23456, endAt: 2.0004 });
+			const [event] = eventsOf('sound.changed');
+			assert.ok(event.type === 'sound.changed');
+			assert.deepEqual([event.sound.startAt, event.sound.endAt], [1.235, 2]);
+		});
+
+		it('saves the points with the rest of the options, and clears the end point with null', async () => {
+			const { soundboard, api, clock, settle } = await started();
+			soundboard.customizeSound('Rain.ogg', { startAt: 1, endAt: 2 });
+			clock.advance(500);
+			await settle();
+			soundboard.customizeSound('Rain.ogg', { endAt: null });
+			clock.advance(500);
+			assert.deepEqual(api.soundSaves.map(({ options }) => [options.startAt, options.endAt]), [[1, 2], [1, null]]);
+		});
+
+		it('rejects bad points, checking a change of one against the other, without changing or saving anything', async () => {
+			const { soundboard, api, clock, eventsOf } = await started();
+			soundboard.customizeSound('Rain.ogg', { startAt: 1, endAt: 2 });
+			clock.advance(500);
+			for (const change of [{ startAt: -1 }, { endAt: -0.5 }, { startAt: 1.995 }, { endAt: 1.009 }, { startAt: 3, endAt: 2 }]) {
+				assert.throws(() => soundboard.customizeSound('Rain.ogg', change), InvalidCommandError, JSON.stringify(change));
+			}
+			clock.advance(1000);
+			assert.equal(api.soundSaves.length, 1);
+			assert.equal(eventsOf('sound.changed').length, 1);
+			const rain = soundboard.getLibrary()?.sounds.find((sound) => sound.id === 'Rain.ogg');
+			assert.deepEqual([rain?.startAt, rain?.endAt], [1, 2]);
 		});
 	});
 

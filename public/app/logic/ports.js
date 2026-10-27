@@ -15,6 +15,10 @@
  * @property {number} size bytes
  * @property {number} gain linear multiplier for its own volume; 1 plays it as recorded
  * @property {number | null} duration seconds, measured by the server; null when unknown
+ * @property {number} startAt seconds into the file where a sound starts playing
+ * @property {number | null} endAt seconds into the file where a sound stops; null is the end of the file
+ * @property {number} fadeIn seconds a sound takes to fade in; 0 is off
+ * @property {number} fadeOut seconds of fading out before a sound's end; 0 is off
  * @property {string} url
  */
 
@@ -87,8 +91,10 @@
  */
 
 /**
- * The options a Customize dialog changes. The timings (seconds) are for playlists only.
- * @typedef {{ title?: string, gain?: number, crossfade?: number, fadeIn?: number, fadeOut?: number }} ItemOptions
+ * The options a Customize dialog changes, in seconds where they are times. The crossfade is for playlists only, the
+ * start and end points for sounds only.
+ * @typedef {{ title?: string, gain?: number, crossfade?: number, fadeIn?: number, fadeOut?: number, startAt?: number,
+ * 	endAt?: number | null }} ItemOptions
  */
 
 /**

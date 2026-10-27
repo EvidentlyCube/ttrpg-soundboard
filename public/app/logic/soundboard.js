@@ -208,11 +208,17 @@ export class Soundboard {
 				return;
 			}
 			case 'sound.customize': {
-				const sound = loaded.library.updateSound(command.soundId, { title: command.title, gain: command.gain });
-				if (command.gain !== undefined) {
+				const { title, gain, startAt, endAt } = command;
+				const sound = loaded.library.updateSound(command.soundId, { title, gain, startAt, endAt });
+				if (gain !== undefined) {
 					loaded.sounds.setGain(sound.id, sound.gain);
 				}
-				this.#optionsSync.schedule({ kind: 'sound', id: sound.id }, { title: sound.title, gain: sound.gain });
+				this.#optionsSync.schedule({ kind: 'sound', id: sound.id }, {
+					title: sound.title,
+					gain: sound.gain,
+					startAt: sound.startAt,
+					endAt: sound.endAt,
+				});
 				this.#events.emit({ type: 'sound.changed', sound });
 				return;
 			}
@@ -356,13 +362,15 @@ export class Soundboard {
 	}
 
 	/**
-	 * Changes a sound's title or gain. The change takes effect at once, also on instances already playing, and is saved
-	 * to the server shortly after (`sound.saved` or `sound.saveFailed`).
+	 * Changes a sound's title, gain or start and end points. The change takes effect at once, and is saved to the server
+	 * shortly after (`sound.saved` or `sound.saveFailed`). A new gain also reaches instances already playing; new points
+	 * only later presses.
 	 * @param {string} soundId
-	 * @param {ItemOptions} changes a title must not be empty; a gain is linear, from 0 to MAX_GAIN
+	 * @param {ItemOptions} changes a title must not be empty; a gain is linear, from 0 to MAX_GAIN; the points are in
+	 * 	seconds, at least MIN_CLIP_MS apart, and a null end point means the end of the file
 	 */
-	customizeSound(soundId, { title, gain }) {
-		this.dispatch({ type: 'sound.customize', soundId, title, gain });
+	customizeSound(soundId, { title, gain, startAt, endAt }) {
+		this.dispatch({ type: 'sound.customize', soundId, title, gain, startAt, endAt });
 	}
 
 	/**

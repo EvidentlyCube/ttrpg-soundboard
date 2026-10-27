@@ -60,6 +60,14 @@ describe('HttpBackendApi against the real server', () => {
 		assert.equal((await api.fetchLibrary()).sounds[0].title, 'Bigger Boom');
 	});
 
+	it('saves start and end points, with null clearing the end point', async () => {
+		await api.saveSoundOptions('Boom.mp3', { startAt: 0.25, endAt: 0.75 }, { keepalive: false });
+		const [saved] = (await api.fetchLibrary()).sounds;
+		assert.deepEqual([saved.startAt, saved.endAt], [0.25, 0.75]);
+		await api.saveSoundOptions('Boom.mp3', { startAt: 0.25, endAt: null }, { keepalive: false });
+		assert.equal(JSON.parse(await readFile(join(tree.root, 'Boom.mp3.json'), 'utf8')).endAt, null);
+	});
+
 	it('saves playlist options', async () => {
 		await api.savePlaylistOptions('Zażółć #1', { title: 'Calm', gain: 0.5 }, { keepalive: false });
 		const saved = JSON.parse(await readFile(join(tree.root, 'Zażółć #1.json'), 'utf8'));

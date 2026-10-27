@@ -11,10 +11,11 @@ import { FakeClock } from '../helpers/fake-clock.js';
 /**
  * @param {string} id
  * @param {number} size
+ * @param {Partial<AudioFileJson>} [options]
  * @returns {AudioFileJson}
  */
-function sound(id, size) {
-	return { id, title: id, format: 'mp3', size, gain: 1, duration: 2, url: `/media/${id}` };
+function sound(id, size, options = {}) {
+	return { id, title: id, format: 'mp3', size, gain: 1, duration: 2, startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0, url: `/media/${id}`, ...options };
 }
 
 const SMALL = sound('Boom.mp3', 1000);
@@ -235,6 +236,25 @@ describe('SoundPlayer', () => {
 			player.stop(LARGE.id);
 			player.setGain(LARGE.id, 2);
 			assert.equal(engine.voices[0].gain, 1);
+		});
+	});
+
+	describe('start and end points', () => {
+		it('plays buffered and streamed instances between the sound\'s points', async () => {
+			const { player, engine, advance } = setup();
+			player.play(sound('Rain.mp3', LARGE.size, { startAt: 1, endAt: 1.5 }));
+			player.play(sound('Boom.mp3', SMALL.size, { startAt: 0.25, endAt: null }));
+			await advance(0.05);
+			assert.deepEqual(engine.voices.map((voice) => [voice.kind, voice.startAt, voice.endAt]), [['stream', 1, 1.5], ['buffer', 0.25, null]]);
+		});
+
+		it('removes an instance once it reaches its end point', async () => {
+			const { player, engine, advance, activity } = setup();
+			player.play(sound('Rain.mp3', LARGE.size, { startAt: 1, endAt: 1.5 }));
+			await advance(0.05 + 0.5);
+			assert.equal(engine.liveVoices.length, 0);
+			assert.equal(player.isActive('Rain.mp3'), false);
+			assert.equal(activity().length, 2);
 		});
 	});
 });

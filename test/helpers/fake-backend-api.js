@@ -3,6 +3,9 @@
 /** @typedef {import('../../public/app/logic/ports.js').Volumes} Volumes */
 /** @typedef {import('../../public/app/logic/ports.js').ItemOptions} ItemOptions */
 
+/** What every sound and track has without start and end points or fades. */
+const NO_CLIP = { startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0 };
+
 /** @returns {LibraryJson} */
 export function exampleLibrary() {
 	return {
@@ -16,8 +19,8 @@ export function exampleLibrary() {
 				fadeIn: 0,
 				fadeOut: 0,
 				tracks: [
-					{ id: 'Combat/1.mp3', title: 'Battle', format: 'mp3', size: 3_000_000, gain: 1, duration: 180, url: '/media/Combat/1.mp3' },
-					{ id: 'Combat/2.ogg', title: 'Boss', format: 'ogg', size: 3_000_000, gain: 1, duration: 200, url: '/media/Combat/2.ogg' },
+					{ id: 'Combat/1.mp3', title: 'Battle', format: 'mp3', size: 3_000_000, gain: 1, duration: 180, ...NO_CLIP, url: '/media/Combat/1.mp3' },
+					{ id: 'Combat/2.ogg', title: 'Boss', format: 'ogg', size: 3_000_000, gain: 1, duration: 200, ...NO_CLIP, url: '/media/Combat/2.ogg' },
 				],
 			},
 			{
@@ -27,12 +30,12 @@ export function exampleLibrary() {
 				crossfade: 0,
 				fadeIn: 0,
 				fadeOut: 0,
-				tracks: [{ id: 'Tavern/1.mp3', title: 'Song', format: 'mp3', size: 3_000_000, gain: 1, duration: 150, url: '/media/Tavern/1.mp3' }],
+				tracks: [{ id: 'Tavern/1.mp3', title: 'Song', format: 'mp3', size: 3_000_000, gain: 1, duration: 150, ...NO_CLIP, url: '/media/Tavern/1.mp3' }],
 			},
 		],
 		sounds: [
-			{ id: 'Boom.mp3', title: 'Boom', format: 'mp3', size: 1000, gain: 1, duration: 1.5, url: '/media/Boom.mp3' },
-			{ id: 'Rain.ogg', title: 'Rain', format: 'ogg', size: 2_000_000, gain: 1, duration: 60, url: '/media/Rain.ogg' },
+			{ id: 'Boom.mp3', title: 'Boom', format: 'mp3', size: 1000, gain: 1, duration: 1.5, ...NO_CLIP, url: '/media/Boom.mp3' },
+			{ id: 'Rain.ogg', title: 'Rain', format: 'ogg', size: 2_000_000, gain: 1, duration: 60, ...NO_CLIP, url: '/media/Rain.ogg' },
 		],
 	};
 }

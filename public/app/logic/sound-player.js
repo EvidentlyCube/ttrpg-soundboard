@@ -58,15 +58,17 @@ export class SoundPlayer {
 			this.#emit({ type: 'sound.error', soundId: sound.id, message: `This browser cannot play ${sound.format} files` });
 			return;
 		}
+		// Taken from the sound as it is now, so a later change of the points leaves this instance alone.
+		const { startAt, endAt } = sound;
 		if (sound.size > BUFFERED_SIZE_LIMIT) {
-			this.#start(sound, this.#engine.createStreamVoice({ url: sound.url, bus: 'sfx', gain: this.#gainOf(sound) }), true);
+			this.#start(sound, this.#engine.createStreamVoice({ url: sound.url, bus: 'sfx', gain: this.#gainOf(sound), startAt, endAt }), true);
 			return;
 		}
 		const epoch = this.#epochOf(sound.id);
 		this.#cache.get(sound.url).then(
 			(buffer) => {
 				if (this.#epochOf(sound.id) === epoch) {
-					this.#start(sound, this.#engine.createBufferVoice({ buffer, bus: 'sfx', gain: this.#gainOf(sound) }), false);
+					this.#start(sound, this.#engine.createBufferVoice({ buffer, bus: 'sfx', gain: this.#gainOf(sound), startAt, endAt }), false);
 				}
 			},
 			(error) => this.#emit({ type: 'sound.error', soundId: sound.id, message: messageOf(error) }),

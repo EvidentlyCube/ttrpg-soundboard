@@ -1,3 +1,4 @@
+import { checkClip, roundToMilliseconds } from './clip.js';
 import { InvalidCommandError } from './errors.js';
 import { MAX_CROSSFADE } from './playback-rules.js';
 import { sortBy } from './sort.js';
@@ -72,6 +73,14 @@ export class LibraryModel {
 	 */
 	updateSound(id, changes) {
 		const sound = applyChanges(this.sound(id), changes);
+		if (changes.startAt !== undefined) {
+			sound.startAt = roundToMilliseconds(changes.startAt);
+		}
+		if (changes.endAt !== undefined) {
+			sound.endAt = changes.endAt === null ? null : roundToMilliseconds(changes.endAt);
+		}
+		// Checked after merging, so a change to one point must still fit the other.
+		checkClip(sound.startAt, sound.endAt);
 		this.#sounds.set(id, sound);
 		this.#json = {
 			...this.#json,

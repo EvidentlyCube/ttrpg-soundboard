@@ -13,15 +13,17 @@ import { isTransition } from './transitions.js';
  * 	| { type: 'playlist.jump', playlistId: string, trackIndex: number, transition?: Transition }
  * 	| { type: 'playlist.seek', playlistId: string, seconds: number }
  * 	| { type: 'volume.set', bus: Bus, value: number }
- * 	| { type: 'sound.customize', soundId: string, title?: string, gain?: number }
+ * 	| { type: 'sound.customize', soundId: string, title?: string, gain?: number, startAt?: number, endAt?: number | null }
  * 	| { type: 'playlist.customize', playlistId: string, title?: string, gain?: number, crossfade?: number, fadeIn?: number,
  * 		fadeOut?: number }
  * 	| { type: 'track.customize', trackId: string, title?: string }} Command
  */
 
+/** @typedef {'string' | 'number' | 'number or null'} FieldType */
+
 /**
  * `optional` fields may be left out, but at least one of them must be given.
- * @type {Record<Command['type'], { strings?: string[], numbers?: string[], transition?: boolean, optional?: Record<string, 'string' | 'number'> }>}
+ * @type {Record<Command['type'], { strings?: string[], numbers?: string[], transition?: boolean, optional?: Record<string, FieldType> }>}
  */
 const SHAPES = {
 	'sound.play': { strings: ['soundId'] },
@@ -36,7 +38,7 @@ const SHAPES = {
 	'playlist.jump': { strings: ['playlistId'], numbers: ['trackIndex'], transition: true },
 	'playlist.seek': { strings: ['playlistId'], numbers: ['seconds'] },
 	'volume.set': { strings: ['bus'], numbers: ['value'] },
-	'sound.customize': { strings: ['soundId'], optional: { title: 'string', gain: 'number' } },
+	'sound.customize': { strings: ['soundId'], optional: { title: 'string', gain: 'number', startAt: 'number', endAt: 'number or null' } },
 	'playlist.customize': {
 		strings: ['playlistId'],
 		optional: { title: 'string', gain: 'number', crossfade: 'number', fadeIn: 'number', fadeOut: 'number' },
@@ -77,10 +79,18 @@ export function validateCommand(value) {
 			throw new InvalidCommandError(`${command.type} needs ${Object.keys(shape.optional).map((key) => `"${key}"`).join(' or ')}`);
 		}
 		for (const [key, type] of given) {
-			if (typeof command[key] !== type) {
+			if (!hasType(command[key], type)) {
 				throw new InvalidCommandError(`"${key}" must be a ${type} in ${command.type}`);
 			}
 		}
 	}
 	return /** @type {Command} */ (value);
+}
+
+/**
+ * @param {unknown} value
+ * @param {FieldType} type
+ */
+function hasType(value, type) {
+	return type === 'number or null' ? value === null || typeof value === 'number' : typeof value === type;
 }
