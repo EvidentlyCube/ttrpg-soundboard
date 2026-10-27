@@ -1,5 +1,6 @@
 /** @typedef {import('./ports.js').AudioEngine} AudioEngine */
 /** @typedef {import('./ports.js').AudioFileJson} AudioFileJson */
+/** @typedef {import('./ports.js').Clock} Clock */
 /** @typedef {import('./ports.js').Voice} Voice */
 /** @typedef {import('./buffer-cache.js').BufferCache} BufferCache */
 
@@ -9,7 +10,10 @@
  * @typedef {SoundActiveChangedEvent | SoundErrorEvent} SoundEvent
  */
 
-/** @typedef {{ sound: AudioFileJson, voice: Voice, streamed: boolean }} Instance */
+/**
+ * `fadeOutTimer` starts the fade-out so that it ends where playback does.
+ * @typedef {{ sound: AudioFileJson, voice: Voice, streamed: boolean, fadeOutTimer: number | null }} Instance
+ */
 
 const MAX_INSTANCES_PER_SOUND = 8;
 const MAX_STREAMED_INSTANCES = 24;
@@ -21,6 +25,7 @@ const BUFFERED_SIZE_LIMIT = 256 * 1024;
  */
 export class SoundPlayer {
 	#engine;
+	#clock;
 	#cache;
 	#emit;
 	#isPlayable;
@@ -36,12 +41,14 @@ export class SoundPlayer {
 	/**
 	 * @param {object} options
 	 * @param {Pick<AudioEngine, 'createStreamVoice' | 'createBufferVoice'>} options.engine
+	 * @param {Pick<Clock, 'setTimeout' | 'clearTimeout'>} options.clock
 	 * @param {BufferCache} options.cache
 	 * @param {(event: SoundEvent) => void} options.emit
 	 * @param {(sound: AudioFileJson) => boolean} [options.isPlayable]
 	 */
-	constructor({ engine, cache, emit, isPlayable = () => true }) {
+	constructor({ engine, clock, cache, emit, isPlayable = () => true }) {
 		this.#engine = engine;
+		this.#clock = clock;
 		this.#cache = cache;
 		this.#emit = emit;
 		this.#isPlayable = isPlayable;
@@ -119,7 +126,7 @@ export class SoundPlayer {
 
 		const wasActive = this.isActive(sound.id);
 		/** @type {Instance} */
-		const instance = { sound, voice, streamed };
+		const instance = { sound, voice, streamed, fadeOutTimer: null };
 		this.#instances.set(sound.id, [...(this.#instances.get(sound.id) ?? []), instance]);
 		if (streamed) {
 			this.#streamed.push(instance);
@@ -131,6 +138,13 @@ export class SoundPlayer {
 			this.#emit({ type: 'sound.error', soundId: sound.id, message: error.message });
 			this.#remove(instance);
 		});
+		if (sound.fadeIn > 0) {
+			voice.rampGain(0, 0);
+			voice.rampGain(1, sound.fadeIn);
+		}
+		if (sound.fadeOut > 0) {
+			voice.on('loaded', () => this.#planFadeOut(instance));
+		}
 		voice.play();
 		if (!wasActive) {
 			this.#emit({ type: 'sound.activeChanged', soundId: sound.id, active: true });
@@ -158,10 +172,33 @@ export class SoundPlayer {
 		} else {
 			this.#cache.release(sound.url);
 		}
+		if (instance.fadeOutTimer !== null) {
+			this.#clock.clearTimeout(instance.fadeOutTimer);
+			instance.fadeOutTimer = null;
+		}
 		instance.voice.stop();
 		if (remaining.length === 0) {
 			this.#emit({ type: 'sound.activeChanged', soundId: sound.id, active: false });
 		}
+	}
+
+	/**
+	 * Plans the fade-out to end where playback ends: the end point, or the end of the file. It is cut to the time the
+	 * sound has, and starts from wherever a fade-in had got to (DESIGN.md §6.3).
+	 * @param {Instance} instance
+	 */
+	#planFadeOut(instance) {
+		const { sound, voice } = instance;
+		const end = Math.min(voice.duration, sound.endAt ?? Number.POSITIVE_INFINITY);
+		if (!this.#instances.get(sound.id)?.includes(instance) || !Number.isFinite(end)) {
+			return;
+		}
+		const left = Math.max(0, end - voice.position);
+		const seconds = Math.min(sound.fadeOut, left);
+		instance.fadeOutTimer = this.#clock.setTimeout(() => {
+			instance.fadeOutTimer = null;
+			voice.rampGain(0, seconds);
+		}, (left - seconds) * 1000);
 	}
 
 	/** @param {string} soundId */

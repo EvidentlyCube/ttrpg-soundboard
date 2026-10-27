@@ -235,7 +235,7 @@ describe('Soundboard', () => {
 			clock.advance(1);
 			assert.deepEqual(api.soundSaves, [{
 				soundId: 'Boom.mp3',
-				options: { title: 'Thunder', gain: 0.5, startAt: 0, endAt: null },
+				options: { title: 'Thunder', gain: 0.5, startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0 },
 				keepalive: false,
 			}]);
 			await settle();
@@ -312,6 +312,30 @@ describe('Soundboard', () => {
 			assert.equal(eventsOf('sound.changed').length, 1);
 			const rain = soundboard.getLibrary()?.sounds.find((sound) => sound.id === 'Rain.ogg');
 			assert.deepEqual([rain?.startAt, rain?.endAt], [1, 2]);
+		});
+	});
+
+	describe('sound fades', () => {
+		it('fades later presses in and out, leaving playing instances alone', async () => {
+			const { soundboard, engine, advance } = await started();
+			soundboard.playSound('Rain.ogg');
+			soundboard.customizeSound('Rain.ogg', { fadeIn: 1, fadeOut: 2 });
+			soundboard.playSound('Rain.ogg');
+			await advance(30);
+			assert.deepEqual(engine.voices.map((voice) => voice.gainRamps), [[], [[0, 0], [1, 1], [0, 2]]]);
+		});
+
+		it('saves the fades with the rest of the options', async () => {
+			const { soundboard, api, clock } = await started();
+			soundboard.customizeSound('Rain.ogg', { fadeIn: 0.5 });
+			clock.advance(500);
+			assert.deepEqual(api.soundSaves[0].options, { title: 'Rain', gain: 1, startAt: 0, endAt: null, fadeIn: 0.5, fadeOut: 0 });
+		});
+
+		it('rejects fades out of range', async () => {
+			const { soundboard } = await started();
+			assert.throws(() => soundboard.customizeSound('Rain.ogg', { fadeIn: -1 }), InvalidCommandError);
+			assert.throws(() => soundboard.customizeSound('Rain.ogg', { fadeOut: 31 }), InvalidCommandError);
 		});
 	});
 

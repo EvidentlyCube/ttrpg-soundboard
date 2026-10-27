@@ -208,8 +208,8 @@ export class Soundboard {
 				return;
 			}
 			case 'sound.customize': {
-				const { title, gain, startAt, endAt } = command;
-				const sound = loaded.library.updateSound(command.soundId, { title, gain, startAt, endAt });
+				const { title, gain, startAt, endAt, fadeIn, fadeOut } = command;
+				const sound = loaded.library.updateSound(command.soundId, { title, gain, startAt, endAt, fadeIn, fadeOut });
 				if (gain !== undefined) {
 					loaded.sounds.setGain(sound.id, sound.gain);
 				}
@@ -218,6 +218,8 @@ export class Soundboard {
 					gain: sound.gain,
 					startAt: sound.startAt,
 					endAt: sound.endAt,
+					fadeIn: sound.fadeIn,
+					fadeOut: sound.fadeOut,
 				});
 				this.#events.emit({ type: 'sound.changed', sound });
 				return;
@@ -362,15 +364,16 @@ export class Soundboard {
 	}
 
 	/**
-	 * Changes a sound's title, gain or start and end points. The change takes effect at once, and is saved to the server
-	 * shortly after (`sound.saved` or `sound.saveFailed`). A new gain also reaches instances already playing; new points
-	 * only later presses.
+	 * Changes a sound's title, gain, start and end points or fades. The change takes effect at once, and is saved to the
+	 * server shortly after (`sound.saved` or `sound.saveFailed`). A new gain also reaches instances already playing; new
+	 * points and fades only later presses.
 	 * @param {string} soundId
 	 * @param {ItemOptions} changes a title must not be empty; a gain is linear, from 0 to MAX_GAIN; the points are in
-	 * 	seconds, at least MIN_CLIP_MS apart, and a null end point means the end of the file
+	 * 	seconds, at least MIN_CLIP_MS apart, and a null end point means the end of the file; the fades are in seconds, from
+	 * 	0 to MAX_CROSSFADE
 	 */
-	customizeSound(soundId, { title, gain, startAt, endAt }) {
-		this.dispatch({ type: 'sound.customize', soundId, title, gain, startAt, endAt });
+	customizeSound(soundId, { title, gain, startAt, endAt, fadeIn, fadeOut }) {
+		this.dispatch({ type: 'sound.customize', soundId, title, gain, startAt, endAt, fadeIn, fadeOut });
 	}
 
 	/**
@@ -428,6 +431,7 @@ export class Soundboard {
 			this.#volume.applyAll(settings.volumes);
 			const sounds = new SoundPlayer({
 				engine: this.#engine,
+				clock: this.#clock,
 				cache: new BufferCache({ load: (url) => this.#engine.loadBuffer(url) }),
 				emit,
 				isPlayable,

@@ -13,7 +13,8 @@ import { isTransition } from './transitions.js';
  * 	| { type: 'playlist.jump', playlistId: string, trackIndex: number, transition?: Transition }
  * 	| { type: 'playlist.seek', playlistId: string, seconds: number }
  * 	| { type: 'volume.set', bus: Bus, value: number }
- * 	| { type: 'sound.customize', soundId: string, title?: string, gain?: number, startAt?: number, endAt?: number | null }
+ * 	| { type: 'sound.customize', soundId: string, title?: string, gain?: number, startAt?: number, endAt?: number | null,
+ * 		fadeIn?: number, fadeOut?: number }
  * 	| { type: 'playlist.customize', playlistId: string, title?: string, gain?: number, crossfade?: number, fadeIn?: number,
  * 		fadeOut?: number }
  * 	| { type: 'track.customize', trackId: string, title?: string }} Command
@@ -38,7 +39,10 @@ const SHAPES = {
 	'playlist.jump': { strings: ['playlistId'], numbers: ['trackIndex'], transition: true },
 	'playlist.seek': { strings: ['playlistId'], numbers: ['seconds'] },
 	'volume.set': { strings: ['bus'], numbers: ['value'] },
-	'sound.customize': { strings: ['soundId'], optional: { title: 'string', gain: 'number', startAt: 'number', endAt: 'number or null' } },
+	'sound.customize': {
+		strings: ['soundId'],
+		optional: { title: 'string', gain: 'number', startAt: 'number', endAt: 'number or null', fadeIn: 'number', fadeOut: 'number' },
+	},
 	'playlist.customize': {
 		strings: ['playlistId'],
 		optional: { title: 'string', gain: 'number', crossfade: 'number', fadeIn: 'number', fadeOut: 'number' },

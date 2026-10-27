@@ -28,7 +28,7 @@ function setup({ isPlayable } = {}) {
 	const cache = new BufferCache({ load: (url) => engine.loadBuffer(url) });
 	/** @type {SoundEvent[]} */
 	const events = [];
-	const player = new SoundPlayer({ engine, cache, emit: (event) => events.push(event), isPlayable });
+	const player = new SoundPlayer({ engine, clock, cache, emit: (event) => events.push(event), isPlayable });
 	/** Fires due timers, then lets promise callbacks (buffer decoding) run. */
 	const advance = async (/** @type {number} */ seconds) => {
 		clock.advance(seconds * 1000);
@@ -255,6 +255,64 @@ describe('SoundPlayer', () => {
 			assert.equal(engine.liveVoices.length, 0);
 			assert.equal(player.isActive('Rain.mp3'), false);
 			assert.equal(activity().length, 2);
+		});
+	});
+
+	describe('fades', () => {
+		it('starts silent and fades in over the fade-in', async () => {
+			const { player, engine, advance } = setup();
+			player.play(sound('Rain.mp3', LARGE.size, { fadeIn: 0.5 }));
+			player.play(sound('Boom.mp3', SMALL.size, { fadeIn: 0.25 }));
+			await advance(0.05);
+			assert.deepEqual(engine.voices.map((voice) => voice.gainRamps), [[[0, 0], [1, 0.5]], [[0, 0], [1, 0.25]]]);
+		});
+
+		it('makes no ramps without fades', async () => {
+			const { player, engine, advance } = setup();
+			player.play(LARGE);
+			await advance(3);
+			assert.deepEqual(engine.voices[0].gainRamps, []);
+		});
+
+		it('fades out so that the fade ends at the end point', async () => {
+			const { player, engine, advance } = setup();
+			player.play(sound('Rain.mp3', LARGE.size, { startAt: 0.5, endAt: 1.5, fadeOut: 0.4 }));
+			// Loaded after 50 ms at 0.5 s into the file; the fade starts at 1.1 s, 600 ms later.
+			await advance(0.05 + 0.599);
+			assert.deepEqual(engine.voices[0].gainRamps, []);
+			await advance(0.001);
+			assert.deepEqual(engine.voices[0].gainRamps, [[0, 0.4]]);
+		});
+
+		it('fades out before the end of the file without an end point', async () => {
+			const { player, engine, advance } = setup();
+			player.play(sound('Boom.mp3', SMALL.size, { fadeOut: 0.5 }));
+			await advance(0.05);
+			await advance(1.499);
+			assert.deepEqual(engine.voices[0].gainRamps, []);
+			await advance(0.001);
+			assert.deepEqual(engine.voices[0].gainRamps, [[0, 0.5]]);
+		});
+
+		it('cuts a fade-out longer than the sound to the time it has', async () => {
+			const { player, engine, advance } = setup();
+			player.play(sound('Rain.mp3', LARGE.size, { endAt: 0.3, fadeIn: 0.2, fadeOut: 1 }));
+			await advance(0.05);
+			assert.deepEqual(engine.voices[0].gainRamps, [[0, 0], [1, 0.2], [0, 0.3]]);
+		});
+
+		it('stops at once on Stop All, and when a ninth press replaces the oldest, with no fade-out afterwards', async () => {
+			const { player, engine, advance } = setup();
+			const fading = sound('Rain.mp3', LARGE.size, { fadeOut: 0.5 });
+			for (let i = 0; i < 9; i++) {
+				player.play(fading);
+			}
+			await advance(0.05);
+			assert.equal(engine.voices[0].stopped, true);
+			player.stop(fading.id);
+			await advance(3);
+			assert.deepEqual(engine.voices.map((voice) => voice.gainRamps.length), Array(9).fill(0));
+			assert.equal(engine.liveVoices.length, 0);
 		});
 	});
 });

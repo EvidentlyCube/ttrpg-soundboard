@@ -9,6 +9,7 @@ import { MAX_GAIN } from './volume.js';
 /** @typedef {import('./ports.js').LibraryJson} LibraryJson */
 /** @typedef {import('./ports.js').PlaylistJson} PlaylistJson */
 /** @typedef {import('./ports.js').ItemOptions} ItemOptions */
+/** @typedef {'crossfade' | 'fadeIn' | 'fadeOut'} TimingKey */
 
 /** The library sent by the server, indexed for lookups and checked against what this browser can play. */
 export class LibraryModel {
@@ -73,6 +74,7 @@ export class LibraryModel {
 	 */
 	updateSound(id, changes) {
 		const sound = applyChanges(this.sound(id), changes);
+		applyTimings(sound, changes, { fadeIn: 'Fade-in', fadeOut: 'Fade-out' });
 		if (changes.startAt !== undefined) {
 			sound.startAt = roundToMilliseconds(changes.startAt);
 		}
@@ -116,17 +118,8 @@ export class LibraryModel {
 	 * @returns {PlaylistJson} the changed playlist
 	 */
 	updatePlaylist(id, changes) {
-		const timings = { crossfade: 'Crossfade', fadeIn: 'Fade-in', fadeOut: 'Fade-out' };
 		const playlist = applyChanges(this.playlist(id), changes);
-		for (const [key, name] of /** @type {[keyof typeof timings, string][]} */ (Object.entries(timings))) {
-			const seconds = changes[key];
-			if (seconds !== undefined) {
-				if (!(seconds >= 0 && seconds <= MAX_CROSSFADE)) {
-					throw new InvalidCommandError(`${name} must be a number of seconds from 0 to ${MAX_CROSSFADE}, got ${seconds}`);
-				}
-				playlist[key] = seconds;
-			}
-		}
+		applyTimings(playlist, changes, { crossfade: 'Crossfade', fadeIn: 'Fade-in', fadeOut: 'Fade-out' });
 		this.#playlists.set(id, playlist);
 		this.#json = {
 			...this.#json,
@@ -152,4 +145,22 @@ function applyChanges(item, { title, gain }) {
 		throw new InvalidCommandError(`Gain must be a number from 0 to ${MAX_GAIN}, got ${gain}`);
 	}
 	return { ...item, title: trimmed ?? item.title, gain: gain ?? item.gain };
+}
+
+/**
+ * Sets the fades or crossfade given in `changes` on the item, each checked to be from 0 to MAX_CROSSFADE seconds.
+ * @param {Partial<Record<TimingKey, number>>} item changed in place
+ * @param {ItemOptions} changes
+ * @param {Partial<Record<TimingKey, string>>} names the keys to take, with the names used in error messages
+ */
+function applyTimings(item, changes, names) {
+	for (const [key, name] of /** @type {[TimingKey, string][]} */ (Object.entries(names))) {
+		const seconds = changes[key];
+		if (seconds !== undefined) {
+			if (!(seconds >= 0 && seconds <= MAX_CROSSFADE)) {
+				throw new InvalidCommandError(`${name} must be a number of seconds from 0 to ${MAX_CROSSFADE}, got ${seconds}`);
+			}
+			item[key] = seconds;
+		}
+	}
 }
