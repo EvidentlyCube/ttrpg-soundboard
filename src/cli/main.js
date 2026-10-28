@@ -1,5 +1,8 @@
 import { stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { runProcess } from '../downloads/process-runner.js';
+import { describeTools, findTools, missingTools } from '../downloads/tools.js';
+import { clearWorkspace } from '../downloads/workspace.js';
 import { startServer } from '../http/server.js';
 import { BootstrapService } from '../library/bootstrap-service.js';
 import { ChangeWatcher } from '../library/change-watcher.js';
@@ -42,7 +45,8 @@ export async function main(argv, { input, output, errorOutput, env, waitForShutd
 		return 1;
 	}
 
-	const reporter = new ConsoleReporter(output, createColors(shouldUseColor(output, env)), root);
+	const colors = createColors(shouldUseColor(output, env));
+	const reporter = new ConsoleReporter(output, colors, root);
 	const prompter = new TerminalPrompter(input, output);
 	const watcher = new ChangeWatcher({ root, log: (message) => output.write(`${message}\n`) });
 	// The prompter is closed once the server runs, but a refresh never asks anything.
@@ -56,6 +60,11 @@ export async function main(argv, { input, output, errorOutput, env, waitForShutd
 	if (outcome.status !== 'ready') {
 		return outcome.status === 'invalid' ? 1 : 0;
 	}
+
+	await clearWorkspace(root);
+	const tools = await findTools(runProcess);
+	const missing = missingTools(tools);
+	output.write(`${missing.length > 0 ? colors.yellow(describeTools(tools)) : describeTools(tools)}\n`);
 
 	let server;
 	try {
