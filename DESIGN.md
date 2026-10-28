@@ -828,7 +828,7 @@ UI components extend `Component` (`ui/component.js`): `render()` builds the elem
 
 - The `AudioContext` is created by the splash click (§9.0). As a safety net, a capturing `pointerdown` listener on the document calls `soundboard.unlockAudio()` on every press, which costs nothing while audio is running.
 - Media is same-origin, so `createMediaElementSource` works without CORS settings.
-- Ogg support in Safari depends on the version. Formats are checked with `canPlayType` when the library loads, and unsupported tiles are disabled rather than failing silently.
+- Safari is assumed to play Ogg (§12). Formats are still checked with `canPlayType` when the library loads, as a safety net: unsupported tiles are disabled rather than failing silently.
 - Before closing, the page flushes any pending volume save (`pagehide`).
 - These points are confirmed by hand ([`TESTING.md`](TESTING.md)).
 
@@ -1035,7 +1035,7 @@ The streaming design keeps resource use well within what this machine can handle
 
 **Safari specifics:**
 - Range requests (§5.2), the splash unlock (§9.0) and same-origin media are covered above.
-- **Ogg support depends on the macOS and Safari version.** Unplayable tiles are disabled. If a library is mostly `.ogg` and its tiles show as disabled, use Chrome or Firefox, or convert the files to MP3.
+- **Safari is assumed to play Ogg.** The Safari version that matters (on the MacBook) supports it, so `.ogg` is a first-class format, and downloads are stored as `.ogg`. An older Safari without Ogg support still gets disabled tiles rather than silent failures (§9.5).
 - Safari slows down timers in background tabs. Track changes are driven by the media `ended` event, which still fires in the background, so playlists keep advancing even when the window isn't in front.
 - New media elements created after the audio context has been unlocked are assumed to play without a fresh gesture, as in browser games and web music players.
 
