@@ -29,7 +29,35 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## Proposals
 
-None yet.
+### Track start and end points
+
+**Goal.** In a playlist's Customize dialog, each track can be trimmed like a sound: a start point and an end point choose the part of the file that plays. From then on the trimmed part *is* the track: the footer's time, the progress bar, seeking, Previous's restart, crossfades, looping and "resume where it stopped" all work on that part only.
+
+**What already exists.** Voices take `startAt` and `endAt` (§6.3) and do the work themselves: a stream voice seeks to `startAt` after loading, and its end-point timer pauses it at `endAt` and fires `ended`. So the player needs no timer of its own for the end, unlike what the backlog note assumed. Track options files already accept `startAt` and `endAt` (§2.3) and the validator checks them; the `RangeControl` and `checkClip` from the sound dialog can be reused as they are.
+
+**Design changes.**
+- §2.3: tracks no longer ignore `startAt` and `endAt`. `fadeIn` and `fadeOut` stay ignored (open question 2).
+- §5.1, §5.2: `LibraryEditor.updateTrack` and the track options endpoint accept `startAt` and `endAt` next to `title`, with the same checks as for sounds (merged with the stored values, at least `MIN_CLIP_MS` apart).
+- §6.1, §6.4: `customizeTrack(trackId, { title?, startAt?, endAt? })`, validated by `checkClip` after merging, saved like the title; `playlist.changed` carries the track with its new points. The `saveTrackOptions` payload gains both.
+- §6.3: unchanged. Voice `position` and `duration` stay in file time.
+- §8.1, §8.2, §8.4: `planTrack` returns the track's points. The player fixes a track's range (`start`, `end`, both in file time, `end` capped at the real file length once the voice has loaded) when the track starts, and passes the points to its voice. Everything the facade reports and accepts is **relative to the range**: `position = voice.position − start`, `duration = end − start`, `seek(0)` is the start point, `crossfadeFrom` and the resume position are relative, and the overlap of a crossfade uses the range length instead of the file duration. A changed point reaches only tracks that start afterwards; the playing one keeps its range (as for sounds, §7).
+- §9.7: the open row of the track accordion gains a **Start and end** card; the row header's duration shows the range length.
+- §10, §11: structure and testing.
+
+**Open questions.**
+1. **Header duration.** Recommended: the row header shows the length of the trimmed part (`m:ss`), since that is what plays; the file's full length appears in the Start and end card's readout ("Plays 1:12 of 3:40"). The alternative is to always show the file length.
+2. **Track fades.** Track files also accept `fadeIn` and `fadeOut` (§2.3), and sounds use them. Recommended: leave them out of this step. The backlog item is only about points, and a per-track fade is its own design question (it would interact with the playlist's fades and crossfades). It can be a later feature on the same card.
+3. **Where the control goes.** Recommended: a new card **Start and end** in the open row, between **Progress** and **Track**, using the same `RangeControl` as the sound dialog in the blue accent, always over the whole file. The Progress bar above it shows only the trimmed part, as the footer does.
+4. **Tracks without a measured duration** (`duration: null`). Recommended: they get no Start and end card, exactly like sounds today (the "Files whose duration can't be measured" loose end below covers both).
+5. **A point beyond the real file.** The stored duration is only an estimate for some MP3s. Recommended: points are never rejected against it; at playback the end is capped at the length the voice reports, and a start at or past the real end makes the track end at once and the playlist move on. That is not reported as an error.
+6. **Resume across edits.** A stopped playlist remembers a position relative to the range (§8.1). If the track's range is edited while stopped, the remembered position is applied to the new range, clamped to it. Recommended over dropping the resume point, because it is the simplest rule and edits while stopped are rare.
+
+**Plan.**
+1. Backend: `updateTrack` and its HTTP route accept and validate `startAt` and `endAt`; the editable keys for tracks. Tests: saved and merged with the existing file, `endAt` before `startAt` rejected, `null` end stored, unknown keys still rejected, other keys preserved.
+2. Frontend model and saving: `customizeTrack` accepts the points, `LibraryModel.updateTrack` applies and checks them, `playlist.changed`, `OptionsSync` and `BackendApi.saveTrackOptions` carry them. Tests with the fake backend, including the debounce and an invalid range.
+3. Player: `planTrack` returns the points and the voice gets them; the range is fixed at track start and positions become relative. Tests, first: start applied by the voice and the position starting at 0; `ended` at the end point advances; `duration` and `progress` relative; seek clamped to the range and to the crossfade point; Previous's 3 s rule and restart; crossfade timer and overlap on the range length; looping between the points; resume position relative, including after an edit; a start past the real end; changes not touching the playing track; the randomized invariant test with points set.
+4. UI: the **Start and end** card in the track accordion and the header duration; manual checks added to `TESTING.md`.
+5. `DESIGN.md` update.
 
 ---
 
