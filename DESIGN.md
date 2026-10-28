@@ -116,7 +116,7 @@ Sound or track options (`Explosion.mp3.json`)
 - `title` is optional; without it the default title is used (§2.4).
 - `startAt` and `endAt` choose the part of a sound that plays (§7), in seconds. `startAt` defaults to `0`; `endAt` defaults to `null`, the end of the file. The app writes both rounded to 3 decimals, so whole milliseconds survive. They are not checked against `duration`, which is only an estimate for some MP3s.
 - `fadeIn` and `fadeOut` fade a sound in from its start point and out to its end point (§7), in seconds, `0` (the default, off) to `30`, rounded to 3 decimals.
-- Track files accept `startAt`, `endAt`, `fadeIn` and `fadeOut` too, but tracks ignore them for now ([roadmap](ROADMAP.md)).
+- Track files accept `startAt` and `endAt` and play only that part (§8.1). They accept `fadeIn` and `fadeOut` too, but tracks ignore those.
 - `duration` (seconds, 2 decimals, or `null` when it can't be read) and `measuredFrom` (the file's size, modification time and SHA-1 at that moment) are written by bootstrap (§3.5), never by hand. They always come together.
 - `gain` is optional and defaults to `1`. It is the item's own volume as the linear multiplier a Web Audio `GainNode` takes: `1` plays the file as recorded, `2` doubles the amplitude (about +6 dB), `0` is silent. The UI shows it in decibels (§6.4). It is deliberately not called `volume`, because the volumes in `.soundboard` are slider positions, a different thing. A track's `gain` is applied together with its playlist's (§6.4); there is no UI for it yet ([roadmap](ROADMAP.md)).
 - The app writes `gain` rounded to 4 decimal places.
@@ -256,7 +256,7 @@ Settings  { volumes: { master, music, sfx } }   // held by SettingsStore, saved 
 - `files` indexes every sound and track by id. It is the only list of files the server may stream.
 - `LibraryEditor` changes the library while the app runs. `updateSound(id, { title?, gain?, startAt?, endAt?, fadeIn?, fadeOut? })` validates the change with the options file rules (§2.3), rejects unknown keys, trims the title, and rounds the numbers. The points are checked again after merging with the sound's current ones, so a change to one point must still fit the other. It then merges the change into the sound's options file (read, merge, atomic write, unknown keys kept), and only once that succeeded updates the `AudioFile` in place and sorts `sounds` again. Writes to one options file run one after another in the order they were requested, so the file always ends with the newest values; a failed write doesn't block later ones. An id that isn't a sound (including a track id) is an `UnknownSoundError`.
 - `updatePlaylist(id, { title?, gain?, crossfade?, fadeIn?, fadeOut?, order?, trackLooping?, stopMode? })` does the same for a playlist's options file (`<directory>.json` in the root), leaving its `includedSubdirectories` alone, and sorts `playlists` again after a rename. The crossfade, the order, track looping and the stop mode are accepted only here, and the points only for sounds. An unknown id is an `UnknownPlaylistError`.
-- `updateTrack(id, { title })` does the same for a track's options file (`<file>.json` next to it). Only `title` is accepted. Tracks keep their path order (§2.2), so nothing is sorted again. An id that isn't a track (including a sound id) is an `UnknownTrackError`.
+- `updateTrack(id, { title, startAt, endAt })` does the same for a track's options file (`<file>.json` next to it), with the same checks and rounding of the points as for sounds. Only those three are accepted. Tracks keep their path order (§2.2), so nothing is sorted again. An id that isn't a track (including a sound id) is an `UnknownTrackError`.
 - `SettingsStore` keeps the settings in memory and writes them back to `.soundboard` with the same read-merge-write and atomic rename as the options files (§2.3). Writes are **serialized**: one in flight at a time, and changes made meanwhile are written together by one follow-up write, so the file always ends with the newest values.
 
 ### 5.2 HTTP API (`src/http/`, built on `node:http`)
@@ -271,7 +271,7 @@ The server knows nothing about playback state.
 | PUT | `/api/settings/volumes` | Body `{ master?, music?, sfx? }` (numbers in `0..1`). Merged into the settings and saved; returns the full settings. `400` for invalid JSON, a non-object, an out-of-range value or an unknown key. `413` for bodies over 16 KB. |
 | PATCH | `/api/sounds/<encoded id>` | Body `{ title?, gain?, startAt?, endAt?, fadeIn?, fadeOut? }`. Saved through `LibraryEditor` (§5.1); returns the updated sound in the `/api/library` format. `400` for invalid JSON, a non-object, an unknown key, an empty title, an out-of-range value, or points less than 10 ms apart. `404` when the id isn't a sound. `413` for bodies over 16 KB. |
 | PATCH | `/api/playlists/<encoded id>` | The same for a playlist, with body `{ title?, gain?, crossfade?, fadeIn?, fadeOut?, order?, trackLooping?, stopMode? }` (`LibraryEditor.updatePlaylist`); returns the playlist with its tracks in the `/api/library` format. |
-| PATCH | `/api/tracks/<encoded id>` | The same for a track, with body `{ title }` (`LibraryEditor.updateTrack`); returns the track. The id contains `/`: the rest of the path is decoded as a whole, which keeps literal slashes, so `Combat%2F1.mp3` and `Combat/1.mp3` both work. The browser sends the first. |
+| PATCH | `/api/tracks/<encoded id>` | The same for a track, with body `{ title?, startAt?, endAt? }` (`LibraryEditor.updateTrack`); returns the track. The id contains `/`: the rest of the path is decoded as a whole, which keeps literal slashes, so `Combat%2F1.mp3` and `Combat/1.mp3` both work. The browser sends the first. |
 | GET, HEAD | `/media/<encoded id>` | The audio file, streamed |
 
 - API responses are JSON with `Cache-Control: no-store`. Errors are `{ "error": "message" }`.
@@ -367,7 +367,9 @@ customizePlaylist(playlistId, { title?, gain?, crossfade?, fadeIn?, fadeOut?, or
                                           // mode trims what a stopped playlist remembers (§8.1)
 forgetPlaylist(playlistId)                // a stopped playlist forgets where it would resume; the next play starts afresh
 flushPlaylistOptions(playlistId)          // save that playlist's pending change now (its dialog closed)
-customizeTrack(trackId, { title })        // renames a track at once, announced as playlist.changed; saves 500 ms later
+customizeTrack(trackId, { title?, startAt?, endAt? })  // renames a track or changes its points (endAt null: the end of the
+                                          // file) at once, announced as playlist.changed; saves 500 ms later. The points
+                                          // are checked like a sound's (§7). They reach only tracks that start later (§8.1)
 flushTrackOptions(trackId)                // save that track's pending change now
 
 // volume (value is the slider position, 0..1, clamped)
@@ -402,7 +404,7 @@ on(type, handler) → unsubscribe, off(type, handler)
 | `sound.changed` | `{ sound }`, the sound with its new title, gain, points or fades, right after `customizeSound` |
 | `sound.saved` | `{ soundId }`, once every change to that sound has been saved |
 | `sound.saveFailed` | `{ soundId, message }`; the change stays in effect and is saved again with the next one |
-| `playlist.changed` | `{ playlist }`, the playlist (with its tracks) with its new title, gain, timings, order, track looping or stop mode, right after `customizePlaylist`, or with a renamed track, right after `customizeTrack` |
+| `playlist.changed` | `{ playlist }`, the playlist (with its tracks) with its new title, gain, timings, order, track looping or stop mode, right after `customizePlaylist`, or with a renamed or retrimmed track, right after `customizeTrack` |
 | `playlist.saved` | `{ playlistId }`, once every change to that playlist has been saved |
 | `playlist.saveFailed` | `{ playlistId, message }`, as for sounds |
 | `track.saved` | `{ trackId }`, once every change to that track has been saved. A rename itself is announced as `playlist.changed`, with the playlist holding the renamed track, so every view of the playlist follows from one event. |
@@ -548,6 +550,10 @@ This is where the race-condition risk sits. The design rules:
 - `play` is ignored unless idle. `jumpTo` works in any state; from idle it starts the playlist at that track.
 - `next`, `previous` and `jumpTo` from `paused` start the new track **playing**. `pause` in `loading` keeps the track paused once it loads; `resume` before loading goes back to `loading`.
 - `pause` and `resume` are immediate and ignore the fade settings. `pause` means silence: it also stops voices still fading out from a crossfade, and it ends a fade-in in progress by setting the voice to full level, so `resume` never has to know about fades. A `'default'` stop without a fade-out also stops retiring voices (`killRetiring`), so Stop means silence too; with a fade-out they carry on (§8.5).
+- **Start and end points.** A track plays the part of its file between its `startAt` and `endAt` (§2.3), and that part *is* the track as far as the facade is concerned. Voices work in file time (§6.3); the player works in time **from the start point**, so `position`, `duration`, `crossfadeFrom`, `seek`, the 3 s rule of `previous` and the remembered position all count from 0 at the start point to the length of the part at its end.
+  - **Fixed at start.** `planTrack` returns the track's points, and the player gives them to the voice and keeps them with the voice when the track starts. Editing the points never moves or cuts a track that is playing. The end is capped at the length the voice reports, and a start at or past the real end ends the track at once, as for sounds (§7), without an error. The voice ends the track at the end point (§6.3), so no timer of the player is needed.
+  - **Crossfades and looping** use the length of the part: a crossfade lasts at most half of either track's part (§8.4), and a looping track repeats between its points (§6.3).
+  - **Edited while not playing.** `setPlaylist` compares the points of the new copy with the old. If the changed track is the paused current track, the playlist stops instantly (as `stop('instant')`), and a resume point on a changed track keeps the track but drops the position, so it starts at the new start point. A playing track is never edited from the UI (§9.7).
 - `seek` works in `loading`, `playing` and `paused`, clamped to the track, and with a crossfade coming, to the crossfade point (§8.4). While loading it is applied, and clamped, once the track has loaded.
 - Which track plays is decided by the **play history** (below). Starting a playlist starts a fresh history. `next` moves forward in it and `previous` back; `jumpTo(index)` starts a fresh history at that track.
 - `previous`: past **3 s** into the track, or at the first entry of the history, it restarts the current track (seek to 0, and resume if paused). Otherwise it goes back one entry. It never wraps from the first track to the last.
@@ -608,13 +614,12 @@ resolveTransition(action /* 'play'|'stop'|'change' */, transition, rules)
 // Order strategies: name → how the play history is filled (§8.1).
 orderStrategy(name) → { start(trackCount, random, at), extend(trackCount, random, last) }
 
-// Per-track plan; currently always { startAt: 0, endAt: null }.
+// Per-track plan, in file time: the track's own points (§8.1).
 planTrack(track, rules) → { startAt, endAt }
 ```
 
 - A non-zero `fadeIn` ramps the new voice's gain from 0; a non-zero fade-out ramps the old voice to 0 in the retiring set. Both are covered by tests with non-zero rules.
-- A non-zero `startAt` is applied by seeking once the track has loaded.
-- **Extension point:** voices already take `startAt` and `endAt` (§6.3), as sounds use them (§7), so track start and end points can pass `planTrack`'s plan to the voice ([roadmap](ROADMAP.md)).
+- The plan's `startAt` and `endAt` are passed to the voice, which starts there and ends at the end point (§6.3).
 
 ### 8.3 Progress
 
@@ -811,10 +816,13 @@ Below the cards: Play / Stop (`playSound`, or stopping all instances; it follows
   - **When stopped** is a radio group, sent with `customizePlaylist({ stopMode })` and following `playlist.changed`: **Pause** "Playing again continues where it stopped.", **Reset track** "Playing again starts the same track from its beginning." and **Reset playlist** "Playing again starts afresh, as if for the first time."
 - **"Tracks (N)" tab:** the track accordion (`ui/track-accordion.js`).
   - The list runs edge to edge between the tab bar and the Play row, with lines between the rows and no outer border.
-  - One row per track: a play / stop button, then a button with `aria-expanded` showing number, title and duration (`m:ss`, `--:--` when unknown). Clicking the button area opens the row and closes any other; clicking the open one closes it. Hovering anywhere on the header tints the whole row blue (`bg-music/15`), and the open row's header has a stronger tint (`bg-music/20`) and a blue title.
+  - One row per track: a play / stop button, then a button with `aria-expanded` showing number and title, and a small blue "Cropped" bubble when the track's points differ from the whole file (no duration is shown). Clicking the button area opens the row and closes any other; clicking the open one closes it. Hovering anywhere on the header tints the whole row blue (`bg-music/15`), and the open row's header has a stronger tint (`bg-music/20`) and a blue title.
   - **Test playback** (`ui/track-playback.js` holds the pure rules, with unit tests). Only the playlist's current track is playing or paused (`trackPlayback`), and a loading track counts as playing. The row's button is a sibling of the toggle, so pressing it doesn't open or close the row. It does what `trackAction` says: on a track that isn't current, `jumpToTrack(…, { transition: 'instant' })`; on the playing track, `stopPlaylist(…, { transition: 'instant' })`, which follows the stop mode (§8.1); on a paused track, `resumePlaylist`. Buttons follow `playlist.stateChanged`, so a track started from the footer shows as playing here too. All tracks are assumed playable.
-  - An open track shows two cards (`card`, §9.7): **Progress** and **Track**.
-    - **Progress** holds only a bar that looks and seeks like the footer's (§9.2, pressing seeks with `seekPosition`), including the crossfade section at its end, hidden while the track loops (§8.4). Only the current track's bar fills, following `playlist.progress`. For any other track the bar is disabled: drawn as diagonal stripes, with a "not allowed" cursor, ignoring presses. A paused track's bar stays enabled. Fill and crossfade width are inline styles (§9.6), and the enabled state is a `data-enabled` attribute.
+  - An open track shows two cards (`card`, §9.7): **Start and end** and **Track**.
+    - **Start and end** holds one `RangeControl` (as in the sound dialog, below) in the blue accent, over the whole file. It is both the range editor and the seek bar:
+      - **Editing.** Unless the track is playing (a loading track counts as playing), it has its handles, fields and Reset. Every change goes to `customizeTrack({ startAt, endAt })`, with the end at the end of the file stored as `null`, and the control follows `playlist.changed` unless a handle is dragged. Editing a paused track stops the playlist (§8.1), so the control then shows its editor anyway.
+      - **Seeking.** While the track plays, `showPlayback` switches it to a seek bar: the handles are hidden, the fields and Reset disabled, what has not played yet dimmed (`bg-black/45`) and the stretch a crossfade will take over lightened (`bg-white/30`), hidden while the track loops (§8.4). Pressing anywhere on the bar calls `seek` with the position within the part that plays, clamped to the points. Progress follows `playlist.progress`, and the playhead and crossfade widths are inline styles (§9.6).
+      - A track without a measured duration has no such card.
     - **Track** holds the title field (hint: `File: <track id>`), sent with `customizeTrack`. Row headers follow `playlist.changed`, while the open field is left alone, so it keeps its focus while typing. Later track settings go in the open row.
 - **Below both tabs**, staying in view while either scrolls: Play / Stop (`togglePlaylist`, like a tile click; it follows `playlist.stateChanged`) and the status, which follows the playlist's saves (`playlist.saved`, `playlist.saveFailed`) and its tracks' (`track.saved`, `track.saveFailed`).
 
