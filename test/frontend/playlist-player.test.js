@@ -12,10 +12,10 @@ import { seededRandom } from '../helpers/seeded-random.js';
 
 /**
  * @param {number} count
- * @param {{ gain?: number, trackGains?: number[] }} [gains]
+ * @param {{ gain?: number, trackGains?: number[], points?: { startAt?: number, endAt?: number | null }[] }} [gains]
  * @returns {import('../../public/app/logic/ports.js').PlaylistJson}
  */
-function playlistOf(count, { gain = 1, trackGains = [] } = {}) {
+function playlistOf(count, { gain = 1, trackGains = [], points = [] } = {}) {
 	return {
 		id: 'Combat',
 		title: 'Combat',
@@ -26,7 +26,7 @@ function playlistOf(count, { gain = 1, trackGains = [] } = {}) {
 		order: 'ordered',
 		trackLooping: false,
 		stopMode: 'resetPlaylist',
-		tracks: Array.from({ length: count }, (_, i) => ({ id: `Combat/${i}.mp3`, title: `Track ${i}`, format: 'mp3', size: 1000, gain: trackGains[i] ?? 1, duration: 10, startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0, url: `/t${i}` })),
+		tracks: Array.from({ length: count }, (_, i) => ({ id: `Combat/${i}.mp3`, title: `Track ${i}`, format: 'mp3', size: 1000, gain: trackGains[i] ?? 1, duration: 10, startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0, ...points[i], url: `/t${i}` })),
 	};
 }
 
@@ -35,7 +35,7 @@ function playlistOf(count, { gain = 1, trackGains = [] } = {}) {
  * @param {number} [options.tracks]
  * @param {Partial<PlaybackRules>} [options.rules]
  * @param {(track: import('../../public/app/logic/ports.js').AudioFileJson) => boolean} [options.isPlayable]
- * @param {{ gain?: number, trackGains?: number[] }} [options.gains]
+ * @param {{ gain?: number, trackGains?: number[], points?: { startAt?: number, endAt?: number | null }[] }} [options.gains]
  * @param {number} [options.seed] for the random orders
  */
 function setup({ tracks = 3, rules = {}, isPlayable, gains, seed = 1 } = {}) {
@@ -1149,6 +1149,196 @@ describe('PlaylistPlayer', () => {
 		});
 	});
 
+	describe('start and end points', () => {
+		/** @param {Parameters<typeof setup>[0]} [options] a playlist whose first track plays 2 s to 8 s of its 10 s */
+		const trimmed = (options = {}) => setup({ ...options, gains: { points: [{ startAt: 2, endAt: 8 }] } });
+
+		it('gives the voice the track\'s points and reports positions within them', () => {
+			const { player, engine, advance } = trimmed();
+			player.play();
+			assert.deepEqual([engine.voices[0].startAt, engine.voices[0].endAt], [2, 8]);
+			advance(0.1);
+			assert.deepEqual([player.snapshot().position, player.snapshot().duration], [0, 6]);
+			advance(1.5);
+			assert.equal(engine.voices[0].position, 3.5);
+			assert.equal(player.snapshot().position, 1.5);
+		});
+
+		it('announces the trimmed length and relative progress', () => {
+			const { player, advance, eventsOf } = trimmed();
+			player.play();
+			advance(0.1);
+			advance(1);
+			const progress = eventsOf('playlist.progress').at(-1);
+			assert.ok(progress?.type === 'playlist.progress');
+			assert.deepEqual([progress.position, progress.duration], [1, 6]);
+			const state = eventsOf('playlist.stateChanged').at(-1);
+			assert.equal(state?.type === 'playlist.stateChanged' && state.duration, 6);
+		});
+
+		it('caps an end point past the real end of the file', () => {
+			const { player, advance } = setup({ gains: { points: [{ startAt: 2, endAt: 15 }] } });
+			player.play();
+			advance(0.1);
+			assert.equal(player.snapshot().duration, 8);
+		});
+
+		it('moves on when the track reaches its end point', () => {
+			const { player, advance, states } = trimmed();
+			player.play();
+			advance(0.1);
+			advance(5.8);
+			assert.equal(player.snapshot().trackIndex, 0);
+			advance(0.4);
+			assert.equal(player.snapshot().trackIndex, 1);
+			assert.equal(states().at(-1), 'playing:1');
+		});
+
+		it('seeks within the points, never past the end', () => {
+			const { player, engine, advance } = trimmed();
+			player.play();
+			advance(0.1);
+			player.seek(1);
+			assert.equal(engine.voices[0].position, 3);
+			player.seek(100);
+			assert.equal(engine.voices[0].position, 8);
+			player.seek(-5);
+			assert.equal(engine.voices[0].position, 2);
+		});
+
+		it('applies a seek made while loading, relative to the start point', () => {
+			const { player, engine, advance } = trimmed();
+			player.play();
+			player.seek(1.5);
+			advance(0.1);
+			assert.equal(engine.voices[0].position, 3.5);
+			assert.equal(player.snapshot().position, 1.5);
+		});
+
+		it('restarts at the start point with Previous after a few seconds', () => {
+			const { player, engine, advance } = trimmed();
+			player.play();
+			advance(0.1);
+			advance(4);
+			player.previous();
+			assert.equal(engine.voices.length, 1);
+			assert.equal(engine.voices[0].position, 2);
+		});
+
+		it('crossfades on the length of the trimmed part', () => {
+			const { player, engine, advance } = trimmed({ rules: { crossfade: 2 } });
+			player.play();
+			advance(0.1);
+			assert.equal(player.snapshot().crossfadeFrom, 4);
+			advance(3.9);
+			assert.equal(engine.voices.length, 1);
+			advance(0.2);
+			assert.equal(engine.voices.length, 2);
+		});
+
+		it('limits a crossfade to half the trimmed part of either track', () => {
+			const { player, advance } = setup({ rules: { crossfade: 5 }, gains: { points: [{ startAt: 2, endAt: 8 }] } });
+			player.play();
+			advance(0.1);
+			// Half of 6 s is 3 s, although half of the whole file would allow 5 s.
+			assert.equal(player.snapshot().crossfadeFrom, 3);
+		});
+
+		it('loops between the points', () => {
+			const { player, engine, advance } = trimmed({ rules: { trackLooping: true } });
+			player.play();
+			advance(0.1);
+			advance(7);
+			assert.equal(player.snapshot().trackIndex, 0);
+			assert.equal(engine.voices[0].loops, 1);
+			assert.equal(player.snapshot().position, 1);
+		});
+
+		it('remembers a position relative to the start point', () => {
+			const { player, engine, advance } = trimmed({ rules: { stopMode: 'pause' } });
+			player.play();
+			advance(0.1);
+			advance(2);
+			player.stop('instant');
+			assert.equal(player.snapshot().resume?.position, 2);
+			player.play();
+			advance(0.1);
+			assert.equal(engine.voices[1].position, 4);
+			assert.equal(player.snapshot().position, 2);
+		});
+
+		it('starts over at the start point when only the track is remembered', () => {
+			const { player, engine, advance } = trimmed({ rules: { stopMode: 'resetTrack' } });
+			player.play();
+			advance(0.1);
+			advance(2);
+			player.stop('instant');
+			player.play();
+			advance(0.1);
+			assert.equal(engine.voices[1].position, 2);
+		});
+
+		it('ends a track whose start point is past the real end of the file', () => {
+			const { player, advance } = setup({ gains: { points: [{ startAt: 12, endAt: null }] } });
+			player.play();
+			advance(0.1);
+			assert.equal(player.snapshot().trackIndex, 1);
+		});
+
+		it('keeps the range a playing track started with when its points change', () => {
+			const { player, advance, engine } = trimmed();
+			player.play();
+			advance(0.1);
+			advance(1);
+			const playlist = playlistOf(3, { points: [{ startAt: 5, endAt: 9 }] });
+			player.setPlaylist(playlist);
+			assert.deepEqual([player.snapshot().position, player.snapshot().duration], [1, 6]);
+			assert.equal(engine.voices[0].position, 3);
+		});
+
+		describe('after the points of the paused or remembered track change', () => {
+			const changed = playlistOf(3, { points: [{ startAt: 5, endAt: 9 }] });
+
+			it('stops a paused playlist, keeping the track but not the position', () => {
+				const { player, engine, advance } = trimmed({ rules: { stopMode: 'pause' } });
+				player.play();
+				advance(0.1);
+				advance(2);
+				player.pause();
+				player.setPlaylist(changed);
+				assert.equal(player.state, 'idle');
+				assert.equal(engine.liveVoicesOn('music').length, 0);
+				assert.deepEqual([player.snapshot().resume?.trackIndex, player.snapshot().resume?.position], [0, null]);
+				player.play();
+				advance(0.1);
+				assert.equal(engine.voices[1].position, 5);
+				assert.equal(player.snapshot().duration, 4);
+			});
+
+			it('drops the remembered position of a stopped playlist', () => {
+				const { player, advance, eventsOf } = trimmed({ rules: { stopMode: 'pause' } });
+				player.play();
+				advance(0.1);
+				advance(2);
+				player.stop('instant');
+				const before = eventsOf('playlist.stateChanged').length;
+				player.setPlaylist(changed);
+				assert.deepEqual([player.snapshot().resume?.trackIndex, player.snapshot().resume?.position], [0, null]);
+				assert.equal(eventsOf('playlist.stateChanged').length, before + 1);
+			});
+
+			it('leaves other tracks and a remembered position of another track alone', () => {
+				const { player, advance } = setup({ rules: { stopMode: 'pause' } });
+				player.play();
+				advance(0.1);
+				advance(2);
+				player.stop('instant');
+				player.setPlaylist(playlistOf(3, { points: [{}, { startAt: 1 }] }));
+				assert.equal(player.snapshot().resume?.position, 2);
+			});
+		});
+	});
+
 	describe('invariant under random commands', () => {
 		it('keeps one audible voice at most, and leaves nothing behind once stopped', () => {
 			let seed = 12345;
@@ -1164,7 +1354,9 @@ describe('PlaylistPlayer', () => {
 			for (let run = 0; run < 400; run++) {
 				const fades = run % 2 === 0 ? {} : { crossfade: 1.5, fadeOut: 1, fadeIn: 0.5 };
 				const rules = { ...fades, order: orders[run % 3], trackLooping: run % 5 === 1, stopMode: stopModes[Math.floor(run / 3) % 3] };
-				const { player, engine, advance, clock } = setup({ tracks: 1 + (run % 4), rules, seed: run });
+				// Not with the 1 s leaky file: a start point past its end plus track looping would restart it forever.
+				const gains = run % 3 === 0 && run % 7 !== 0 ? { points: [{ startAt: 1, endAt: 6 }, { startAt: 2 }, { endAt: 4 }, { startAt: 9 }] } : undefined;
+				const { player, engine, advance, clock } = setup({ tracks: 1 + (run % 4), rules, gains, seed: run });
 				if (run % 5 === 0) {
 					engine.script('/t1', { loadError: 'broken' });
 				}

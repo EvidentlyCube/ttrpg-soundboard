@@ -47,11 +47,11 @@ export function resolvePlaybackRules(playlist) {
 }
 
 /**
- * Where a track starts and ends; `endAt: null` means its natural end.
- * @param {AudioFileJson} _track
+ * Where a track starts and ends, in file time; `endAt: null` means its natural end.
+ * @param {AudioFileJson} track
  * @param {Readonly<PlaybackRules>} _rules
  * @returns {{ startAt: number, endAt: number | null }}
  */
-export function planTrack(_track, _rules) {
-	return { startAt: 0, endAt: null };
+export function planTrack(track, _rules) {
+	return { startAt: track.startAt, endAt: track.endAt };
 }

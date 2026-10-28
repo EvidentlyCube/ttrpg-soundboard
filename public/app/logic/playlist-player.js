@@ -47,7 +47,9 @@ import { resolveTransition } from './transitions.js';
  * @property {number} trackIndex
  * @property {number} generation
  * @property {boolean} loaded
- * @property {number | null} pendingSeek applied once the track has loaded
+ * @property {number} start where the track starts in its file, fixed when it started (DESIGN.md §8.2)
+ * @property {number | null} endAt where it ends in its file, or null for the end of the file; fixed with `start`
+ * @property {number | null} pendingSeek applied once the track has loaded, in seconds from the start point
  */
 
 /** @typedef {{ voice: Voice, trackIndex: number, timer: number }} RetiringVoice */
@@ -127,8 +129,8 @@ export class PlaylistPlayer {
 			state: this.#state,
 			trackIndex: current?.trackIndex ?? null,
 			track: current ? this.#playlist.tracks[current.trackIndex] : null,
-			position: current?.voice.position ?? 0,
-			duration: current ? knownOrNull(current.voice.duration) : null,
+			position: current ? this.#position(current) : 0,
+			duration: current ? knownOrNull(this.#length(current)) : null,
 			crossfadeFrom: current ? this.#crossfadePoint(current) : null,
 			resume: this.#resumePoint ? { ...this.#resumePoint, track: this.#playlist.tracks[this.#resumePoint.trackIndex] } : null,
 		};
@@ -211,7 +213,7 @@ export class PlaylistPlayer {
 		if (!current) {
 			return;
 		}
-		const index = current.voice.position > RESTART_THRESHOLD_SECONDS ? null : this.#history.previous();
+		const index = this.#position(current) > RESTART_THRESHOLD_SECONDS ? null : this.#history.previous();
 		if (index === null) {
 			this.seek(0);
 			this.resume();
@@ -304,11 +306,25 @@ export class PlaylistPlayer {
 	/**
 	 * Takes a changed copy of the playlist, with the same tracks in the same order (a renamed track, say), and announces
 	 * the current track again so its new title shows.
+	 *
+	 * Changed start or end points never reach a track that is playing. But a paused track and a remembered one go back
+	 * to their new start: the paused playlist stops, and a resume point keeps its track without the position.
 	 * @param {PlaylistJson} playlist
 	 */
 	setPlaylist(playlist) {
+		const old = this.#playlist;
+		const moved = (/** @type {number | null} */ index) => index !== null
+			&& (playlist.tracks[index].startAt !== old.tracks[index].startAt || playlist.tracks[index].endAt !== old.tracks[index].endAt);
 		this.#playlist = playlist;
-		if (this.#state !== 'idle') {
+		const pausedTrack = this.#state === 'paused' ? this.#current?.trackIndex ?? null : null;
+		if (moved(pausedTrack)) {
+			this.#stop('instant', true);
+		}
+		const resumePoint = this.#resumePoint;
+		if (resumePoint && resumePoint.position !== null && moved(resumePoint.trackIndex)) {
+			this.#resumePoint = { ...resumePoint, position: null };
+			this.#emitState();
+		} else if (this.#state !== 'idle') {
 			this.#emitState();
 		}
 	}
@@ -360,7 +376,25 @@ export class PlaylistPlayer {
 	 * @param {CurrentVoice} current
 	 */
 	#positionOf(current) {
-		return current.loaded ? current.voice.position : current.pendingSeek ?? 0;
+		return current.loaded ? this.#position(current) : current.pendingSeek ?? 0;
+	}
+
+	/**
+	 * How far into the part that plays the voice is. Positions the facade reports and accepts count from the start point;
+	 * only the voice itself works in file time (DESIGN.md §6.3).
+	 * @param {CurrentVoice} current
+	 */
+	#position(current) {
+		return Math.max(0, current.voice.position - current.start);
+	}
+
+	/**
+	 * The length of the part that plays: NaN until the voice has loaded and knows the length of its file, which also
+	 * caps an end point past the real end.
+	 * @param {CurrentVoice} current
+	 */
+	#length(current) {
+		return Math.max(0, Math.min(current.voice.duration, current.endAt ?? Infinity) - current.start);
 	}
 
 	/**
@@ -385,10 +419,19 @@ export class PlaylistPlayer {
 	 * @param {number} toIndex
 	 */
 	#overlap(current, toIndex) {
-		const { duration } = current.voice;
-		const fromDuration = Number.isFinite(duration) ? duration : this.#playlist.tracks[current.trackIndex].duration;
-		const toDuration = this.#playlist.tracks[toIndex].duration;
-		return Math.min(this.#rules.crossfade, (fromDuration ?? Infinity) / 2, (toDuration ?? Infinity) / 2);
+		const length = this.#length(current);
+		const fromLength = Number.isFinite(length) ? length : this.#trackLength(current.trackIndex);
+		return Math.min(this.#rules.crossfade, fromLength / 2, this.#trackLength(toIndex) / 2);
+	}
+
+	/**
+	 * The length of the part of a track that plays, from its stored duration; infinite when that is unknown.
+	 * @param {number} index
+	 */
+	#trackLength(index) {
+		const track = this.#playlist.tracks[index];
+		const { startAt, endAt } = planTrack(track, this.#rules);
+		return track.duration === null ? Infinity : Math.max(0, Math.min(track.duration, endAt ?? Infinity) - startAt);
 	}
 
 	/**
@@ -396,33 +439,33 @@ export class PlaylistPlayer {
 	 * @param {CurrentVoice} current
 	 */
 	#crossfadePoint(current) {
-		const { duration } = current.voice;
+		const length = this.#length(current);
 		// A looping track starts over seamlessly instead of crossfading into the next one.
-		if (this.#rules.crossfade <= 0 || this.#rules.trackLooping || !Number.isFinite(duration)) {
+		if (this.#rules.crossfade <= 0 || this.#rules.trackLooping || !Number.isFinite(length)) {
 			return null;
 		}
 		const next = this.#history.upcoming();
 		if (next === null) {
 			return null;
 		}
-		return Math.max(0, duration - this.#overlap(current, next));
+		return Math.max(0, length - this.#overlap(current, next));
 	}
 
 	/**
-	 * Where a seek in a loaded track lands: within the track, and never past the crossfade point, so seeking towards the
-	 * end starts the whole crossfade instead of a squeezed one (DESIGN.md §8.4).
+	 * Where a seek in a loaded track lands, as a position in the voice's file: within the part that plays, and never past
+	 * the crossfade point, so seeking towards the end starts the whole crossfade instead of a squeezed one (DESIGN.md §8.4).
 	 * @param {CurrentVoice} current
-	 * @param {number} seconds
+	 * @param {number} seconds from the start point
 	 */
 	#seekTarget(current, seconds) {
-		const limit = this.#crossfadePoint(current) ?? current.voice.duration;
-		return Math.min(Math.max(0, seconds), limit);
+		const limit = this.#crossfadePoint(current) ?? this.#length(current);
+		return current.start + Math.min(Math.max(0, seconds), limit);
 	}
 
 	/** @param {CurrentVoice} current */
 	#timeLeft(current) {
-		const { duration, position } = current.voice;
-		return Number.isFinite(duration) ? Math.max(0, duration - position) : Infinity;
+		const length = this.#length(current);
+		return Number.isFinite(length) ? Math.max(0, length - this.#position(current)) : Infinity;
 	}
 
 	/**
@@ -470,7 +513,7 @@ export class PlaylistPlayer {
 	/**
 	 * @param {number} index
 	 * @param {TransitionTiming} timing
-	 * @param {number | null} [at] where to start instead of the track's start point, when resuming
+	 * @param {number | null} [at] where to start instead of the track's start point, in seconds from it, when resuming
 	 */
 	#startTrack(index, timing, at = null) {
 		const generation = ++this.#generation;
@@ -484,11 +527,11 @@ export class PlaylistPlayer {
 			return;
 		}
 
-		const voice = this.#engine.createStreamVoice({ url: track.url, bus: 'music', label: track.title, gain: this.#voiceGain(index) });
-		const { startAt } = planTrack(track, this.#rules);
-		const seekTo = at ?? startAt;
+		// The range is fixed here, so editing the track's points never moves a track that is already playing.
+		const { startAt, endAt } = planTrack(track, this.#rules);
+		const voice = this.#engine.createStreamVoice({ url: track.url, bus: 'music', label: track.title, gain: this.#voiceGain(index), startAt, endAt });
 		/** @type {CurrentVoice} */
-		const current = { voice, trackIndex: index, generation, loaded: false, pendingSeek: seekTo > 0 ? seekTo : null };
+		const current = { voice, trackIndex: index, generation, loaded: false, start: startAt, endAt, pendingSeek: at !== null && at > 0 ? at : null };
 		this.#current = current;
 		voice.on('loaded', () => this.#onLoaded(current));
 		voice.on('ended', () => this.#onEnded(current));
@@ -634,8 +677,8 @@ export class PlaylistPlayer {
 			this.#emit({
 				type: 'playlist.progress',
 				playlistId: this.#playlist.id,
-				position: current.voice.position,
-				duration: knownOrNull(current.voice.duration),
+				position: this.#position(current),
+				duration: knownOrNull(this.#length(current)),
 				crossfadeFrom: this.#crossfadePoint(current),
 			});
 		}
