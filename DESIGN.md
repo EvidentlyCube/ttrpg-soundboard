@@ -17,6 +17,7 @@ node index.js <path-to-audio-directory> [--port <number>] [--verbose]
 - The server listens on `127.0.0.1` only. The default port is `3000`; `--port` accepts 1–65535.
 - Output is quiet by default: the startup summary, warnings and errors. `--verbose` also logs every HTTP request (§5.2).
 - After startup it prints `Soundboard running at http://127.0.0.1:3000` and `Press Ctrl+C to stop.` The user opens that URL themselves.
+- While it runs, it watches the directory. Files added, removed or changed from outside the app are not loaded by themselves: the page offers a refresh, which rebuilds the library as a restart would (§3.6, §5.3).
 - It is always started by hand from a terminal. There is no unattended mode.
 
 ### 1.1 Constraints
@@ -196,9 +197,7 @@ Playlists without tracks take no further part: no question is asked about their 
 
 ### 3.4 Result
 
-Bootstrap reports how many options files it created or updated and how many playlists and sounds were loaded. It returns an in-memory `Library` (§5.1) and a `SettingsStore` loaded from `.soundboard`. The server keeps only these, never file contents.
-
-**Extension point:** the library is built once at startup. Rescanning while running would reuse `BootstrapService` and the scanner ([roadmap](ROADMAP.md)).
+Bootstrap reports how many options files it created or updated and how many playlists and sounds were loaded. It returns an in-memory `Library` (§5.1), a `SettingsStore` loaded from `.soundboard`, and the scan it built them from, which the change watcher compares against (§5.3). The server keeps only these, never file contents. A refresh builds them again (§3.6).
 
 ### 3.5 Durations
 
@@ -209,6 +208,17 @@ In both modes, after the questions and without asking anything, bootstrap makes 
 - **Otherwise:** hash the whole file. If the hash is the same, only `size` and `modified` in `measuredFrom` are refreshed, because the file was merely copied or touched. If it differs, the file was replaced, so the duration is read again.
 
 A file whose duration can't be read is stored as `"duration": null` with its `measuredFrom`, so it isn't read again on every start. New options files get their duration in the same write as their title; existing ones are merged as usual (§2.3), and each counts as updated in the report. Before any file is read, bootstrap prints `Measuring the duration of N audio files…`. The first run therefore reads every file once; later runs only read files that look changed.
+
+### 3.6 Refresh
+
+While the server runs, `BootstrapService.refresh(root)` builds the library again from the files, as a later run would (§3.3), when the page asks for it after external changes (§5.3). It uses the same `Reporter`, so its output goes to the terminal as at startup, after the line `Refreshing after external changes…`. It never asks anything. Differences from a start:
+
+- **No `.soundboard`** would make it a first run, which has questions to ask. The refresh stops at once with `noSettings`, writing nothing, and the page asks for a restart.
+- **Validation errors** (§2.3) don't end the process. The refresh returns them (`invalid`), writes nothing, and the server keeps the library it has.
+- **New nested subdirectories** are merged into their playlists without asking, but **not recorded** in `includedSubdirectories`. A playlist options file the refresh creates lists none either. The next start from the terminal therefore still asks about them and records the answer (§3.3 step 5).
+- **Orphaned files** only get the usual warnings (§3.1 step 4).
+
+On success the server replaces its library and settings store with the new ones (§5.2), and the change watcher takes a new baseline (§5.3).
 
 ---
 
@@ -281,6 +291,9 @@ The server knows nothing about playback state.
 | GET | `/api/waveforms` | `{ "missing": ["Boom.mp3", "Combat/1.mp3", …] }`: the ids with no current waveform, sounds first (`WaveformStore.missing`) |
 | GET | `/api/waveforms/<encoded id>` | The 2048 peak bytes as `application/octet-stream` (the header stays on the server). `404` when there is no current waveform or the id is not a sound or track. |
 | PUT | `/api/waveforms/<encoded id>` | Body: exactly 2048 bytes of peaks. Stored next to the audio file; `204`. `400` for another length, `404` for an unknown id, `413` for bodies over 4 KB. Ids are decoded as for tracks. |
+| GET | `/api/events` | Server-sent events (`text/event-stream`, `Cache-Control: no-store`): `data: {"externalChanges":false}` (or `true`) at once, then again whenever the value changes (§5.3). A `: keep-alive` comment every 30 s keeps the connection open. The stream stays open until the page goes away or the server stops. |
+| POST | `/api/changes/check` | A quick check of the directory, by size and modified time only (§5.3). Returns `{ "externalChanges": true }` or `false`. |
+| POST | `/api/refresh` | Rebuilds the library from the files (§3.6) and answers once it has finished: `200 {}`. `422 { "error": "Some options files are invalid", "errors": [{ "path": "Combat/1.mp3.json", "message": "…" }] }` with one entry per problem, the path relative to the root using `/`; the old library stays. `503` when `.soundboard` is gone ("Restart the app"), or when the server was started without a refresh (tests). |
 | GET, HEAD | `/media/<encoded id>` | The audio file, streamed |
 
 - API responses are JSON with `Cache-Control: no-store`. Errors are `{ "error": "message" }`.
@@ -313,11 +326,29 @@ Each path segment of a media URL is percent-encoded separately. The library refl
 - The body is a file read stream piped with `stream.pipeline`. A client disconnecting mid-stream (seeking, skipping tracks) is normal: the stream is closed and nothing is logged as an error.
 - `HEAD` returns the same headers with no body.
 
+**Refreshing.** The library, its `LibraryEditor` and `WaveformStore`, and the `SettingsStore` sit in the router's context, and each request reads them when it starts, so a successful refresh swaps all four at once. Refresh requests that arrive while one runs share its result. Every other `/api/…` request (except `/api/events`) that arrives during a refresh waits for it to finish, so a save always reaches the library that is served afterwards.
+
 **Other server behavior:**
 - Unexpected errors (500s, failed streams) are always printed to stderr with their stack trace.
 - With `--verbose`, each request is logged to stdout when its response finishes or the client disconnects: `GET /media/Combat/01%20Battle.mp3 206 bytes=0-1023 12ms`. That is the method, the raw path, the status, the `Range` header if there was one, and the duration. A request whose client disconnected first ends with `(aborted)`.
 - If the port is in use, or not allowed, print a clear message and exit `1`.
-- On SIGINT or SIGTERM, close the server, including open media streams, print `Stopped.` and exit `0`.
+- On SIGINT or SIGTERM, stop the change watcher, close the server, including open media streams and event streams, print `Stopped.` and exit `0`.
+
+### 5.3 Change watcher (`ChangeWatcher`)
+
+`src/library/change-watcher.js` tells whether the directory still holds what the app last loaded. It never loads anything itself; a refresh does (§3.6). `src/cli/main.js` creates it before bootstrap and starts it once bootstrap has finished writing.
+
+- **Baseline.** `takeBaseline` in `tree-snapshot.js` records every file the app reads (§2.1): audio files, their options files, playlist options files and `.soundboard`, each with its size, modified time and SHA-1. Options files and `.soundboard` are hashed; audio files take the SHA-1 their options file recorded with the duration (§3.5) when its size and time still match, so no audio is read. The snapshot comes from the scanner, so it skips exactly what the scanner skips: dot files, waveforms (`.wf`), `.tmp` files, unsupported audio, orphan `.json` files and symlinks.
+- **While bootstrap ran.** The baseline is taken after bootstrap, and its audio files are compared with the scan bootstrap used. Any difference means files changed meanwhile, and counts as an external change straight away.
+- **Watching.** `fs.watch(root, { recursive: true })` only says that something changed. After 1 s without further events (`QUIET_MS`), so a copy in progress is looked at once it stops, the watcher snapshots the directory and compares it with the baseline:
+  - a file that is new or gone is a **change**;
+  - a file with the same size and modified time is unchanged;
+  - otherwise the file is hashed. A different SHA-1, or one the baseline doesn't know, is a **change**; the same one only updates the baseline's size and time, because the file was merely touched or copied.
+- **Quick checks** compare sizes and modified times only and never hash, so there a touched file counts as a change. The page asks for one whenever it gets the focus back (`POST /api/changes/check`). If `fs.watch` throws or reports an error (for example when Linux runs out of inotify watches), the watcher prints `Can't watch the audio directory (…); checking it every 30 seconds instead.` and runs a quick check every 30 s (`POLL_MS`).
+- **Once a change is found**, `externalChanges` becomes `true`, every listener hears about it (the event streams, §5.2), and no more comparisons run until the next refresh. A directory that can no longer be read also counts as changed, with the reason printed; the refresh then says what is wrong.
+- **Own writes.** `LibraryEditor` and `SettingsStore` save through `watcher.updateFile`, which writes the file as `updateJsonFile` does (§2.3) and then records its new size, time and SHA-1 in the baseline. Bootstrap writes before the baseline is taken. The app's own saves therefore never count as external changes.
+- **Taking turns.** Comparisons, own writes and refreshes run one at a time, in the order they were asked for. A comparison never sees a file the app is halfway through saving, and none runs while a refresh rewrites files. `watcher.refresh(rebuild)` runs the rebuild that way and, when it succeeded, takes a new baseline and sets `externalChanges` back to `false`.
+- The timers (`setTimeout`, `setInterval`) and `fs.watch` are injected, so tests run the delays on a fake clock.
 
 ---
 
@@ -331,12 +362,13 @@ UI layer (DOM)  ──commands──▶  Soundboard (logic facade)  ──▶  A
                                                 (browser)                 (tests, fake clock)
 ```
 
-- `public/app/main.js` is the composition root. It creates the `WebAudioEngine`, the `WebAudioWaveformDecoder`, the `HttpBackendApi`, the browser clock and the `console` logger, passes them to `Soundboard`, and mounts the UI.
+- `public/app/main.js` is the composition root. It creates the `WebAudioEngine`, the `WebAudioWaveformDecoder`, the `HttpBackendApi`, the `EventSourceServerEvents`, the browser clock and the `console` logger, passes them to `Soundboard`, and mounts the UI.
 - `public/app/logic/**` **never touches** `window`, `document`, audio APIs or Node APIs. Everything it needs is injected through ports, whose types live in `public/app/logic/ports.js`:
   - the `AudioEngine` (§6.3);
   - a `Clock` (`now`, `setTimeout`, `clearTimeout`, `setInterval`, `clearInterval`); `now()` is a monotonic time in milliseconds, which the voice monitor (§6.5) uses to follow fades;
   - a `BackendApi` (`fetchLibrary()`, `fetchSettings()`, `saveVolumes(volumes, { keepalive })`, `saveSoundOptions(soundId, { title, gain, startAt, endAt, fadeIn, fadeOut }, { keepalive })`, `savePlaylistOptions(playlistId, { title, gain, crossfade, fadeIn, fadeOut, order, trackLooping, stopMode }, { keepalive })`, `saveTrackOptions(trackId, { title, gain, startAt, endAt }, { keepalive })`);
   - a `WaveformDecoder` (§6.6), and the `BackendApi` methods `fetchMissingWaveforms()`, `fetchWaveform(id)` and `saveWaveform(id, peaks)`;
+  - for external changes (§6.7), the `BackendApi` methods `checkExternalChanges() → Promise<boolean>` and `refresh() → Promise<RefreshResult>`, and optionally `ServerEvents` (`connect(onMessage) → disconnect`), the server's pushed `{ externalChanges }` messages. `api/server-events.js` implements it with `EventSource` on `/api/events`, which reconnects by itself; the server sends its current state on every connection;
   - a `Logger` (`warn`, `error`);
   - optionally a `random` function for the random playback orders (§8.1), `Math.random` unless tests pass a seeded one.
 
@@ -387,12 +419,17 @@ flushTrackOptions(trackId)                // save that track's pending change no
 startWaveforms()                          // ask the server what is missing and make it; also runs by itself after 'app.ready'
 stopWaveforms()                           // stop after the file being decoded; its result is dropped
 
+// external changes (§6.7): not commands, because they are not playback
+checkExternalChanges()                    // ask the server for a quick check; the UI calls it when the window gets the focus back
+refreshLibrary() → Promise<void>          // save everything pending, then have the server rebuild its library
+
 // volume (value is the slider position, 0..1, clamped)
 setVolume(bus, value)                     // bus: 'master' | 'music' | 'sfx'
 
 // queries (read-only snapshots)
 getLibrary(), getPlaylistSnapshot(id), getActivePlaylists() /* in start order */, getVolumes(), isSoundActive(id)
 getWaveformStatus()                       // { running, done, total, failed }
+hasExternalChanges()                      // whether the server reported files changed outside the app
 getWaveform(id) → Promise<Int8Array | null>  // min/max byte pairs of a sound or track, cached; null while there is none
 getVoices()                               // every voice the audio engine plays or recently played, oldest first (§6.5)
 
@@ -433,6 +470,10 @@ on(type, handler) → unsubscribe, off(type, handler)
 | `waveforms.progress` | `{ status: { running, done, total, failed } }`, whenever generation starts, stops, finishes a file or fails one |
 | `waveform.ready` | `{ id }`, once a waveform has been made and stored; `getWaveform(id)` has it |
 | `voices.changed` | `{}`, sent when a voice appears, changes status or is removed from the voice monitor's list (§6.5). Volumes move continuously and are not announced; read them with `getVoices()`. |
+| `library.externalChanges` | `{ pending }`, whenever the server's answer about external changes differs from the last one (§6.7) |
+| `library.refreshing` | `{}`, when `refreshLibrary` starts |
+| `library.refreshed` | `{}`, once the server has rebuilt its library; the page should reload |
+| `library.refreshFailed` | `{ message, errors, restartNeeded }`: `errors` lists `{ path, message }` for invalid options files; `restartNeeded` is `true` when `.soundboard` is gone |
 
 ### 6.3 AudioEngine port
 
@@ -496,7 +537,7 @@ Volumes are saved in `.soundboard` (§2.3), so they survive reloads and restarts
 - **Sounds.** Every instance plays at the sound's gain.
 - **Playlists.** Every playlist voice plays at `playlist gain × track gain`, through the voice's own gain stage (§6.3), so no extra node per playlist is needed.
 - **Applying.** `customizeSound`, `customizePlaylist` and `customizeTrack` change the browser's library at once (`LibraryModel.updateSound` / `updatePlaylist` / `updateTrack`, which keep the items sorted with the same order as the server, §2.2). `SoundPlayer.setGain` applies a sound's gain to every playing instance and to later ones; `PlaylistPlayer.setGain` applies a playlist's gain to its current voice, to voices still fading out, and to later ones. A track's new gain reaches the playlist through `PlaylistPlayer.setPlaylist` (§8.1), which applies it to the same voices at once. An empty title, a gain out of range or an unknown order is an `InvalidCommandError`.
-- **Saving.** `OptionsSync` saves per item like the volume save: 500 ms after the last change, one request per item in flight, always the item's full editable options, so a failed save is repaired by the next one. Its queues are keyed by kind (`sound`, `playlist`, `track`) and id, so items of different kinds with the same id never share one. `flushSoundOptions`, `flushPlaylistOptions` and `flushTrackOptions` send one item's pending change now (after any save of it in flight); `flushSettings` sends everything pending with `keepalive`.
+- **Saving.** `OptionsSync` saves per item like the volume save: 500 ms after the last change, one request per item in flight, always the item's full editable options, so a failed save is repaired by the next one. Its queues are keyed by kind (`sound`, `playlist`, `track`) and id, so items of different kinds with the same id never share one. `flushSoundOptions`, `flushPlaylistOptions` and `flushTrackOptions` send one item's pending change now (after any save of it in flight); `flushSettings` sends everything pending with `keepalive`. `SettingsSync.settle()` and `OptionsSync.settleAll()` send everything pending without `keepalive` and resolve once nothing is waiting or in flight, follow-up saves included; a failed save is reported as usual and doesn't reject. A refresh waits for them (§6.7).
 
 ### 6.5 Voice monitor (`VoiceMonitor`)
 
@@ -525,6 +566,14 @@ A created voice is wrapped in a `MonitoredVoice` that forwards its calls and rec
 - **Reading.** `get(id)` fetches a waveform once and caches it (about 2 KB each); a `404` is not cached, so a waveform made later is found. A waveform just made is cached as it is stored.
 - **The decoder** (`WaveformDecoder`, `audio/web-audio-waveform-decoder.js`) fetches `/media/<id>`, decodes it with an `OfflineAudioContext` at 8000 Hz (22050 or 44100 Hz if the browser refuses), and reduces the samples to 1024 min/max pairs with `logic/peaks.js`. The decoder resamples while decoding, so a 5-minute stereo track takes about 10 MB instead of 100 MB, and only the 2 KB of peaks leave the method. It is the one part not covered by unit tests (TESTING.md).
 - **Drawing** (§9.7, §9.2) scales each waveform to its own loudest peak, so quiet files still show their shape.
+
+### 6.7 External changes
+
+The page never changes its library while it runs. When files change outside the app, it only learns that they did, and the user decides when to load them, by a full reload.
+
+- **Learning about changes.** Once the library has loaded, the facade connects to `ServerEvents` and keeps `hasExternalChanges()` in step with the server's messages, announcing every change of it as `library.externalChanges`. `checkExternalChanges()` asks the server for a quick check (§5.3) and announces its answer the same way. It does nothing before the library has loaded, or while a check is still running; a failed check is logged as a warning.
+- **Refreshing.** `refreshLibrary()` emits `library.refreshing`, then waits for `SettingsSync.settle()` and `OptionsSync.settleAll()` (§6.4), so the rebuild reads the user's latest edits, and calls `BackendApi.refresh()`. It ends with `library.refreshed`, or with `library.refreshFailed` for invalid options files (with their problems), a missing `.soundboard` (`restartNeeded`) or a request that failed (logged as an error). A call while one runs is ignored.
+- **Reloading.** Logic never touches `window`, so the UI reloads the page on `library.refreshed` (§9.1). The new page starts from the splash like any other (§9.0) and loads the new library; nothing about playback survives, which is how every reload already behaves.
 
 ---
 
@@ -686,6 +735,7 @@ Browsers only allow audio to start inside a user gesture, so the app starts behi
 - On page load the app does **nothing** except show the splash: the app name and **"Click anywhere to start"**. No audio context, no API requests.
 - The first click calls `soundboard.start()`, which creates and resumes the `AudioContext` **synchronously** inside the click. The splash shows "Loading…" while the library and settings are fetched.
 - On `app.ready` the splash is hidden and the board is rendered. On `app.startFailed` the splash shows "Could not start the soundboard. Click to retry." with the error; clicking starts again.
+- **Restart needed.** When a refresh fails because `.soundboard` is gone (§6.7), the splash comes back for good as "The audio folder needs a restart. Restart the app, then reload this page.", with the server's message under it. Clicks do nothing.
 - **Re-locking.** If the system suspends audio later (the Mac sleeps, or another app takes the audio device), `audio.suspended` closes any open popup (an open Customize dialog stays, underneath the splash) and brings the splash back as "Audio paused by the system. Click to resume." A click calls `unlockAudio()`, and the splash hides on `audio.resumed`. Playlist state is kept.
 
 ```
@@ -708,7 +758,7 @@ Browsers only allow audio to start inside a user gesture, so the app starts behi
 
 ### 9.1 Layout
 
-- The page is a full-height column: header (title, the waveform progress while there is any, volume controls and the debug button, §9.8), a scrolling main area, then the footer.
+- The page is a full-height column: header (title, the external changes button while there are any, the waveform progress while there is any, volume controls and the debug button, §9.8), a scrolling main area, then the footer.
 - The main area has a "Playlists" section above a "Sound Effects" section; empty sections are left out. With neither, it says no playlists or sounds were found.
 - Tiles are `<button>`s in a grid of columns at least 10rem (160 px) wide, with titles clamped to 3 lines. The full title shows as a tooltip.
 - Playlist tiles have a blue accent and sound tiles an amber one.
@@ -721,6 +771,7 @@ Browsers only allow audio to start inside a user gesture, so the app starts behi
 - The footer shows **playlists only**. Sound effects never create a player bar.
 - The footer is **always visible**, so the layout doesn't shift when music starts or stops. It is at least one row of player bars tall; while no playlist is active, that row shows a muted "No playlist playing". Player bars sit in a three-column grid, in the order the playlists were started. The footer grows to at most two rows of bars; beyond that it scrolls vertically.
 - **Waveform progress** (`ui/waveform-indicator.js`) sits in the header left of the volume controls: "Waveforms 12 / 87" (with ", 2 failed" and ", stopped" when they apply), a thin bar and a ■ button that stops generation, or a ▶ button that starts it again. It is shown only while generation runs, or when some waveforms are missing or failed, and follows `waveforms.progress` through text and an inline width (§6.6).
+- **External changes** (`ui/external-changes-button.js`, §6.7). A yellow (`bg-notice`) **External Changes – Refresh** button sits in the header left of the waveform progress, shown only while `hasExternalChanges()` is true. Its tooltip says the page will reload and playback stop. Clicking it calls `refreshLibrary()`; meanwhile it is disabled and reads "Refreshing…". On `library.refreshed` the App reloads the page. When the refresh fails, the button comes back, and a dialog titled "Could not load the changes" lists each problem with its file ("Nothing was loaded. Fix or delete these files, then refresh again:"); a missing `.soundboard` brings back the splash instead (§9.0). The App also calls `checkExternalChanges()` whenever the window gets the focus back, so a change made in another window shows up at once.
 - Color tokens are defined once, in Tailwind's `@theme` (§9.6).
 
 ### 9.2 Player bar
@@ -788,6 +839,7 @@ UI components extend `Component` (`ui/component.js`): `render()` builds the elem
 - Components style themselves with utility classes. App-wide tokens (colors, fonts) and base styles live in one `<style type="text/tailwindcss">` block in `index.html`, using `@theme`. A small plain `<style>` sets the page background before Tailwind runs, so the page never flashes white.
   - `raised-dim` and `line-dim` are opaque colors halfway between `raised` / `line` and the dialog's `panel`, for cards at rest (§9.7). They are opaque so a pill drawn over a border never lets the border show through.
   - `animate-warn` pulses a background between the app's red and a darker red twice a second, for settings that can't play out as set (§9.7).
+  - `notice` is the yellow of the external changes button (§9.1), kept apart from the sound effects' amber so it doesn't read as a tile.
 - Colors that a component picks at runtime (a dialog's accent) are looked up in small maps of complete class names (`ACCENTS`), because the browser build only generates classes it sees written out.
 - The browser build watches the DOM and generates CSS for class names as they first appear. Keeping that cheap:
   - Anything that changes several times a second (progress bars, time readouts) is updated through inline `style` or text, **never** by swapping classes.
@@ -903,8 +955,9 @@ src/
 	cli/        main.js  args.js  prompter.js  reporter.js  colors.js
 	library/    bootstrap-service.js  scanner.js  classify.js  sort.js  validate.js  errors.js
 	            options-store.js  settings-store.js  library.js  library-editor.js  durations.js  waveform-store.js
+	            change-watcher.js  tree-snapshot.js
 	metadata/   index.js  id3.js  ogg.js  mpeg.js  binary-reader.js
-	http/       server.js  router.js  responses.js  static-files.js  media.js  range.js  mime.js  request-log.js
+	http/       server.js  router.js  responses.js  static-files.js  media.js  range.js  mime.js  request-log.js  events.js
 public/
 	index.html  favicon.svg
 	vendor/     tailwindcss-browser-<version>.js  tailwindcss-browser.LICENSE   (excluded from lint and type-checking)
@@ -916,8 +969,8 @@ public/
 			sound-player.js  buffer-cache.js  clip.js  volume.js  settings-sync.js  options-sync.js  sort.js
 			voice-monitor.js  fade-ramp.js  peaks.js  waveform-service.js
 		audio/      web-audio-engine.js  web-audio-waveform-decoder.js
-		api/        backend-api.js
-		ui/         app.js  component.js  dom.js  icons.js  format.js  menus.js  position.js
+		api/        backend-api.js  server-events.js
+		ui/         app.js  component.js  dom.js  icons.js  format.js  menus.js  position.js  external-changes-button.js
 		            splash.js  overlay.js  context-menu.js  track-list.js  tile-grid.js
 		            playlist-tile.js  sound-tile.js  player-dock.js  player-bar.js  volume-controls.js
 		            dialog.js  customize-parts.js  filled-field.js  sound-editor.js  playlist-editor.js  track-accordion.js
