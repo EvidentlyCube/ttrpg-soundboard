@@ -39,15 +39,19 @@ export class PlaylistEditor extends Component {
 	/** Tracks renamed while the dialog was open, whose saves are flushed when it closes. @type {Set<string>} */
 	#editedTracks = new Set();
 
+	#onAddTracks;
+
 	/**
 	 * @param {object} options
 	 * @param {Soundboard} options.soundboard
 	 * @param {PlaylistJson} options.playlist
+	 * @param {() => void} options.onAddTracks opens the add dialog for this playlist
 	 */
-	constructor({ soundboard, playlist }) {
+	constructor({ soundboard, playlist, onAddTracks }) {
 		super();
 		this.#soundboard = soundboard;
 		this.#playlist = playlist;
+		this.#onAddTracks = onAddTracks;
 	}
 
 	/** @override */
@@ -189,6 +193,12 @@ export class PlaylistEditor extends Component {
 		// The track list runs edge to edge, between the tab bar and the Play row, so it cancels the dialog's padding and the gaps around it.
 		const tracksPanel = h('div', { class: '-mx-5 -mt-5 mb-0' });
 		tracks.mount(tracksPanel);
+		tracksPanel.append(h('div', { class: 'border-t border-line px-5 py-3' }, h('button', {
+			'type': 'button',
+			'class': 'cursor-pointer rounded-md px-2 py-1 text-sm font-medium text-music hover:bg-music/15',
+			'data-add-tracks': true,
+			'onClick': () => this.#onAddTracks(),
+		}, '+ Add tracks')));
 		this.own(() => tracks.destroy());
 		this.own(soundboard.on('track.saved', (event) => {
 			if (trackIds.has(event.trackId)) {

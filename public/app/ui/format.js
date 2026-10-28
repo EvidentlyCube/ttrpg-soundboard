@@ -1,4 +1,19 @@
 /**
+ * A file size in decimal units, as operating systems show them: `840 KB`, `1.4 GB`.
+ * @param {number} bytes
+ */
+export function formatBytes(bytes) {
+	const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+	let value = bytes;
+	let unit = 0;
+	while (value >= 1000 && unit < units.length - 1) {
+		value /= 1000;
+		unit++;
+	}
+	return unit === 0 ? `${value} B` : `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`;
+}
+
+/**
  * `m:ss`, or `h:mm:ss` from an hour on; `--:--` while the time is unknown.
  * @param {number | null} seconds
  */

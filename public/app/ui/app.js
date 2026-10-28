@@ -1,5 +1,7 @@
+import { AddDialog } from './add-dialog.js';
 import { Component } from './component.js';
 import { DebugView } from './debug-view.js';
+import { DownloadDialog } from './download-dialog.js';
 import { ExternalChangesButton } from './external-changes-button.js';
 import { Dialog } from './dialog.js';
 import { h, on } from './dom.js';
@@ -142,36 +144,86 @@ class Board extends Component {
 
 		const main = h('main', { class: 'min-h-0 flex-1 space-y-8 overflow-y-auto px-5 py-5' });
 		const { playlists, sounds } = this.#library;
-		if (playlists.length > 0) {
-			const { section, grid } = tileGrid('Playlists');
-			const onCustomize = (/** @type {string} */ playlistId) => this.#customizePlaylist(playlistId);
-			for (const playlist of playlists) {
-				const tile = new PlaylistTile({ soundboard, overlay, playlist, playable: playlist.tracks.some(isPlayable), onCustomize }).mount(grid);
-				this.#playlistTiles.set(playlist.id, tile);
-				this.#adopt(tile);
-			}
-			this.#playlistGrid = grid;
-			main.append(section);
-		}
-		if (sounds.length > 0) {
-			const { section, grid } = tileGrid('Sound Effects');
-			const onCustomize = (/** @type {string} */ soundId) => this.#customizeSound(soundId);
-			for (const sound of sounds) {
-				const tile = new SoundTile({ soundboard, overlay, sound, playable: isPlayable(sound), onCustomize }).mount(grid);
-				this.#soundTiles.set(sound.id, tile);
-				this.#adopt(tile);
-			}
-			this.#soundGrid = grid;
-			main.append(section);
-		}
-		if (playlists.length === 0 && sounds.length === 0) {
-			main.append(h('p', { class: 'text-muted' }, 'No playlists or sounds were found in this folder.'));
-		}
+		const empty = h('p', { class: 'text-muted' }, 'No playlists or sounds were found in this folder.');
+		empty.hidden = playlists.length > 0 || sounds.length > 0;
 
-		const root = h('div', { class: 'flex h-full flex-col' }, header, main);
+		// Both sections are always there, even empty, so their add buttons can be reached.
+		const playlistSection = tileGrid('Playlists', { label: 'Add playlist', accent: 'music', onClick: () => this.#add({ kind: 'newPlaylist' }) });
+		const playlistGrid = playlistSection.grid;
+		/** @param {import('../logic/ports.js').PlaylistJson} playlist */
+		const addPlaylistTile = (playlist) => {
+			const tile = new PlaylistTile({
+				soundboard,
+				overlay,
+				playlist,
+				playable: playlist.tracks.some(isPlayable),
+				onCustomize: (playlistId) => this.#customizePlaylist(playlistId),
+				onAddTracks: (playlistId) => this.#add({ kind: 'playlist', playlistId }),
+			}).mount(playlistGrid);
+			this.#playlistTiles.set(playlist.id, tile);
+			this.#adopt(tile);
+		};
+		playlists.forEach(addPlaylistTile);
+		this.#playlistGrid = playlistGrid;
+
+		const soundSection = tileGrid('Sound Effects', { label: 'Add sound', accent: 'sfx', onClick: () => this.#add({ kind: 'sound' }) });
+		const soundGrid = soundSection.grid;
+		/** @param {AudioFileJson} sound */
+		const addSoundTile = (sound) => {
+			const tile = new SoundTile({ soundboard, overlay, sound, playable: isPlayable(sound), onCustomize: (soundId) => this.#customizeSound(soundId) }).mount(soundGrid);
+			this.#soundTiles.set(sound.id, tile);
+			this.#adopt(tile);
+		};
+		sounds.forEach(addSoundTile);
+		this.#soundGrid = soundGrid;
+		main.append(empty, playlistSection.section, soundSection.section);
+
+		// Downloads add items while the board is shown; they take their sorted place at once.
+		this.own(soundboard.on('sound.added', ({ sound }) => {
+			addSoundTile(sound);
+			empty.hidden = true;
+			sortTiles(soundboard.getLibrary()?.sounds ?? [], this.#soundTiles, this.#soundGrid);
+		}));
+		this.own(soundboard.on('playlist.added', ({ playlist }) => {
+			addPlaylistTile(playlist);
+			empty.hidden = true;
+			sortTiles(soundboard.getLibrary()?.playlists ?? [], this.#playlistTiles, this.#playlistGrid);
+		}));
+
+		// The download dialog covers the header and the board, but not the footer (DESIGN.md §9.10).
+		const upper = h('div', { class: 'relative flex min-h-0 flex-1 flex-col' }, header, main);
+		this.#adopt(new DownloadDialog(soundboard).mount(upper));
+		const root = h('div', { class: 'flex h-full flex-col' }, upper);
 		this.#adopt(new PlayerDock({ soundboard, overlay, playlists, isPlayable }).mount(root));
 		this.own(() => this.#dialog.close());
 		return root;
+	}
+
+	/**
+	 * Opens the add dialog for a target, or a notice when the server can't download.
+	 * @param {{ kind: 'sound' } | { kind: 'newPlaylist' } | { kind: 'playlist', playlistId: string }} target
+	 */
+	#add(target) {
+		const soundboard = this.#soundboard;
+		this.#overlay.close();
+		const tools = soundboard.getDownloadTools();
+		const missing = [tools.ytDlp === null && 'yt-dlp', tools.ffmpeg === null && 'ffmpeg'].filter(Boolean);
+		if (missing.length > 0) {
+			const body = h('div', { class: 'space-y-3 text-sm' },
+				h('p', {}, 'Downloads need yt-dlp and ffmpeg.'),
+				h('p', {}, `${missing.join(' and ')} ${missing.length === 1 ? 'was' : 'were'} not found when the app started. Install ${missing.length === 1 ? 'it' : 'them'}, then restart the app.`));
+			this.#dialog.open({ title: 'Downloads are not available', body });
+			return;
+		}
+		/** @type {Record<typeof target.kind, string>} */
+		const titles = { sound: 'Add sounds', newPlaylist: 'Add a playlist', playlist: 'Add tracks' };
+		let title = titles[target.kind];
+		if (target.kind === 'playlist') {
+			const playlist = soundboard.getLibrary()?.playlists.find((entry) => entry.id === target.playlistId);
+			title = `Add tracks to ${playlist?.title ?? target.playlistId}`;
+		}
+		const dialog = new AddDialog({ soundboard, target, onStarted: () => this.#dialog.close() });
+		this.#openEditor(title, dialog, () => {});
 	}
 
 	/** @param {Component} child */
@@ -196,7 +248,7 @@ class Board extends Component {
 		const soundboard = this.#soundboard;
 		const playlist = soundboard.getLibrary()?.playlists.find((entry) => entry.id === playlistId);
 		if (playlist) {
-			const editor = new PlaylistEditor({ soundboard, playlist });
+			const editor = new PlaylistEditor({ soundboard, playlist, onAddTracks: () => this.#add({ kind: 'playlist', playlistId }) });
 			this.#openEditor('Customize playlist', editor, () => {
 				editor.flushEdits();
 				sortTiles(soundboard.getLibrary()?.playlists ?? [], this.#playlistTiles, this.#playlistGrid);
@@ -218,7 +270,7 @@ class Board extends Component {
 
 	/**
 	 * @param {string} title
-	 * @param {SoundEditor | PlaylistEditor} editor
+	 * @param {SoundEditor | PlaylistEditor | AddDialog} editor
 	 * @param {() => void} onClose
 	 */
 	#openEditor(title, editor, onClose) {

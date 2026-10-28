@@ -21,6 +21,7 @@ export class PlaylistTile extends Component {
 	#playlist;
 	#playable;
 	#onCustomize;
+	#onAddTracks;
 
 	/**
 	 * @param {object} options
@@ -29,20 +30,24 @@ export class PlaylistTile extends Component {
 	 * @param {PlaylistJson} options.playlist
 	 * @param {boolean} options.playable false when this browser can play none of its tracks
 	 * @param {(playlistId: string) => void} options.onCustomize
+	 * @param {(playlistId: string) => void} options.onAddTracks
 	 */
-	constructor({ soundboard, overlay, playlist, playable, onCustomize }) {
+	constructor({ soundboard, overlay, playlist, playable, onCustomize, onAddTracks }) {
 		super();
 		this.#soundboard = soundboard;
 		this.#overlay = overlay;
 		this.#playlist = playlist;
 		this.#playable = playable;
 		this.#onCustomize = onCustomize;
+		this.#onAddTracks = onAddTracks;
 	}
 
 	/** @override */
 	render() {
 		const { id, title, tracks } = this.#playlist;
-		const idleStatus = `${tracks.length} ${tracks.length === 1 ? 'track' : 'tracks'}`;
+		const trackCount = (/** @type {number} */ count) => `${count} ${count === 1 ? 'track' : 'tracks'}`;
+		let idleStatus = trackCount(tracks.length);
+		let state = this.#soundboard.getPlaylistSnapshot(id).state;
 		const status = h('span', { class: 'text-xs text-muted group-data-[resume=true]:text-music' }, idleStatus);
 		let currentTitle = title;
 		/** @type {ResumePoint | null} */
@@ -72,26 +77,28 @@ export class PlaylistTile extends Component {
 			},
 		}, label, status);
 
-		/** @param {PlaylistState} state */
-		const show = (state) => {
+		const show = () => {
 			button.dataset.active = String(state !== 'idle');
 			button.dataset.resume = String(resume !== null);
 			button.title = tooltip();
 			status.textContent = STATUS[state] || (resume ? `Resumes ${describeResume(resume, false)}` : idleStatus);
 		};
-		show(this.#soundboard.getPlaylistSnapshot(id).state);
+		show();
 
 		this.own(this.#soundboard.on('playlist.changed', ({ playlist }) => {
 			if (playlist.id === id) {
 				currentTitle = playlist.title;
 				label.textContent = playlist.title;
-				button.title = tooltip();
+				// Downloads can add tracks.
+				idleStatus = trackCount(playlist.tracks.length);
+				show();
 			}
 		}));
 		this.own(this.#soundboard.on('playlist.stateChanged', (event) => {
 			if (event.playlistId === id) {
 				resume = event.resume;
-				show(event.state);
+				state = event.state;
+				show();
 			}
 		}));
 		this.own(this.#soundboard.on('playlist.error', (event) => {
@@ -115,6 +122,7 @@ export class PlaylistTile extends Component {
 			stop: () => soundboard.stopPlaylist(id),
 			stopInstant: () => soundboard.stopPlaylist(id, { transition: 'instant' }),
 			reset: () => soundboard.forgetPlaylist(id),
+			addTracks: () => this.#onAddTracks(id),
 			customize: () => this.#onCustomize(id),
 		};
 		actions[item]?.();

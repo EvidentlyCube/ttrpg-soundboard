@@ -38,6 +38,7 @@ export function playlistMenuItems({ state, resume }) {
 		{ id: 'stop', label: 'Stop', enabled: active, group: 2 },
 		{ id: 'stopInstant', label: 'Stop (Instant)', enabled: active, group: 2 },
 		{ id: 'reset', label: 'Reset', enabled: !active && resume !== null, group: 2 },
+		{ id: 'addTracks', label: 'Add tracks…', enabled: true, group: 3 },
 		{ id: 'customize', label: 'Customize', enabled: true, group: 3 },
 	];
 }
