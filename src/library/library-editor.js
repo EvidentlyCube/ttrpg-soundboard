@@ -21,7 +21,7 @@ const SECONDS_KEYS = ['crossfade', 'fadeIn', 'fadeOut'];
 const EDITABLE = {
 	sound: { keys: ['title', 'gain', 'startAt', 'endAt', 'fadeIn', 'fadeOut'], validate: validateAudioOptions },
 	playlist: { keys: ['title', 'gain', ...SECONDS_KEYS, 'order', 'trackLooping', 'stopMode'], validate: validatePlaylistOptions },
-	track: { keys: ['title'], validate: validateAudioOptions },
+	track: { keys: ['title', 'startAt', 'endAt'], validate: validateAudioOptions },
 };
 
 /** The id does not belong to a sound in the library. */
@@ -97,8 +97,8 @@ export class LibraryEditor {
 	}
 
 	/**
-	 * Like `updateSound`, for a track; only its title can change for now. Tracks keep their path order (DESIGN.md §2.2),
-	 * so nothing is sorted again.
+	 * Like `updateSound`, for a track; only its title and its start and end points can change for now. Tracks keep their
+	 * path order (DESIGN.md §2.2), so nothing is sorted again.
 	 * @param {string} trackId
 	 * @param {OptionChanges} changes
 	 * @returns {Promise<AudioFile>}
@@ -109,6 +109,10 @@ export class LibraryEditor {
 			throw new UnknownTrackError(trackId);
 		}
 		const normalized = normalizeChanges(changes, EDITABLE.track);
+		const clipProblems = checkClip({ startAt: track.startAt, endAt: track.endAt, ...normalized });
+		if (clipProblems.length > 0) {
+			throw new ValidationError(null, clipProblems);
+		}
 		await this.#queueWrite(`${track.absolutePath}.json`, (current) => ({ ...current, ...normalized }));
 		Object.assign(track, normalized);
 		return track;

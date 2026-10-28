@@ -312,10 +312,32 @@ describe('LibraryEditor.updateTrack', () => {
 		assert.deepEqual(await readOptions('Combat/1.mp3'), { title: 'New', gain: 0.5, futureKey: 1 });
 	});
 
-	it('accepts only a title, and rejects unknown ids and sound ids', async () => {
+	it('saves start and end points rounded to milliseconds, and an end of null', async () => {
+		const lib = library();
+		const editor = new LibraryEditor(lib);
+		const updated = await editor.updateTrack('Combat/1.mp3', { startAt: 0.12345, endAt: 2.0004 });
+		assert.equal(updated.startAt, 0.123);
+		assert.equal(updated.endAt, 2);
+		assert.deepEqual(await readOptions('Combat/1.mp3'), { startAt: 0.123, endAt: 2 });
+		await editor.updateTrack('Combat/1.mp3', { endAt: null });
+		assert.deepEqual(await readOptions('Combat/1.mp3'), { startAt: 0.123, endAt: null });
+	});
+
+	it('checks a changed point against the one already stored', async () => {
+		const editor = new LibraryEditor(library());
+		await editor.updateTrack('Combat/1.mp3', { startAt: 1, endAt: 2 });
+		const tooClose = /"endAt" must be at least 0.01 seconds after "startAt"/;
+		await assert.rejects(editor.updateTrack('Combat/1.mp3', { startAt: 2 }), tooClose);
+		await assert.rejects(editor.updateTrack('Combat/1.mp3', { endAt: 1.005 }), tooClose);
+		assert.deepEqual(await readOptions('Combat/1.mp3'), { startAt: 1, endAt: 2 });
+		await editor.updateTrack('Combat/1.mp3', { startAt: 5, endAt: null });
+		assert.deepEqual(await readOptions('Combat/1.mp3'), { startAt: 5, endAt: null });
+	});
+
+	it('accepts only a title and the points, and rejects unknown ids and sound ids', async () => {
 		const editor = new LibraryEditor(library());
 		await assert.rejects(editor.updateTrack('Combat/1.mp3', /** @type {any} */ ({ gain: 1 })), /Unknown option "gain"/);
-		for (const key of ['startAt', 'endAt', 'fadeIn', 'fadeOut']) {
+		for (const key of ['fadeIn', 'fadeOut']) {
 			await assert.rejects(editor.updateTrack('Combat/1.mp3', /** @type {any} */ ({ [key]: 1 })), new RegExp(`Unknown option "${key}"`));
 		}
 		await assert.rejects(editor.updateTrack('Combat/1.mp3', { title: ' ' }), /"title" must be a non-empty string/);
