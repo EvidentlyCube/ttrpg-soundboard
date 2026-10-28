@@ -371,4 +371,74 @@ describe('BootstrapService', () => {
 			assert.equal(outcome.status, 'invalid');
 		});
 	});
+
+	describe('refresh', () => {
+		/** @param {string} root */
+		async function refresh(root) {
+			const prompter = new FakePrompter();
+			const reporter = new FakeReporter();
+			const outcome = await new BootstrapService({ prompter, reporter }).refresh(root);
+			return { outcome, prompter, reporter };
+		}
+
+		it('builds the library again, with options files for new audio files', async () => {
+			const root = await tree({ '.soundboard': SETTINGS, 'a.mp3': '' });
+			await bootstrap(root);
+			await writeFile(join(root, 'b.mp3'), TITLED_MP3);
+			const { outcome } = await refresh(root);
+			assert.equal(outcome.status, 'ready');
+			assert.deepEqual(outcome.library.sounds.map((sound) => sound.title), ['a.mp3', 'Tagged Title']);
+			assert.equal(outcome.scan.root, root);
+			assert.deepEqual(await readOptions(root, 'b.mp3.json'), { title: 'Tagged Title' });
+		});
+
+		it('merges new nested directories without asking and without recording them', async () => {
+			const root = await tree({ '.soundboard': SETTINGS, 'Combat': { '1.mp3': '' } });
+			await bootstrap(root);
+			await mkdir(join(root, 'Combat', 'Boss'));
+			await writeFile(join(root, 'Combat', 'Boss', '2.mp3'), '');
+			await mkdir(join(root, 'Tavern', 'Back room'), { recursive: true });
+			await writeFile(join(root, 'Tavern', 'Back room', '1.mp3'), '');
+			const { outcome, prompter, reporter } = await refresh(root);
+			assert.equal(outcome.status, 'ready');
+			assert.deepEqual(prompter.questions, []);
+			assert.deepEqual(reporter.callsTo('nestedDirectories'), []);
+			assert.deepEqual(outcome.library.playlists.map((playlist) => playlist.tracks.map((track) => track.id)), [
+				['Combat/1.mp3', 'Combat/Boss/2.mp3'],
+				['Tavern/Back room/1.mp3'],
+			]);
+			assert.deepEqual((await readJson(root, 'Combat.json')).includedSubdirectories, []);
+			assert.deepEqual((await readJson(root, 'Tavern.json')).includedSubdirectories, []);
+		});
+
+		it('leaves the nested directories for the next start to ask about', async () => {
+			const root = await tree({ '.soundboard': SETTINGS, 'Combat': { '1.mp3': '' } });
+			await bootstrap(root);
+			await mkdir(join(root, 'Combat', 'Boss'));
+			await writeFile(join(root, 'Combat', 'Boss', '2.mp3'), '');
+			await refresh(root);
+			const { prompter } = await bootstrap(root, [true]);
+			assert.deepEqual(prompter.questions, [NESTED_DIRECTORIES_QUESTION]);
+			assert.deepEqual((await readJson(root, 'Combat.json')).includedSubdirectories, ['Boss']);
+		});
+
+		it('returns the validation errors and writes nothing', async () => {
+			const root = await tree({ '.soundboard': SETTINGS, 'a.mp3': '' });
+			await bootstrap(root);
+			await writeFile(join(root, 'a.mp3.json'), '{ "gain": 99 }');
+			await writeFile(join(root, 'b.mp3'), '');
+			const { outcome, reporter } = await refresh(root);
+			assert.equal(outcome.status, 'invalid');
+			assert.ok(outcome.status === 'invalid' && outcome.errors[0] instanceof ValidationError);
+			assert.equal(reporter.callsTo('validationErrors').length, 1);
+			assert.equal(await exists(join(root, 'b.mp3.json')), false);
+		});
+
+		it('stops without .soundboard, since that would be a first run with questions', async () => {
+			const root = await tree({ 'a.mp3': '' });
+			const { outcome } = await refresh(root);
+			assert.equal(outcome.status, 'noSettings');
+			assert.deepEqual(await listFiles(root), ['a.mp3']);
+		});
+	});
 });

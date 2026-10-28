@@ -140,4 +140,45 @@ describe('OptionsSync', () => {
 		sync.flushAll();
 		assert.deepEqual(sent(), []);
 	});
+
+	describe('settleAll', () => {
+		it('resolves at once when nothing is waiting', async () => {
+			const { sync } = setup();
+			await sync.settleAll();
+		});
+
+		it('sends every pending change now and resolves once all are saved', async () => {
+			const { saves, sync, settle, sent, outcomes } = setup();
+			sync.schedule(A, { gain: 0.1 });
+			sync.schedule(B, { gain: 0.2 });
+			let settled = false;
+			const settling = sync.settleAll().then(() => {
+				settled = true;
+			});
+			assert.deepEqual(sent(), [['a', { gain: 0.1 }, false], ['b', { gain: 0.2 }, false]]);
+			saves[0].finish();
+			await settle();
+			assert.equal(settled, false);
+			saves[1].finish(new Error('offline'));
+			await settling;
+			assert.deepEqual(outcomes, ['saved sound a', 'failed sound b: offline']);
+		});
+
+		it('waits for the save in flight and for the follow-up with the newer change', async () => {
+			const { clock, saves, sync, settle, sent } = setup();
+			sync.schedule(A, { gain: 0.1 });
+			clock.advance(500);
+			sync.schedule(A, { gain: 0.2 });
+			let settled = false;
+			const settling = sync.settleAll().then(() => {
+				settled = true;
+			});
+			saves[0].finish();
+			await settle();
+			assert.deepEqual(sent(), [['a', { gain: 0.1 }, false], ['a', { gain: 0.2 }, false]]);
+			assert.equal(settled, false);
+			saves[1].finish();
+			await settling;
+		});
+	});
 });

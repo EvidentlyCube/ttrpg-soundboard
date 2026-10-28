@@ -76,4 +76,51 @@ describe('SettingsSync', () => {
 		clock.advance(500);
 		assert.deepEqual(saves.map((save) => save.volumes.music), [0.4, 0.5]);
 	});
+
+	describe('settle', () => {
+		it('resolves at once when nothing is waiting', async () => {
+			const { sync } = setup();
+			await sync.settle();
+		});
+
+		it('sends a pending change now and resolves once it is saved', async () => {
+			const { saves, sync, settle } = setup();
+			sync.schedule(volumes(0.3));
+			let settled = false;
+			const settling = sync.settle().then(() => {
+				settled = true;
+			});
+			assert.deepEqual(saves.map(({ volumes: saved, keepalive }) => [saved.music, keepalive]), [[0.3, false]]);
+			await settle();
+			assert.equal(settled, false);
+			saves[0].finish();
+			await settling;
+		});
+
+		it('waits for the save in flight and for the follow-up with the newer change', async () => {
+			const { clock, saves, sync, settle } = setup();
+			sync.schedule(volumes(0.1));
+			clock.advance(500);
+			sync.schedule(volumes(0.2));
+			let settled = false;
+			const settling = sync.settle().then(() => {
+				settled = true;
+			});
+			saves[0].finish();
+			await settle();
+			assert.deepEqual(saves.map((save) => save.volumes.music), [0.1, 0.2]);
+			assert.equal(settled, false);
+			saves[1].finish();
+			await settling;
+		});
+
+		it('resolves after a failed save too', async () => {
+			const { saves, sync, warnings } = setup();
+			sync.schedule(volumes(0.3));
+			const settling = sync.settle();
+			saves[0].finish(new Error('offline'));
+			await settling;
+			assert.equal(warnings.length, 1);
+		});
+	});
 });

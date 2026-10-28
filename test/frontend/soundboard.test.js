@@ -22,7 +22,29 @@ const EVENT_TYPES = /** @type {const} */ ([
 	'track.saved', 'track.saveFailed',
 	'voices.changed',
 	'waveforms.progress', 'waveform.ready',
+	'library.externalChanges', 'library.refreshing', 'library.refreshed', 'library.refreshFailed',
 ]);
+
+/** Stands in for the server's pushed messages; the test sends them with `push`. */
+class FakeServerEvents {
+	/** @type {((message: { externalChanges: boolean }) => void) | null} */
+	#onMessage = null;
+	connections = 0;
+
+	/** @type {import('../../public/app/logic/ports.js').ServerEvents['connect']} */
+	connect(onMessage) {
+		this.connections++;
+		this.#onMessage = onMessage;
+		return () => {
+			this.#onMessage = null;
+		};
+	}
+
+	/** @param {boolean} externalChanges */
+	push(externalChanges) {
+		this.#onMessage?.({ externalChanges });
+	}
+}
 
 /** @param {{ canPlay?: (format: 'mp3' | 'ogg') => boolean }} [options] */
 function setup({ canPlay } = {}) {
@@ -32,7 +54,8 @@ function setup({ canPlay } = {}) {
 	/** @type {unknown[][]} */
 	const logged = [];
 	const logger = { warn: (/** @type {unknown[]} */ ...args) => logged.push(args), error: (/** @type {unknown[]} */ ...args) => logged.push(args) };
-	const soundboard = new Soundboard({ engine, clock, api, logger, decoder: new FakeWaveformDecoder() });
+	const serverEvents = new FakeServerEvents();
+	const soundboard = new Soundboard({ engine, clock, api, logger, decoder: new FakeWaveformDecoder(), serverEvents });
 	/** @type {SoundboardEvent[]} */
 	const events = [];
 	for (const type of EVENT_TYPES) {
@@ -46,7 +69,7 @@ function setup({ canPlay } = {}) {
 	};
 	/** @param {SoundboardEvent['type']} type */
 	const eventsOf = (type) => events.filter((event) => event.type === type);
-	return { clock, engine, api, logged, soundboard, events, settle, advance, eventsOf };
+	return { clock, engine, api, logged, serverEvents, soundboard, events, settle, advance, eventsOf };
 }
 
 async function started() {
@@ -583,6 +606,123 @@ describe('Soundboard', () => {
 			assert.throws(() => soundboard.customizeTrack('Combat/1.mp3', { title: ' ' }), InvalidCommandError);
 			assert.throws(() => soundboard.customizeTrack('Nope.mp3', { title: 'X' }), InvalidCommandError);
 			assert.deepEqual(events, []);
+		});
+	});
+
+	describe('external changes', () => {
+		it('listens to the server once the library has loaded', async () => {
+			const { soundboard, serverEvents } = setup();
+			assert.equal(serverEvents.connections, 0);
+			await soundboard.start();
+			assert.equal(serverEvents.connections, 1);
+		});
+
+		it('announces when the server reports changes, and when they are gone', async () => {
+			const { soundboard, serverEvents, eventsOf } = await started();
+			serverEvents.push(false);
+			assert.deepEqual(eventsOf('library.externalChanges'), []);
+			serverEvents.push(true);
+			serverEvents.push(true);
+			assert.equal(soundboard.hasExternalChanges(), true);
+			serverEvents.push(false);
+			assert.equal(soundboard.hasExternalChanges(), false);
+			assert.deepEqual(eventsOf('library.externalChanges'), [
+				{ type: 'library.externalChanges', pending: true },
+				{ type: 'library.externalChanges', pending: false },
+			]);
+		});
+
+		it('asks the server for a check and announces what it found', async () => {
+			const { soundboard, api, eventsOf, settle } = await started();
+			api.externalChanges = true;
+			soundboard.checkExternalChanges();
+			await settle();
+			assert.equal(api.checkRequests, 1);
+			assert.deepEqual(eventsOf('library.externalChanges'), [{ type: 'library.externalChanges', pending: true }]);
+		});
+
+		it('checks nothing before the library has loaded, and only once at a time', async () => {
+			const { soundboard, api, settle } = setup();
+			soundboard.checkExternalChanges();
+			assert.equal(api.checkRequests, 0);
+			await soundboard.start();
+			soundboard.checkExternalChanges();
+			soundboard.checkExternalChanges();
+			assert.equal(api.checkRequests, 1);
+			await settle();
+			soundboard.checkExternalChanges();
+			assert.equal(api.checkRequests, 2);
+		});
+
+		it('logs a check that failed', async () => {
+			const { soundboard, api, logged, settle } = await started();
+			api.checkExternalChanges = async () => {
+				throw new Error('offline');
+			};
+			soundboard.checkExternalChanges();
+			await settle();
+			assert.match(String(logged[0]?.[0]), /Could not check the audio directory/);
+		});
+	});
+
+	describe('refreshing the library', () => {
+		it('saves pending changes first, then has the server rebuild', async () => {
+			const { soundboard, api, eventsOf } = await started();
+			soundboard.customizeSound('Boom.mp3', { title: 'Big Boom' });
+			soundboard.setVolume('music', 0.5);
+			/** @type {number[]} */
+			const savesWhenRefreshed = [];
+			api.refresh = async () => {
+				savesWhenRefreshed.push(api.soundSaves.length, api.saves.length);
+				return { status: 'refreshed' };
+			};
+			await soundboard.refreshLibrary();
+			assert.deepEqual(savesWhenRefreshed, [1, 1]);
+			assert.deepEqual(api.soundSaves.map(({ options, keepalive }) => [options.title, keepalive]), [['Big Boom', false]]);
+			assert.deepEqual(eventsOf('library.refreshing').length, 1);
+			assert.deepEqual(eventsOf('library.refreshed'), [{ type: 'library.refreshed' }]);
+		});
+
+		it('reports invalid options files', async () => {
+			const { soundboard, api, eventsOf } = await started();
+			api.refreshResult = { status: 'invalid', errors: [{ path: 'Boom.mp3.json', message: 'invalid JSON' }] };
+			await soundboard.refreshLibrary();
+			assert.deepEqual(eventsOf('library.refreshFailed'), [{
+				type: 'library.refreshFailed',
+				message: 'Some options files are invalid.',
+				errors: [{ path: 'Boom.mp3.json', message: 'invalid JSON' }],
+				restartNeeded: false,
+			}]);
+		});
+
+		it('reports when only a restart can help', async () => {
+			const { soundboard, api, eventsOf } = await started();
+			api.refreshResult = { status: 'restartNeeded', message: 'The .soundboard file is gone. Restart the app.' };
+			await soundboard.refreshLibrary();
+			assert.deepEqual(eventsOf('library.refreshFailed'), [{
+				type: 'library.refreshFailed',
+				message: 'The .soundboard file is gone. Restart the app.',
+				errors: [],
+				restartNeeded: true,
+			}]);
+		});
+
+		it('reports and logs a refresh that could not be sent', async () => {
+			const { soundboard, api, eventsOf, logged } = await started();
+			api.refresh = async () => {
+				throw new Error('offline');
+			};
+			await soundboard.refreshLibrary();
+			assert.deepEqual(eventsOf('library.refreshFailed'), [{ type: 'library.refreshFailed', message: 'offline', errors: [], restartNeeded: false }]);
+			assert.match(String(logged[0]?.[0]), /Could not refresh the library/);
+		});
+
+		it('ignores a second request while one runs', async () => {
+			const { soundboard, api } = await started();
+			await Promise.all([soundboard.refreshLibrary(), soundboard.refreshLibrary()]);
+			assert.equal(api.refreshRequests, 1);
+			await soundboard.refreshLibrary();
+			assert.equal(api.refreshRequests, 2);
 		});
 	});
 

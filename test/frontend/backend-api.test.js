@@ -1,10 +1,11 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { HttpBackendApi } from '../../public/app/api/backend-api.js';
 import { startServer } from '../../src/http/server.js';
 import { BootstrapService } from '../../src/library/bootstrap-service.js';
+import { ChangeWatcher } from '../../src/library/change-watcher.js';
 import { FakePrompter } from '../helpers/fake-prompter.js';
 import { FakeReporter } from '../helpers/fake-reporter.js';
 import { createTmpTree } from '../helpers/tmp-tree.js';
@@ -87,5 +88,61 @@ describe('HttpBackendApi against the real server', () => {
 
 	it('rejects when the server cannot be reached', async () => {
 		await assert.rejects(new HttpBackendApi('http://127.0.0.1:1').fetchLibrary());
+	});
+});
+
+describe('HttpBackendApi refreshing against the real server', () => {
+	/** @type {import('../helpers/tmp-tree.js').TmpDir} */
+	let tree;
+	/** @type {Awaited<ReturnType<typeof startServer>>} */
+	let server;
+	/** @type {ChangeWatcher} */
+	let watcher;
+	/** @type {HttpBackendApi} */
+	let api;
+
+	before(async () => {
+		tree = await createTmpTree({ '.soundboard': '{ "version": 1 }', 'Boom.mp3': 'boom' });
+		watcher = new ChangeWatcher({ root: tree.root, log: () => {}, watch: () => ({ on: () => {}, close: () => {} }) });
+		const bootstrap = new BootstrapService({ prompter: new FakePrompter(), reporter: new FakeReporter(), updateSettingsFile: watcher.updateFile });
+		const outcome = await bootstrap.run(tree.root);
+		assert.equal(outcome.status, 'ready');
+		await watcher.start(outcome.scan);
+		server = await startServer({
+			library: outcome.library,
+			settings: outcome.settings,
+			port: 0,
+			logError: () => {},
+			watcher,
+			refresh: () => watcher.refresh(() => bootstrap.refresh(tree.root)),
+		});
+		api = new HttpBackendApi(server.url);
+	});
+	after(async () => {
+		watcher.stop();
+		await server.close();
+		await tree.remove();
+	});
+
+	it('checks for external changes and refreshes', async () => {
+		assert.equal(await api.checkExternalChanges(), false);
+		await writeFile(join(tree.root, 'New.mp3'), 'new');
+		assert.equal(await api.checkExternalChanges(), true);
+		assert.deepEqual(await api.refresh(), { status: 'refreshed' });
+		assert.equal((await api.fetchLibrary()).sounds.length, 2);
+	});
+
+	it('returns the problems of invalid options files', async () => {
+		await writeFile(join(tree.root, 'Boom.mp3.json'), 'nope');
+		const result = await api.refresh();
+		assert.equal(result.status, 'invalid');
+		assert.deepEqual(result.status === 'invalid' && result.errors.map((error) => error.path), ['Boom.mp3.json']);
+		await rm(join(tree.root, 'Boom.mp3.json'));
+	});
+
+	it('says when only a restart can help', async () => {
+		await rename(join(tree.root, '.soundboard'), join(tree.root, 'settings.bak'));
+		assert.deepEqual(await api.refresh(), { status: 'restartNeeded', message: 'The .soundboard file is gone. Restart the app.' });
+		await rename(join(tree.root, 'settings.bak'), join(tree.root, '.soundboard'));
 	});
 });
