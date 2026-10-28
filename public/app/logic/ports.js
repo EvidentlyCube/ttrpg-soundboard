@@ -111,8 +111,52 @@
 /**
  * Messages the server pushes to the page.
  * @typedef {object} ServerEvents
- * @property {(onMessage: (message: { externalChanges: boolean }) => void) => () => void} connect returns a disconnect
+ * @property {(onMessage: (message: ServerMessage) => void) => () => void} connect returns a disconnect
  * 	function; the connection is restored by itself after the server was unreachable
+ */
+
+/**
+ * @typedef {{ type: 'externalChanges', pending: boolean }
+ * 	| { type: 'download', job: DownloadJob | null }
+ * 	| { type: 'download.log', lines: string[], replaceLast: boolean }
+ * 	| { type: 'library.added', sound: AudioFileJson }
+ * 	| { type: 'library.added', playlist: PlaylistJson }} ServerMessage
+ * 	`replaceLast`: the first line replaces the last one already received
+ */
+
+/** @typedef {{ kind: 'sound' } | { kind: 'newPlaylist', title: string } | { kind: 'playlist', playlistId: string }} DownloadTarget */
+/** @typedef {'waiting' | 'downloading' | 'converting' | 'done' | 'failed' | 'cancelled'} DownloadItemState */
+
+/**
+ * A download the server runs (DESIGN.md §5.4); only one at a time.
+ * @typedef {object} DownloadJob
+ * @property {string} id
+ * @property {string} title what was looked up
+ * @property {DownloadTarget} target
+ * @property {string} targetTitle "Sound effects", or the playlist's title
+ * @property {'running' | 'done' | 'failed' | 'cancelled'} state `failed` when any item failed
+ * @property {{ title: string, state: DownloadItemState, error: string | null }[]} items one per file it adds
+ * @property {number | null} current the index of the item being worked on
+ * @property {number} added
+ * @property {number} failed
+ */
+
+/** @typedef {{ ytDlp: string | null, ffmpeg: string | null }} DownloadTools the version of each program, or null when missing */
+
+/**
+ * @typedef {{ probeId: string, kind: 'file', url: string, name: string, size: number | null, contentType: string }
+ * 	| { probeId: string, kind: 'video', url: string, id: string, title: string, duration: number | null, size: number | null,
+ * 		extractor: string | null, chapters: { title: string, start: number, end: number }[], playlistAvailable: boolean }
+ * 	| { probeId: string, kind: 'playlist', url: string, id: string, title: string, truncated: boolean,
+ * 		entries: { id: string, title: string, duration: number | null, url: string, extractor: string | null }[] }} LinkProbe
+ */
+
+/**
+ * @typedef {object} DownloadRequest
+ * @property {string} probeId
+ * @property {DownloadTarget} target
+ * @property {number[] | null} [chapters] chapter indices to cut a video into; null keeps it whole
+ * @property {string[]} [entries] ids of the playlist entries to download
  */
 
 /**

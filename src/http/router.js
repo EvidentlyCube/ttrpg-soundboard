@@ -1,10 +1,12 @@
 import { relative, sep } from 'node:path';
+import { DownloadBusyError, InvalidDownloadError, ToolsUnavailableError, UnusableLinkError } from '../downloads/errors.js';
 import { ValidationError } from '../library/errors.js';
 import { UnknownPlaylistError, UnknownSoundError, UnknownTrackError } from '../library/library-editor.js';
 import { isPlainObject, VOLUME_BUSES } from '../library/validate.js';
-import { findMediaFile, isMediaPath, mediaUrl, serveMedia } from './media.js';
+import { findMediaFile, isMediaPath, serveMedia } from './media.js';
 import { InvalidWaveformError, UnknownWaveformFileError } from '../library/waveform-store.js';
 import { serveEvents } from './events.js';
+import { toFileJson, toLibraryJson, toPlaylistJson } from './library-json.js';
 import { allowMethods, HttpError, sendJson } from './responses.js';
 import { serveStaticFile } from './static-files.js';
 
@@ -18,6 +20,7 @@ import { serveStaticFile } from './static-files.js';
 
 /** @typedef {import('../library/bootstrap-service.js').RefreshOutcome} RefreshOutcome */
 /** @typedef {import('../library/change-watcher.js').ChangeWatcher} ChangeWatcher */
+/** @typedef {import('../downloads/download-service.js').DownloadService} DownloadService */
 
 /**
  * @typedef {object} RouterContext
@@ -30,9 +33,9 @@ import { serveStaticFile } from './static-files.js';
  * @property {ChangeWatcher} [watcher] notices external changes; without it there never are any
  * @property {() => Promise<RefreshOutcome>} [refresh] rebuilds the library and swaps it into this context
  * @property {Promise<RefreshOutcome> | null} refreshing the refresh running now
+ * @property {DownloadService} [downloads] without it, downloads are not available
  */
 
-const LIBRARY_FORMAT_VERSION = 1;
 const MAX_BODY_BYTES = 16 * 1024;
 const MAX_WAVEFORM_BODY_BYTES = 4 * 1024;
 const WAVEFORMS_PREFIX = '/api/waveforms/';
@@ -74,7 +77,7 @@ async function route(request, response, context) {
 
 	if (pathname === '/api/events') {
 		allowMethods(request, ['GET']);
-		serveEvents(request, response, context.watcher);
+		serveEvents(request, response, context);
 		return;
 	}
 	if (pathname === '/api/refresh') {
@@ -119,6 +122,12 @@ async function route(request, response, context) {
 		const body = /** @type {OptionChanges} */ (await readJsonBody(request));
 		// Decoding the whole rest of the path keeps literal slashes, so ids encoded whole or per segment both work.
 		sendJson(response, 200, toFileJson(await editItem(pathname, TRACKS_PREFIX, (id) => editor.updateTrack(id, body))));
+	} else if (pathname === '/api/download') {
+		allowMethods(request, ['GET', 'POST', 'DELETE']);
+		await serveDownload(request, response, context.downloads);
+	} else if (pathname === '/api/download/probe') {
+		allowMethods(request, ['POST']);
+		await probeLink(request, response, context.downloads);
 	} else if (pathname.startsWith('/api/')) {
 		throw new HttpError(404, 'Not found');
 	} else if (isMediaPath(pathname)) {
@@ -169,23 +178,92 @@ async function refresh(response, context) {
 	}
 }
 
-/** @param {Library} library */
-function toLibraryJson(library) {
-	return {
-		version: LIBRARY_FORMAT_VERSION,
-		playlists: library.playlists.map(toPlaylistJson),
-		sounds: library.sounds.map(toFileJson),
+/**
+ * `GET` reports the tools and the current job, `POST` starts a job, `DELETE` cancels or dismisses it (DESIGN.md §5.2).
+ * @param {Request} request
+ * @param {Response} response
+ * @param {DownloadService | undefined} downloads
+ */
+async function serveDownload(request, response, downloads) {
+	if (request.method === 'GET') {
+		sendJson(response, 200, { tools: downloads?.tools ?? { ytDlp: null, ffmpeg: null }, job: downloads?.current() ?? null });
+		return;
+	}
+	const service = requireDownloads(downloads);
+	if (request.method === 'DELETE') {
+		service.dismiss();
+		response.writeHead(204, { 'Cache-Control': 'no-store' });
+		response.end();
+		return;
+	}
+	const body = await readJsonBody(request);
+	if (!isPlainObject(body) || typeof body.probeId !== 'string' || !isPlainObject(body.target)) {
+		throw new HttpError(400, 'A download needs "probeId" and "target"');
+	}
+	sendJson(response, 202, downloadCall(() => service.start(/** @type {import('../downloads/download-service.js').StartRequest} */ (/** @type {unknown} */ (body)))));
+}
+
+/**
+ * @param {Request} request
+ * @param {Response} response
+ * @param {DownloadService | undefined} downloads
+ */
+async function probeLink(request, response, downloads) {
+	const service = requireDownloads(downloads);
+	const body = await readJsonBody(request);
+	if (!isPlainObject(body) || typeof body.url !== 'string') {
+		throw new HttpError(400, 'A lookup needs a "url"');
+	}
+	const url = body.url;
+	sendJson(response, 200, await downloadCall(() => service.probe(url, { playlist: body.playlist === true })));
+}
+
+/**
+ * @param {DownloadService | undefined} downloads
+ * @returns {DownloadService}
+ */
+function requireDownloads(downloads) {
+	if (!downloads) {
+		throw new HttpError(503, 'Downloads are not available');
+	}
+	return downloads;
+}
+
+/**
+ * Turns the download domain's errors into HTTP errors.
+ * @template T
+ * @param {() => T} call
+ * @returns {T}
+ */
+function downloadCall(call) {
+	/** @param {unknown} error */
+	const translate = (error) => {
+		if (error instanceof ToolsUnavailableError) {
+			return new HttpError(503, error.message);
+		}
+		if (error instanceof UnusableLinkError) {
+			return new HttpError(422, error.message);
+		}
+		if (error instanceof DownloadBusyError) {
+			return new HttpError(409, error.message);
+		}
+		if (error instanceof InvalidDownloadError) {
+			return new HttpError(400, error.message);
+		}
+		return error;
 	};
-}
-
-/** @param {import('../library/library.js').Playlist} playlist */
-function toPlaylistJson({ id, title, gain, crossfade, fadeIn, fadeOut, order, trackLooping, stopMode, tracks }) {
-	return { id, title, gain, crossfade, fadeIn, fadeOut, order, trackLooping, stopMode, tracks: tracks.map(toFileJson) };
-}
-
-/** @param {import('../library/library.js').AudioFile} file */
-function toFileJson({ id, title, format, size, gain, duration, startAt, endAt, fadeIn, fadeOut }) {
-	return { id, title, format, size, gain, duration, startAt, endAt, fadeIn, fadeOut, url: mediaUrl(id) };
+	let result;
+	try {
+		result = call();
+	} catch (error) {
+		throw translate(error);
+	}
+	if (result instanceof Promise) {
+		return /** @type {T} */ (result.catch((error) => {
+			throw translate(error);
+		}));
+	}
+	return result;
 }
 
 /**

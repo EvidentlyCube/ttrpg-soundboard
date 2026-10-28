@@ -27,7 +27,7 @@ const EVENT_TYPES = /** @type {const} */ ([
 
 /** Stands in for the server's pushed messages; the test sends them with `push`. */
 class FakeServerEvents {
-	/** @type {((message: { externalChanges: boolean }) => void) | null} */
+	/** @type {((message: import('../../public/app/logic/ports.js').ServerMessage) => void) | null} */
 	#onMessage = null;
 	connections = 0;
 
@@ -40,9 +40,9 @@ class FakeServerEvents {
 		};
 	}
 
-	/** @param {boolean} externalChanges */
-	push(externalChanges) {
-		this.#onMessage?.({ externalChanges });
+	/** @param {boolean} pending */
+	push(pending) {
+		this.#onMessage?.({ type: 'externalChanges', pending });
 	}
 }
 

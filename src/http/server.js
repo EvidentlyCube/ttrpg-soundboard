@@ -1,5 +1,10 @@
 import { createServer } from 'node:http';
 import { join } from 'node:path';
+import { DownloadService } from '../downloads/download-service.js';
+import { Ffmpeg } from '../downloads/ffmpeg.js';
+import { httpLinkFetcher } from '../downloads/link-fetcher.js';
+import { runProcess } from '../downloads/process-runner.js';
+import { YtDlp } from '../downloads/yt-dlp.js';
 import { LibraryEditor } from '../library/library-editor.js';
 import { WaveformStore } from '../library/waveform-store.js';
 import { logWhenDone } from './request-log.js';
@@ -20,6 +25,14 @@ const HOST = '127.0.0.1';
  * 	app's own saves; without it there never are any
  * @property {() => Promise<import('../library/bootstrap-service.js').RefreshOutcome>} [refresh] rebuilds the library
  * 	after external changes; without it `POST /api/refresh` is unavailable
+ * @property {DownloadPorts} [downloads] without it, downloads are not available
+ */
+
+/**
+ * @typedef {object} DownloadPorts
+ * @property {import('../downloads/tools.js').Tools} tools what startup found
+ * @property {import('../downloads/process-runner.js').ProcessRunner} [run]
+ * @property {import('../downloads/link-fetcher.js').LinkFetcher} [fetcher]
  */
 
 /**
@@ -27,7 +40,7 @@ const HOST = '127.0.0.1';
  * @param {ServerOptions} options
  * @returns {Promise<{ url: string, close: () => Promise<void> }>}
  */
-export async function startServer({ library, settings, port, publicDir = PUBLIC_DIR, logError, logRequest, watcher, refresh }) {
+export async function startServer({ library, settings, port, publicDir = PUBLIC_DIR, logError, logRequest, watcher, refresh, downloads }) {
 	const updateFile = watcher?.updateFile;
 	/** @param {import('../library/library.js').Library} current */
 	const servicesFor = (current) => ({
@@ -51,6 +64,19 @@ export async function startServer({ library, settings, port, publicDir = PUBLIC_
 			return outcome;
 		}),
 	};
+	if (downloads) {
+		const { tools, run = runProcess, fetcher = httpLinkFetcher } = downloads;
+		context.downloads = new DownloadService({
+			root: library.root,
+			tools,
+			ytDlp: new YtDlp(run),
+			ffmpeg: new Ffmpeg(run),
+			fetcher,
+			// Read when a file is added, so an addition after a refresh lands in the new library.
+			editor: () => context.editor,
+			writeFiles: (task) => (watcher ? watcher.writeFiles(task) : task()),
+		});
+	}
 	const handle = createRequestHandler(context);
 	const server = createServer((request, response) => {
 		if (logRequest) {

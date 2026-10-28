@@ -106,12 +106,13 @@ describe('external changes over HTTP', () => {
 		it('sends the current state, then every change of it', async () => {
 			const { root, server, call } = await setup();
 			const events = openEvents(server.url);
-			assert.deepEqual(await events.first(1), [{ externalChanges: false }]);
+			const message = (/** @type {boolean} */ pending) => ({ type: 'externalChanges', pending });
+			assert.deepEqual(await events.first(1), [message(false)]);
 			await writeFile(join(root, 'New.mp3'), 'new');
 			await call('/api/changes/check', { method: 'POST' });
-			assert.deepEqual(await events.first(2), [{ externalChanges: false }, { externalChanges: true }]);
+			assert.deepEqual(await events.first(2), [message(false), message(true)]);
 			await call('/api/refresh', { method: 'POST' });
-			assert.deepEqual(await events.first(3), [{ externalChanges: false }, { externalChanges: true }, { externalChanges: false }]);
+			assert.deepEqual(await events.first(3), [message(false), message(true), message(false)]);
 		});
 
 		it('streams with the event-stream type and no caching', async () => {
@@ -240,7 +241,7 @@ describe('external changes over HTTP', () => {
 		assert.equal(outcome.status, 'ready');
 		const server = await startServer({ library: outcome.library, settings: outcome.settings, port: 0, logError: () => {} });
 		cleanups.push(() => server.close());
-		assert.deepEqual(await openEvents(server.url).first(1), [{ externalChanges: false }]);
+		assert.deepEqual(await openEvents(server.url).first(1), [{ type: 'externalChanges', pending: false }]);
 		const check = await fetch(`${server.url}/api/changes/check`, { method: 'POST' });
 		assert.deepEqual(await check.json(), { externalChanges: false });
 		const refresh = await fetch(`${server.url}/api/refresh`, { method: 'POST' });

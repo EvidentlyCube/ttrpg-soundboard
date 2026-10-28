@@ -592,12 +592,19 @@ export class Soundboard {
 			});
 			emit({ type: 'app.ready', library: libraryJson, volumes: this.#volume.volumes, unplayable: library.unplayable });
 			this.#waveforms.start();
-			this.#serverEvents?.connect(({ externalChanges }) => this.#setExternalChanges(externalChanges));
+			this.#serverEvents?.connect((message) => this.#onServerMessage(message));
 		} catch (error) {
 			this.#starting = null;
 			const message = error instanceof Error ? error.message : String(error);
 			this.#logger.error('Could not start the soundboard', error);
 			this.#events.emit({ type: 'app.startFailed', message });
+		}
+	}
+
+	/** @param {import('./ports.js').ServerMessage} message */
+	#onServerMessage(message) {
+		if (message.type === 'externalChanges') {
+			this.#setExternalChanges(message.pending);
 		}
 	}
 

@@ -76,6 +76,7 @@ export async function main(argv, { input, output, errorOutput, env, waitForShutd
 			logError: (error) => errorOutput.write(`${error instanceof Error ? error.stack : String(error)}\n`),
 			logRequest: args.verbose ? (line) => output.write(`${line}\n`) : undefined,
 			watcher,
+			downloads: { tools },
 			refresh: () => watcher.refresh(() => {
 				output.write('Refreshing after external changes…\n');
 				return bootstrap.refresh(root);
