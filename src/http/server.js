@@ -16,6 +16,10 @@ const HOST = '127.0.0.1';
  * @property {string} [publicDir]
  * @property {(error: unknown) => void} logError
  * @property {(line: string) => void} [logRequest] receives one line per request; requests are not logged without it
+ * @property {import('../library/change-watcher.js').ChangeWatcher} [watcher] notices external changes and records the
+ * 	app's own saves; without it there never are any
+ * @property {() => Promise<import('../library/bootstrap-service.js').RefreshOutcome>} [refresh] rebuilds the library
+ * 	after external changes; without it `POST /api/refresh` is unavailable
  */
 
 /**
@@ -23,8 +27,31 @@ const HOST = '127.0.0.1';
  * @param {ServerOptions} options
  * @returns {Promise<{ url: string, close: () => Promise<void> }>}
  */
-export async function startServer({ library, settings, port, publicDir = PUBLIC_DIR, logError, logRequest }) {
-	const handle = createRequestHandler({ library, settings, editor: new LibraryEditor(library), waveforms: new WaveformStore(library), publicDir, logError });
+export async function startServer({ library, settings, port, publicDir = PUBLIC_DIR, logError, logRequest, watcher, refresh }) {
+	const updateFile = watcher?.updateFile;
+	/** @param {import('../library/library.js').Library} current */
+	const servicesFor = (current) => ({
+		library: current,
+		editor: new LibraryEditor(current, { updateFile }),
+		waveforms: new WaveformStore(current),
+	});
+	/** @type {import('./router.js').RouterContext} */
+	const context = {
+		...servicesFor(library),
+		settings,
+		publicDir,
+		logError,
+		watcher,
+		refreshing: null,
+		refresh: refresh && (async () => {
+			const outcome = await refresh();
+			if (outcome.status === 'ready') {
+				Object.assign(context, servicesFor(outcome.library), { settings: outcome.settings });
+			}
+			return outcome;
+		}),
+	};
+	const handle = createRequestHandler(context);
 	const server = createServer((request, response) => {
 		if (logRequest) {
 			logWhenDone(request, response, logRequest);

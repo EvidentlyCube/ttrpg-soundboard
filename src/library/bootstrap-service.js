@@ -29,9 +29,10 @@ import { validateAudioOptions, validatePlaylistOptions, validateSettingsFile } f
  */
 
 /**
- * @typedef {{ status: 'ready', library: Library, settings: SettingsStore }
- * 	| { status: 'invalid' }
+ * @typedef {{ status: 'ready', library: Library, settings: SettingsStore, scan: ScanResult }
+ * 	| { status: 'invalid', errors: ValidationError[] }
  * 	| { status: 'cancelled' }} BootstrapOutcome
+ * @typedef {Exclude<BootstrapOutcome, { status: 'cancelled' }> | { status: 'noSettings' }} RefreshOutcome
  */
 
 export const NESTED_DIRECTORIES_QUESTION = 'Nested directories will be merged into their playlists. Continue?';
@@ -44,11 +45,18 @@ export const METADATA_TITLES_QUESTION = 'Use these titles in the generated optio
 export class BootstrapService {
 	#prompter;
 	#reporter;
+	#updateSettingsFile;
 
-	/** @param {{ prompter: Prompter, reporter: Reporter }} ports */
-	constructor({ prompter, reporter }) {
+	/**
+	 * @param {object} ports
+	 * @param {Prompter} ports.prompter
+	 * @param {Reporter} ports.reporter
+	 * @param {import('./settings-store.js').FileUpdater} [ports.updateSettingsFile] how the settings store saves `.soundboard`
+	 */
+	constructor({ prompter, reporter, updateSettingsFile }) {
 		this.#prompter = prompter;
 		this.#reporter = reporter;
+		this.#updateSettingsFile = updateSettingsFile;
 	}
 
 	/**
@@ -56,11 +64,42 @@ export class BootstrapService {
 	 * @returns {Promise<BootstrapOutcome>}
 	 */
 	async run(root) {
+		const outcome = await this.#load(root, { interactive: true });
+		if (outcome.status === 'noSettings') {
+			throw new Error('Only a refresh stops without a settings file');
+		}
+		return outcome;
+	}
+
+	/**
+	 * Builds the library again while the app runs, as a later start would but without questions: new nested directories
+	 * are merged without being recorded, so the next start still asks about them. Never used for a first run.
+	 * @param {string} root
+	 * @returns {Promise<RefreshOutcome>}
+	 */
+	async refresh(root) {
+		const outcome = await this.#load(root, { interactive: false });
+		if (outcome.status === 'cancelled') {
+			throw new Error('A refresh never asks, so it cannot be cancelled');
+		}
+		return outcome;
+	}
+
+	/**
+	 * @param {string} root
+	 * @param {{ interactive: boolean }} options
+	 * @returns {Promise<BootstrapOutcome | { status: 'noSettings' }>}
+	 */
+	async #load(root, { interactive }) {
 		const scan = await scanAudioDirectory(root);
+		// Without `.soundboard` this would be a first run, which has questions to ask.
+		if (!interactive && !scan.hasSettingsFile) {
+			return { status: 'noSettings' };
+		}
 		const { optionsByPath, errors } = await loadOptions(scan);
 		if (errors.length > 0) {
 			this.#reporter.validationErrors(errors);
-			return { status: 'invalid' };
+			return { status: 'invalid', errors };
 		}
 		if (scan.warnings.length > 0) {
 			this.#reporter.warnings(scan.warnings);
@@ -68,8 +107,9 @@ export class BootstrapService {
 
 		// Empty playlists are hidden from the UI, so asking about them or creating their options would only be noise.
 		const playlists = scan.playlists.filter((playlist) => playlist.tracks.length > 0);
-		const newSubdirectories = findNewSubdirectories(playlists, optionsByPath);
-		const nestedPaths = [...newSubdirectories].flatMap(([id, subdirectories]) => subdirectories.map((path) => `${id}/${path}`));
+		// The library takes every track found, so leaving the new directories unrecorded only defers the question.
+		const newSubdirectories = interactive ? findNewSubdirectories(playlists, optionsByPath) : new Map();
+		const nestedPaths = [...newSubdirectories].flatMap(([id, subdirectories]) => subdirectories.map((/** @type {string} */ path) => `${id}/${path}`));
 		if (nestedPaths.length > 0) {
 			this.#reporter.nestedDirectories(nestedPaths);
 			if (!(await this.#prompter.confirm(NESTED_DIRECTORIES_QUESTION))) {
@@ -131,7 +171,8 @@ export class BootstrapService {
 
 		const library = buildLibrary(scan, optionsByPath);
 		this.#reporter.libraryLoaded(library);
-		return { status: 'ready', library, settings: await SettingsStore.load(scan.settingsPath) };
+		const settings = await SettingsStore.load(scan.settingsPath, { updateFile: this.#updateSettingsFile });
+		return { status: 'ready', library, settings, scan };
 	}
 
 	/**

@@ -73,6 +73,22 @@ export class FakeBackendApi {
 	waveforms = new Map();
 	/** @type {Error | null} */
 	waveformError = null;
+	/** What a check of the audio directory finds. */
+	externalChanges = false;
+	checkRequests = 0;
+	/** @type {import('../../public/app/logic/ports.js').RefreshResult} */
+	refreshResult = { status: 'refreshed' };
+	refreshRequests = 0;
+
+	async checkExternalChanges() {
+		this.checkRequests++;
+		return this.externalChanges;
+	}
+
+	async refresh() {
+		this.refreshRequests++;
+		return this.refreshResult;
+	}
 
 	async fetchLibrary() {
 		this.libraryRequests++;

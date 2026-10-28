@@ -52,8 +52,11 @@ export async function measureIfNeeded(audio, options, io = DEFAULT_IO) {
 	return { duration: duration === null ? null : Math.round(duration * 100) / 100, measuredFrom };
 }
 
-/** @param {string} path */
-async function sha1File(path) {
+/**
+ * @param {string} path
+ * @returns {Promise<string>} hex SHA-1 of the whole file
+ */
+export async function sha1File(path) {
 	const hash = createHash('sha1');
 	for await (const chunk of createReadStream(path)) {
 		hash.update(chunk);

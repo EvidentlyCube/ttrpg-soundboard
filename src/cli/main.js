@@ -2,6 +2,7 @@ import { stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { startServer } from '../http/server.js';
 import { BootstrapService } from '../library/bootstrap-service.js';
+import { ChangeWatcher } from '../library/change-watcher.js';
 import { parseArguments, USAGE, UsageError } from './args.js';
 import { createColors, shouldUseColor } from './colors.js';
 import { TerminalPrompter } from './prompter.js';
@@ -43,9 +44,12 @@ export async function main(argv, { input, output, errorOutput, env, waitForShutd
 
 	const reporter = new ConsoleReporter(output, createColors(shouldUseColor(output, env)), root);
 	const prompter = new TerminalPrompter(input, output);
+	const watcher = new ChangeWatcher({ root, log: (message) => output.write(`${message}\n`) });
+	// The prompter is closed once the server runs, but a refresh never asks anything.
+	const bootstrap = new BootstrapService({ prompter, reporter, updateSettingsFile: watcher.updateFile });
 	let outcome;
 	try {
-		outcome = await new BootstrapService({ prompter, reporter }).run(root);
+		outcome = await bootstrap.run(root);
 	} finally {
 		prompter.close();
 	}
@@ -55,14 +59,21 @@ export async function main(argv, { input, output, errorOutput, env, waitForShutd
 
 	let server;
 	try {
+		await watcher.start(outcome.scan);
 		server = await startServer({
 			library: outcome.library,
 			settings: outcome.settings,
 			port: args.port,
 			logError: (error) => errorOutput.write(`${error instanceof Error ? error.stack : String(error)}\n`),
 			logRequest: args.verbose ? (line) => output.write(`${line}\n`) : undefined,
+			watcher,
+			refresh: () => watcher.refresh(() => {
+				output.write('Refreshing after external changes…\n');
+				return bootstrap.refresh(root);
+			}),
 		});
 	} catch (error) {
+		watcher.stop();
 		const message = listenErrorMessage(/** @type {NodeJS.ErrnoException} */ (error), args.port);
 		if (message === null) {
 			throw error;
@@ -73,6 +84,7 @@ export async function main(argv, { input, output, errorOutput, env, waitForShutd
 
 	output.write(`Soundboard running at ${server.url}\nPress Ctrl+C to stop.\n`);
 	await waitForShutdown();
+	watcher.stop();
 	await server.close();
 	output.write('Stopped.\n');
 	return 0;

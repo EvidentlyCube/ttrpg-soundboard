@@ -1,8 +1,10 @@
+import { relative, sep } from 'node:path';
 import { ValidationError } from '../library/errors.js';
 import { UnknownPlaylistError, UnknownSoundError, UnknownTrackError } from '../library/library-editor.js';
 import { isPlainObject, VOLUME_BUSES } from '../library/validate.js';
 import { findMediaFile, isMediaPath, mediaUrl, serveMedia } from './media.js';
 import { InvalidWaveformError, UnknownWaveformFileError } from '../library/waveform-store.js';
+import { serveEvents } from './events.js';
 import { allowMethods, HttpError, sendJson } from './responses.js';
 import { serveStaticFile } from './static-files.js';
 
@@ -14,14 +16,20 @@ import { serveStaticFile } from './static-files.js';
 /** @typedef {import('../library/library-editor.js').OptionChanges} OptionChanges */
 /** @typedef {import('../library/waveform-store.js').WaveformStore} WaveformStore */
 
+/** @typedef {import('../library/bootstrap-service.js').RefreshOutcome} RefreshOutcome */
+/** @typedef {import('../library/change-watcher.js').ChangeWatcher} ChangeWatcher */
+
 /**
  * @typedef {object} RouterContext
- * @property {Library} library
+ * @property {Library} library replaced by a refresh, like the three below; read them per request
  * @property {SettingsStore} settings
  * @property {LibraryEditor} editor
  * @property {WaveformStore} waveforms
  * @property {string} publicDir
  * @property {(error: unknown) => void} logError called for unexpected failures, never for client mistakes
+ * @property {ChangeWatcher} [watcher] notices external changes; without it there never are any
+ * @property {() => Promise<RefreshOutcome>} [refresh] rebuilds the library and swaps it into this context
+ * @property {Promise<RefreshOutcome> | null} refreshing the refresh running now
  */
 
 const LIBRARY_FORMAT_VERSION = 1;
@@ -60,11 +68,30 @@ export function createRequestHandler(context) {
  * @param {Response} response
  * @param {RouterContext} context
  */
-async function route(request, response, { library, settings, editor, waveforms, publicDir }) {
+async function route(request, response, context) {
 	// The raw path is used on purpose: URL parsing would resolve `..` before the static file guard could see it.
 	const pathname = (request.url ?? '/').split('?')[0];
 
-	if (pathname === '/api/library') {
+	if (pathname === '/api/events') {
+		allowMethods(request, ['GET']);
+		serveEvents(request, response, context.watcher);
+		return;
+	}
+	if (pathname === '/api/refresh') {
+		allowMethods(request, ['POST']);
+		await refresh(response, context);
+		return;
+	}
+	// A request made during a refresh waits for it, so a save can't land in the library being replaced.
+	if (pathname.startsWith('/api/') && context.refreshing) {
+		await context.refreshing.catch(() => {});
+	}
+	const { library, settings, editor, waveforms, publicDir } = context;
+
+	if (pathname === '/api/changes/check') {
+		allowMethods(request, ['POST']);
+		sendJson(response, 200, { externalChanges: (await context.watcher?.check()) ?? false });
+	} else if (pathname === '/api/library') {
 		allowMethods(request, ['GET']);
 		sendJson(response, 200, toLibraryJson(library));
 	} else if (pathname === '/api/settings') {
@@ -100,6 +127,45 @@ async function route(request, response, { library, settings, editor, waveforms, 
 	} else {
 		allowMethods(request, ['GET', 'HEAD']);
 		await serveStaticFile(request, response, publicDir, pathname);
+	}
+}
+
+/**
+ * Rebuilds the library as a restart would. Requests that arrive meanwhile share the refresh already running.
+ * @param {Response} response
+ * @param {RouterContext} context
+ */
+async function refresh(response, context) {
+	const run = context.refresh;
+	if (!run) {
+		throw new HttpError(503, 'Refreshing is not available');
+	}
+	if (!context.refreshing) {
+		const refreshing = run();
+		context.refreshing = refreshing;
+		const forget = () => {
+			if (context.refreshing === refreshing) {
+				context.refreshing = null;
+			}
+		};
+		refreshing.then(forget, forget);
+	}
+	const outcome = await context.refreshing;
+	switch (outcome.status) {
+		case 'ready':
+			sendJson(response, 200, {});
+			return;
+		case 'invalid': {
+			const root = context.library.root;
+			const errors = outcome.errors.flatMap((error) => error.problems.map((message) => ({
+				path: error.filePath === null ? '' : relative(root, error.filePath).split(sep).join('/'),
+				message,
+			})));
+			sendJson(response, 422, { error: 'Some options files are invalid', errors });
+			return;
+		}
+		case 'noSettings':
+			throw new HttpError(503, 'The .soundboard file is gone. Restart the app.');
 	}
 }
 
