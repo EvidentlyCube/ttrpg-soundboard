@@ -461,7 +461,7 @@ export class Soundboard {
 		return this.#monitor.voices();
 	}
 
-	/** Starts generating the missing waveforms, which also happens by itself once the library has loaded (§6.8). */
+	/** Starts generating the missing waveforms, which also happens by itself once the library has loaded (§6.6). */
 	startWaveforms() {
 		this.#waveforms?.start();
 	}

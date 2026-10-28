@@ -16,7 +16,7 @@
 const PAUSE_MS = 250;
 
 /**
- * Generates the waveforms the server is missing, one file at a time, and serves the stored ones (DESIGN.md §6.8).
+ * Generates the waveforms the server is missing, one file at a time, and serves the stored ones (DESIGN.md §6.6).
  * It knows nothing about playback.
  */
 export class WaveformService {

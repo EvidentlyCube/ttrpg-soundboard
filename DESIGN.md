@@ -46,6 +46,7 @@ node index.js <path-to-audio-directory> [--port <number>] [--verbose]
 ├── .soundboard                 ← marker and app settings (version, volumes)
 ├── Explosion.mp3               ← sound effect
 ├── Explosion.mp3.json          ← its options
+├── Explosion.mp3.wf            ← its waveform, made by the browser (§6.6); disposable
 ├── Door creak.ogg
 ├── Door creak.ogg.json
 ├── Combat.json                 ← options for the playlist "Combat/"
@@ -75,7 +76,7 @@ The scanner applies these rules in order:
    - `<file>.json` next to a track is that **track's options file**. Other `.json` files are orphans.
    - A subdirectory is a **nested subdirectory** (§3.3). Its tracks belong to the top-level playlist.
 5. Supported extensions, matched case-insensitively: `.mp3` and `.ogg`.
-6. Known but unsupported audio extensions (`.wav .flac .m4a .aac .opus .wma .aif .aiff .webm .mp4`) are **reported as warnings** and skipped. All other files are ignored silently.
+6. Known but unsupported audio extensions (`.wav .flac .m4a .aac .opus .wma .aif .aiff .webm .mp4`) are **reported as warnings** and skipped. All other files are ignored silently, which includes the waveform files (`<file>.wf`, §5.1) next to the audio files.
 7. A playlist with no tracks gets a warning and is **hidden** from the UI.
 
 File names are used exactly as the file system returns them, including Unicode normalization, so IDs always match what the server looks up later.
@@ -257,6 +258,11 @@ Settings  { volumes: { master, music, sfx } }   // held by SettingsStore, saved 
 - `LibraryEditor` changes the library while the app runs. `updateSound(id, { title?, gain?, startAt?, endAt?, fadeIn?, fadeOut? })` validates the change with the options file rules (§2.3), rejects unknown keys, trims the title, and rounds the numbers. The points are checked again after merging with the sound's current ones, so a change to one point must still fit the other. It then merges the change into the sound's options file (read, merge, atomic write, unknown keys kept), and only once that succeeded updates the `AudioFile` in place and sorts `sounds` again. Writes to one options file run one after another in the order they were requested, so the file always ends with the newest values; a failed write doesn't block later ones. An id that isn't a sound (including a track id) is an `UnknownSoundError`.
 - `updatePlaylist(id, { title?, gain?, crossfade?, fadeIn?, fadeOut?, order?, trackLooping?, stopMode? })` does the same for a playlist's options file (`<directory>.json` in the root), leaving its `includedSubdirectories` alone, and sorts `playlists` again after a rename. The crossfade, the order, track looping and the stop mode are accepted only here, and the points only for sounds. An unknown id is an `UnknownPlaylistError`.
 - `updateTrack(id, { title?, gain?, startAt?, endAt? })` does the same for a track's options file (`<file>.json` next to it), with the same checks and rounding as for sounds. Only those four are accepted. Tracks keep their path order (§2.2), so nothing is sorted again. An id that isn't a track (including a sound id) is an `UnknownTrackError`.
+- `WaveformStore` (`waveform-store.js`) keeps one waveform file, `<audio file>.wf`, next to each sound and track, beside its `.json` options file. The browser makes the waveforms (§6.6); the store only holds them. A file is a 16-byte header, then 2048 signed bytes:
+  - The header is the magic `SBW1`, the bucket count (u16, always 1024), two reserved bytes, the audio file's size (u32) and its modified time in whole seconds (u32). The server fills the last two in from the audio file when it stores a waveform.
+  - The bytes are 1024 pairs: the lowest and the highest sample of each of 1024 equal slices of the audio, across all channels, scaled to −127..127.
+  - A waveform is **stale** when the audio file's size or modified time no longer matches its header, and a file with a bad magic, count or length is unusable. Both count as missing and are overwritten when made again. Writes go through a temporary file and a rename.
+  - `missing()` lists the ids that have no current waveform: sounds in library order, then tracks in playlist order. `read(id)` returns the peaks or `null`; `write(id, peaks)` takes exactly 2048 bytes (`InvalidWaveformError` otherwise). An id that is not a sound or track is an `UnknownWaveformFileError`. Deleting a `.wf` file is harmless: it is made again.
 - `SettingsStore` keeps the settings in memory and writes them back to `.soundboard` with the same read-merge-write and atomic rename as the options files (§2.3). Writes are **serialized**: one in flight at a time, and changes made meanwhile are written together by one follow-up write, so the file always ends with the newest values.
 
 ### 5.2 HTTP API (`src/http/`, built on `node:http`)
@@ -272,6 +278,9 @@ The server knows nothing about playback state.
 | PATCH | `/api/sounds/<encoded id>` | Body `{ title?, gain?, startAt?, endAt?, fadeIn?, fadeOut? }`. Saved through `LibraryEditor` (§5.1); returns the updated sound in the `/api/library` format. `400` for invalid JSON, a non-object, an unknown key, an empty title, an out-of-range value, or points less than 10 ms apart. `404` when the id isn't a sound. `413` for bodies over 16 KB. |
 | PATCH | `/api/playlists/<encoded id>` | The same for a playlist, with body `{ title?, gain?, crossfade?, fadeIn?, fadeOut?, order?, trackLooping?, stopMode? }` (`LibraryEditor.updatePlaylist`); returns the playlist with its tracks in the `/api/library` format. |
 | PATCH | `/api/tracks/<encoded id>` | The same for a track, with body `{ title?, gain?, startAt?, endAt? }` (`LibraryEditor.updateTrack`); returns the track. The id contains `/`: the rest of the path is decoded as a whole, which keeps literal slashes, so `Combat%2F1.mp3` and `Combat/1.mp3` both work. The browser sends the first. |
+| GET | `/api/waveforms` | `{ "missing": ["Boom.mp3", "Combat/1.mp3", …] }`: the ids with no current waveform, sounds first (`WaveformStore.missing`) |
+| GET | `/api/waveforms/<encoded id>` | The 2048 peak bytes as `application/octet-stream` (the header stays on the server). `404` when there is no current waveform or the id is not a sound or track. |
+| PUT | `/api/waveforms/<encoded id>` | Body: exactly 2048 bytes of peaks. Stored next to the audio file; `204`. `400` for another length, `404` for an unknown id, `413` for bodies over 4 KB. Ids are decoded as for tracks. |
 | GET, HEAD | `/media/<encoded id>` | The audio file, streamed |
 
 - API responses are JSON with `Cache-Control: no-store`. Errors are `{ "error": "message" }`.
@@ -322,11 +331,12 @@ UI layer (DOM)  ──commands──▶  Soundboard (logic facade)  ──▶  A
                                                 (browser)                 (tests, fake clock)
 ```
 
-- `public/app/main.js` is the composition root. It creates the `WebAudioEngine`, the `HttpBackendApi`, the browser clock and the `console` logger, passes them to `Soundboard`, and mounts the UI.
+- `public/app/main.js` is the composition root. It creates the `WebAudioEngine`, the `WebAudioWaveformDecoder`, the `HttpBackendApi`, the browser clock and the `console` logger, passes them to `Soundboard`, and mounts the UI.
 - `public/app/logic/**` **never touches** `window`, `document`, audio APIs or Node APIs. Everything it needs is injected through ports, whose types live in `public/app/logic/ports.js`:
   - the `AudioEngine` (§6.3);
   - a `Clock` (`now`, `setTimeout`, `clearTimeout`, `setInterval`, `clearInterval`); `now()` is a monotonic time in milliseconds, which the voice monitor (§6.5) uses to follow fades;
   - a `BackendApi` (`fetchLibrary()`, `fetchSettings()`, `saveVolumes(volumes, { keepalive })`, `saveSoundOptions(soundId, { title, gain, startAt, endAt, fadeIn, fadeOut }, { keepalive })`, `savePlaylistOptions(playlistId, { title, gain, crossfade, fadeIn, fadeOut, order, trackLooping, stopMode }, { keepalive })`, `saveTrackOptions(trackId, { title, gain, startAt, endAt }, { keepalive })`);
+  - a `WaveformDecoder` (§6.6), and the `BackendApi` methods `fetchMissingWaveforms()`, `fetchWaveform(id)` and `saveWaveform(id, peaks)`;
   - a `Logger` (`warn`, `error`);
   - optionally a `random` function for the random playback orders (§8.1), `Math.random` unless tests pass a seeded one.
 
@@ -373,11 +383,17 @@ customizeTrack(trackId, { title?, gain?, startAt?, endAt? })  // renames a track
                                           // (§8.1); a new gain reaches the playing track at once (§6.4)
 flushTrackOptions(trackId)                // save that track's pending change now
 
+// waveforms (§6.6): not commands, because they are not playback
+startWaveforms()                          // ask the server what is missing and make it; also runs by itself after 'app.ready'
+stopWaveforms()                           // stop after the file being decoded; its result is dropped
+
 // volume (value is the slider position, 0..1, clamped)
 setVolume(bus, value)                     // bus: 'master' | 'music' | 'sfx'
 
 // queries (read-only snapshots)
 getLibrary(), getPlaylistSnapshot(id), getActivePlaylists() /* in start order */, getVolumes(), isSoundActive(id)
+getWaveformStatus()                       // { running, done, total, failed }
+getWaveform(id) → Promise<Int8Array | null>  // min/max byte pairs of a sound or track, cached; null while there is none
 getVoices()                               // every voice the audio engine plays or recently played, oldest first (§6.5)
 
 dispatch(command)                         // the command methods above are thin wrappers around this
@@ -414,6 +430,8 @@ on(type, handler) → unsubscribe, off(type, handler)
 | `playlist.progress` | `{ playlistId, position, duration, crossfadeFrom }`, every 250 ms while playing, right after a seek, and when the rules change |
 | `playlist.error` | `{ playlistId, trackId, message }` |
 | `volume.changed` | `{ bus, value }` |
+| `waveforms.progress` | `{ status: { running, done, total, failed } }`, whenever generation starts, stops, finishes a file or fails one |
+| `waveform.ready` | `{ id }`, once a waveform has been made and stored; `getWaveform(id)` has it |
 | `voices.changed` | `{}`, sent when a voice appears, changes status or is removed from the voice monitor's list (§6.5). Volumes move continuously and are not announced; read them with `getVoices()`. |
 
 ### 6.3 AudioEngine port
@@ -496,6 +514,17 @@ A created voice is wrapped in a `MonitoredVoice` that forwards its calls and rec
 - **Lingering.** The first final status wins, so a later `stop()` on a voice that already ended changes nothing. The voice is marked `finished` and removed 5 s later (`LINGER_MS`), by one clock timeout per voice. The players and the engine release a voice as they always do; only the monitor's record stays.
 - **Limit.** At most 200 entries (`MAX_ENTRIES`). Beyond that the oldest finished entries are dropped first; live voices never are.
 - **Notification.** `onChange` runs when a voice is added, changes status or is removed, and the facade announces it as `voices.changed` (§6.2). The monitor always records, whether or not the panel is open.
+
+### 6.6 Waveforms (`WaveformService`)
+
+`logic/waveform-service.js` makes the waveforms the server lacks and serves the stored ones. It knows nothing about playback: it never looks at what plays, and playback never waits for it.
+
+- **Generation.** `Soundboard` starts it once the library has loaded, and `startWaveforms()` / `stopWaveforms()` control it. A run asks the backend for the missing ids, then handles them one at a time: `decoder.decode(url)`, `saveWaveform(id, peaks)`, a `waveform.ready` event, a `waveforms.progress` event, and a 250 ms rest on the clock before the next file. Only one file is ever being decoded.
+- **Failures.** A file that fails to decode or upload is logged, counted in `failed` and skipped, and not retried until generation is started again.
+- **Stopping.** Every start and stop bumps a run number. A stopped run ends at its next check, and the result of the file being decoded is dropped. Starting again asks the server afresh, so it continues with what is still missing. Nothing is remembered across a page load: F5 starts a new run.
+- **Reading.** `get(id)` fetches a waveform once and caches it (about 2 KB each); a `404` is not cached, so a waveform made later is found. A waveform just made is cached as it is stored.
+- **The decoder** (`WaveformDecoder`, `audio/web-audio-waveform-decoder.js`) fetches `/media/<id>`, decodes it with an `OfflineAudioContext` at 8000 Hz (22050 or 44100 Hz if the browser refuses), and reduces the samples to 1024 min/max pairs with `logic/peaks.js`. The decoder resamples while decoding, so a 5-minute stereo track takes about 10 MB instead of 100 MB, and only the 2 KB of peaks leave the method. It is the one part not covered by unit tests (TESTING.md).
+- **Drawing** (§9.7, §9.2) scales each waveform to its own loudest peak, so quiet files still show their shape.
 
 ---
 
@@ -679,7 +708,7 @@ Browsers only allow audio to start inside a user gesture, so the app starts behi
 
 ### 9.1 Layout
 
-- The page is a full-height column: header (title, volume controls and the debug button, §9.8), a scrolling main area, then the footer.
+- The page is a full-height column: header (title, the waveform progress while there is any, volume controls and the debug button, §9.8), a scrolling main area, then the footer.
 - The main area has a "Playlists" section above a "Sound Effects" section; empty sections are left out. With neither, it says no playlists or sounds were found.
 - Tiles are `<button>`s in a grid of columns at least 10rem (160 px) wide, with titles clamped to 3 lines. The full title shows as a tooltip.
 - Playlist tiles have a blue accent and sound tiles an amber one.
@@ -691,6 +720,7 @@ Browsers only allow audio to start inside a user gesture, so the app starts behi
 - Sound and playlist tiles show a new title as soon as `sound.changed` or `playlist.changed` arrives, but tiles are only moved into the new sorted order when the Customize dialog closes, so a tile never jumps around while it is being renamed. Player bars show a new playlist title at once, too, and keep their start order.
 - The footer shows **playlists only**. Sound effects never create a player bar.
 - The footer is **always visible**, so the layout doesn't shift when music starts or stops. It is at least one row of player bars tall; while no playlist is active, that row shows a muted "No playlist playing". Player bars sit in a three-column grid, in the order the playlists were started. The footer grows to at most two rows of bars; beyond that it scrolls vertically.
+- **Waveform progress** (`ui/waveform-indicator.js`) sits in the header left of the volume controls: "Waveforms 12 / 87" (with ", 2 failed" and ", stopped" when they apply), a thin bar and a ■ button that stops generation, or a ▶ button that starts it again. It is shown only while generation runs, or when some waveforms are missing or failed, and follows `waveforms.progress` through text and an inline width (§6.6).
 - Color tokens are defined once, in Tailwind's `@theme` (§9.6).
 
 ### 9.2 Player bar
@@ -699,7 +729,7 @@ Each bar shows:
 - The playlist title and `m:ss / m:ss` (`h:mm:ss` from an hour on), with `--:--` while the duration is unknown.
 - The track title with a ▾ chevron. Clicking it opens the **track list popover**.
 - ⏮ previous, ⏯ pause/resume, ⏭ next, and ⏹ stop. Previous, next and stop use the `'default'` transition; the instant versions are in the context menu.
-- A progress bar. Pressing anywhere on it seeks to that point. When a crossfade is coming (`crossfadeFrom`, §8.4), the stretch from that point to the end is drawn in a lighter blue (`bg-music/40`) under the playback fill, so it is clear where the next track will take over. Its width is set with an inline style, like the fill's. A looping track has no such stretch, and its fill and time go back to the start at each loop.
+- A progress bar over the waveform of the part of the track that plays (the stored waveform cut at the track's start and end points, §6.6; drawn on a canvas in `text-music/35`, redrawn on a track or points change, a resize or when the waveform is made). The bar is a thin line (`h-0.5`) in the middle of the waveform, in a row 2 rem tall. Pressing anywhere on that row seeks to that point. When a crossfade is coming (`crossfadeFrom`, §8.4), the stretch from that point to the end is drawn in a lighter blue (`bg-music/40`) under the playback fill, so it is clear where the next track will take over. Its width is set with an inline style, like the fill's. A looping track has no such stretch, and its fill and time go back to the start at each loop.
 
 The track list popover lists every track, numbered, with the current one marked and scrolled into view. The bar keeps the newest playlist from `playlist.changed`, so the popover shows renamed tracks. Tracks this browser can't play are disabled. Clicking a track calls `jumpToTrack` with `'default'`.
 
@@ -801,6 +831,7 @@ Below the cards: Play / Stop (`playSound`, or stopping all instances; it follows
 
 **Start and end section** (`ui/range-control.js`). It works in whole milliseconds and shows them as seconds with three decimals. Every change sends both points with `customizeSound`, and `sound.changed` updates the control unless a handle is being dragged.
 - **Slider.** It spans the sound's stored duration. Two handles (`role="slider"`, "Start point" and "End point") never cross and stay at least `MIN_CLIP_MS` apart. Dragging a handle moves it; pressing the bar moves the nearer handle there (the start on a tie) and keeps dragging it. The part between the handles is amber (`bg-sfx`) on a dim bar. Handle and bar positions are inline styles (§9.6).
+- **Waveform.** When the file's waveform is available (§6.6), it is drawn on a canvas above the slider, in the accent color, `h-14`, with the slider's width and margins so a handle stands over the sound it cuts at. The part outside the handles is dimmed by two shades whose widths are inline styles. Dialogs ask for it when they open a sound or when a track's row opens, and again on `waveform.ready`; without one, the control looks as it did. `ui/waveform-draw.js` holds the pure column and drawing code (unit-tested), `ui/waveform-canvas.js` the pixel-density handling. It is shown in seek mode too.
 - **Fades on the slider.** Inside the amber part, the fade-in is drawn in blue (`bg-music`) from the start handle and the fade-out up to the end handle, as shares of the part that plays (`fadeBands`). Where they overlap, that stretch pulses red (`animate-warn`, §9.6); when either fade is longer than the whole part, all of it does. The dialog passes the fades in with `showFades` whenever the sound changes.
 - **Keyboard.** On a handle, the arrow keys step 0.010 s and Shift + arrow 0.100 s; Home and End go to the handle's limits.
 - **Fields.** "Start" on the left and "End" on the right are filled fields with the unit `s`, showing three decimals (`1.250`). They take seconds (`1.25`, `1,25`, `1.25 s`), rounded to whole milliseconds, and apply on Enter or when the field loses focus; values out of range are clamped. On Enter, text that can't be read marks the field red; leaving the field drops it. Esc restores the field without closing the dialog. A field being typed in isn't overwritten by updates.
@@ -871,7 +902,7 @@ scripts/        mutate.js                checks that tests fail when code is bro
 src/
 	cli/        main.js  args.js  prompter.js  reporter.js  colors.js
 	library/    bootstrap-service.js  scanner.js  classify.js  sort.js  validate.js  errors.js
-	            options-store.js  settings-store.js  library.js  library-editor.js  durations.js
+	            options-store.js  settings-store.js  library.js  library-editor.js  durations.js  waveform-store.js
 	metadata/   index.js  id3.js  ogg.js  mpeg.js  binary-reader.js
 	http/       server.js  router.js  responses.js  static-files.js  media.js  range.js  mime.js  request-log.js
 public/
@@ -883,14 +914,14 @@ public/
 			ports.js  soundboard.js  commands.js  errors.js  event-emitter.js  library-model.js
 			playlist-player.js  playback-rules.js  transitions.js  order-strategies.js  play-history.js
 			sound-player.js  buffer-cache.js  clip.js  volume.js  settings-sync.js  options-sync.js  sort.js
-			voice-monitor.js  fade-ramp.js
-		audio/      web-audio-engine.js
+			voice-monitor.js  fade-ramp.js  peaks.js  waveform-service.js
+		audio/      web-audio-engine.js  web-audio-waveform-decoder.js
 		api/        backend-api.js
 		ui/         app.js  component.js  dom.js  icons.js  format.js  menus.js  position.js
 		            splash.js  overlay.js  context-menu.js  track-list.js  tile-grid.js
 		            playlist-tile.js  sound-tile.js  player-dock.js  player-bar.js  volume-controls.js
 		            dialog.js  customize-parts.js  filled-field.js  sound-editor.js  playlist-editor.js  track-accordion.js
-		            gain-control.js  gain-scale.js  debug-view.js
+		            gain-control.js  gain-scale.js  debug-view.js  waveform-indicator.js  waveform-draw.js  waveform-canvas.js
 		            seconds-control.js  seconds-scale.js  range-control.js  range-scale.js
 test/
 	backend/    cli/  http/  library/  metadata/
@@ -942,6 +973,7 @@ The streaming design keeps resource use well within what this machine can handle
 - Node holds only the file index and settings. Files are streamed from disk in chunks.
 - Each streamed track (a media element) buffers only a few MB ahead. With, say, 6 playlists, the 24 streamed-sound cap and a few retiring voices, that is well under 200 MB in the worst case.
 - Decoded sound effects are capped at 64 MB (§7).
+- Waveform generation decodes one file at a time at 8 kHz (about 10 MB for a 5-minute stereo track) and drops it before the next (§6.6). Stored waveforms are 2 KB each.
 - The real goal is that the tab never grows over a 4-hour session. That is why voices release their resources on `stop()` (§6.3) and retiring voices have deadlines (§8).
 
 **CPU and battery:**
