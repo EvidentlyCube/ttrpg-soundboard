@@ -79,6 +79,18 @@ export class SoundEditor extends Component {
 			range = control;
 		}
 
+		const showWaveform = () => {
+			void soundboard.getWaveform(id).then((peaks) => range?.showWaveform(peaks));
+		};
+		if (range) {
+			showWaveform();
+		}
+		this.own(soundboard.on('waveform.ready', (event) => {
+			if (event.id === id) {
+				showWaveform();
+			}
+		}));
+
 		/**
 		 * @param {'fadeIn' | 'fadeOut'} key
 		 * @param {string} label

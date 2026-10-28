@@ -1,5 +1,6 @@
 import { HttpBackendApi } from './api/backend-api.js';
 import { WebAudioEngine } from './audio/web-audio-engine.js';
+import { WebAudioWaveformDecoder } from './audio/web-audio-waveform-decoder.js';
 import { browserClock } from './browser-clock.js';
 import { Soundboard } from './logic/soundboard.js';
 import { App } from './ui/app.js';
@@ -8,6 +9,7 @@ const soundboard = new Soundboard({
 	engine: new WebAudioEngine(),
 	clock: browserClock,
 	api: new HttpBackendApi(),
+	decoder: new WebAudioWaveformDecoder(),
 	logger: console,
 });
 

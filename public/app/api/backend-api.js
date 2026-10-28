@@ -60,6 +60,42 @@ export class HttpBackendApi {
 		await this.#request('PATCH', `/api/tracks/${encodeURIComponent(trackId)}`, { body: options, keepalive });
 	}
 
+	/** @returns {Promise<string[]>} */
+	async fetchMissingWaveforms() {
+		const { missing } = await this.#request('GET', '/api/waveforms');
+		return missing;
+	}
+
+	/**
+	 * @param {string} id
+	 * @returns {Promise<Int8Array | null>}
+	 */
+	async fetchWaveform(id) {
+		const response = await fetch(`${this.#baseUrl}/api/waveforms/${encodeURIComponent(id)}`);
+		if (response.status === 404) {
+			return null;
+		}
+		if (!response.ok) {
+			throw new Error(`GET waveform failed: ${await errorMessageOf(response)}`);
+		}
+		return new Int8Array(await response.arrayBuffer());
+	}
+
+	/**
+	 * @param {string} id
+	 * @param {Int8Array} peaks
+	 */
+	async saveWaveform(id, peaks) {
+		const response = await fetch(`${this.#baseUrl}/api/waveforms/${encodeURIComponent(id)}`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/octet-stream' },
+			body: /** @type {any} */ (peaks),
+		});
+		if (!response.ok) {
+			throw new Error(`PUT waveform failed: ${await errorMessageOf(response)}`);
+		}
+	}
+
 	/**
 	 * @param {'GET' | 'PUT' | 'PATCH'} method
 	 * @param {string} path

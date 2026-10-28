@@ -23,6 +23,7 @@ How the app is tested: the automated suite that runs in Node, and the manual che
 | `fake-clock.js` | Timers that only fire when a test calls `advance(ms)`, in time order, including timers created by timers. |
 | `fake-audio-engine.js` | The `AudioEngine` port on the fake clock, modelling media elements: load delay, `play()` before load, position advancing only while playing, `ended` once. Per-URL scripts add durations, load, play and decode errors, buffer sizes, and "leaky" voices that keep firing events after `stop()`. |
 | `fake-backend-api.js` | The `BackendApi` port with settable library, settings and failures; records saves. |
+| `fake-waveform-decoder.js` | The `WaveformDecoder` port: records the URLs it decodes, fails for chosen ones, and can be held back with a gate to act while a file is being decoded. |
 | `seeded-random.js` | `seededRandom(seed)`, a repeatable stand-in for `Math.random` (mulberry32), for the random playback orders. |
 | `fake-prompter.js` / `fake-reporter.js` | Scripted answers for bootstrap questions; records everything reported. |
 | `http-client.js` | `rawRequest()` sends a path exactly as given (for path traversal tests, which `fetch` would normalize); `findFreePort()`. |
@@ -97,6 +98,16 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] Presses, from the tile and the dialog's Play, start at the start point and stop at the end point, for a small (buffered) sound and for a large (streamed) one over 256 KB. A copy already playing keeps the points it started with.
 - [ ] With a fade-in and a fade-out, presses rise from silence and fall to silence exactly at the end point, without clicks. A fade-out longer than the sound starts at once. Stop All still cuts at once.
 - [ ] Points and fades survive a reload.
+
+**Waveforms**
+- [ ] After the splash, the header shows "Waveforms 3 / 10" with a thin bar and a ■ button while waveforms are made, and the indicator disappears when all are done. Playing music or sounds meanwhile is not affected.
+- [ ] Each audio file gets a `<file>.wf` next to it (2 KB plus a 16-byte header); a second page load, or a restart of the server, makes none again and shows no indicator.
+- [ ] The ■ button stops generation after the current file ("…, stopped"); the ▶ button continues with what is missing.
+- [ ] Opening a track in the playlist dialog, and a sound's dialog, shows its waveform above the Start and end slider in the accent color, filling the height even for a quiet file; the handles stand over the sound they cut at, and the part outside them is dimmed.
+- [ ] Dragging a handle, resizing the window and a high-density display keep the waveform sharp and aligned. A track still waiting for its waveform shows none, and the waveform appears by itself when it is made.
+- [ ] Replacing an audio file (or touching its content) makes its waveform be made again; deleting a `.wf` file does too, after a reload.
+- [ ] While a track plays its waveform stays still above the seek bar. A file the browser can't decode counts as failed in the indicator and the rest carry on.
+- [ ] Safari: decoding works, and the tab's memory stays flat while hundreds of waveforms are made.
 
 **Customize dialog look**
 - [ ] Both dialogs group their settings in cards (sound: Sound, Volume, Start and end, Fades; playlist: Playlist, Volume, Fades) with the title as a pill on the top border. A card is dimmed with a grey pill until it is hovered or something in it has focus; then it lights up and the pill turns amber (sound) or blue (playlist).

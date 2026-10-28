@@ -45,8 +45,18 @@ export class TrackAccordion extends Component {
 		const playlistId = this.#playlist.id;
 		const list = h('ol', { 'class': 'divide-y divide-line', 'data-track-accordion': true });
 
+		// A waveform is asked for when its row opens, and again when the server has just made it.
+		const showWaveform = (/** @type {string} */ trackId) => {
+			const range = rows.get(trackId)?.range;
+			if (range) {
+				void this.#soundboard.getWaveform(trackId).then((peaks) => range.showWaveform(peaks));
+			}
+		};
 		const open = (/** @type {string | null} */ trackId) => {
 			this.#openId = trackId;
+			if (trackId !== null) {
+				showWaveform(trackId);
+			}
 			for (const [id, row] of rows) {
 				const expanded = id === trackId;
 				row.toggle.setAttribute('aria-expanded', String(expanded));
@@ -187,6 +197,12 @@ export class TrackAccordion extends Component {
 		this.own(this.#soundboard.on('playlist.progress', (event) => {
 			if (event.playlistId === playlistId) {
 				showProgress(event.position, event.crossfadeFrom);
+			}
+		}));
+
+		this.own(this.#soundboard.on('waveform.ready', ({ id }) => {
+			if (this.#openId === id) {
+				showWaveform(id);
 			}
 		}));
 

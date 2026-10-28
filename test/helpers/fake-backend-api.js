@@ -67,6 +67,12 @@ export class FakeBackendApi {
 	playlistSaves = [];
 	/** @type {{ trackId: string, options: ItemOptions, keepalive: boolean }[]} */
 	trackSaves = [];
+	/** Ids with no waveform yet, in the order the server lists them. @type {string[]} */
+	missingWaveforms = [];
+	/** Waveforms the server holds. @type {Map<string, Int8Array>} */
+	waveforms = new Map();
+	/** @type {Error | null} */
+	waveformError = null;
 
 	async fetchLibrary() {
 		this.libraryRequests++;
@@ -74,6 +80,27 @@ export class FakeBackendApi {
 			throw this.libraryError;
 		}
 		return JSON.parse(JSON.stringify(this.library));
+	}
+
+	async fetchMissingWaveforms() {
+		if (this.waveformError) {
+			throw this.waveformError;
+		}
+		return [...this.missingWaveforms];
+	}
+
+	/** @param {string} id */
+	async fetchWaveform(id) {
+		return this.waveforms.get(id) ?? null;
+	}
+
+	/**
+	 * @param {string} id
+	 * @param {Int8Array} peaks
+	 */
+	async saveWaveform(id, peaks) {
+		this.waveforms.set(id, peaks);
+		this.missingWaveforms = this.missingWaveforms.filter((missing) => missing !== id);
 	}
 
 	async fetchSettings() {

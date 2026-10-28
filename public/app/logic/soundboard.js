@@ -9,6 +9,7 @@ import { PlaylistPlayer } from './playlist-player.js';
 import { SettingsSync } from './settings-sync.js';
 import { SoundPlayer } from './sound-player.js';
 import { VoiceMonitor } from './voice-monitor.js';
+import { WaveformService } from './waveform-service.js';
 import { VolumeControl } from './volume.js';
 
 /** @typedef {import('./ports.js').AudioEngine} AudioEngine */
@@ -18,6 +19,9 @@ import { VolumeControl } from './volume.js';
 /** @typedef {import('./ports.js').LibraryJson} LibraryJson */
 /** @typedef {import('./ports.js').Logger} Logger */
 /** @typedef {import('./ports.js').Volumes} Volumes */
+/** @typedef {import('./ports.js').WaveformDecoder} WaveformDecoder */
+/** @typedef {import('./waveform-service.js').WaveformEvent} WaveformEvent */
+/** @typedef {import('./waveform-service.js').WaveformStatus} WaveformStatus */
 /** @typedef {import('./ports.js').AudioFileJson} AudioFileJson */
 /** @typedef {import('./ports.js').ItemOptions} ItemOptions */
 /** @typedef {import('./ports.js').PlaylistJson} PlaylistJson */
@@ -42,7 +46,7 @@ import { VolumeControl } from './volume.js';
  * 	| { type: 'track.saved', trackId: string }
  * 	| { type: 'track.saveFailed', trackId: string, message: string }} CustomizeEvent
  * @typedef {{ type: 'voices.changed' }} VoicesEvent
- * @typedef {AppEvent | SoundEvent | PlaylistEvent | VolumeChangedEvent | CustomizeEvent | VoicesEvent} SoundboardEvent
+ * @typedef {AppEvent | SoundEvent | PlaylistEvent | VolumeChangedEvent | CustomizeEvent | VoicesEvent | WaveformEvent} SoundboardEvent
  */
 
 /** @typedef {{ transition?: Transition }} TransitionOptions */
@@ -64,6 +68,9 @@ export class Soundboard {
 	#settingsSync;
 	#optionsSync;
 	#random;
+	#decoder;
+	/** @type {WaveformService | null} */
+	#waveforms = null;
 	/** @type {{ library: LibraryModel, sounds: SoundPlayer, playlists: Map<string, PlaylistPlayer> } | null} */
 	#loaded = null;
 	/** @type {Promise<void> | null} */
@@ -78,8 +85,10 @@ export class Soundboard {
 	 * @param {BackendApi} ports.api
 	 * @param {Logger} ports.logger
 	 * @param {() => number} [ports.random] for the random playback orders; tests pass a seeded generator
+	 * @param {WaveformDecoder} ports.decoder
 	 */
-	constructor({ engine, clock, api, logger, random = Math.random }) {
+	constructor({ engine, clock, api, logger, decoder, random = Math.random }) {
+		this.#decoder = decoder;
 		this.#clock = clock;
 		this.#random = random;
 		this.#api = api;
@@ -452,6 +461,29 @@ export class Soundboard {
 		return this.#monitor.voices();
 	}
 
+	/** Starts generating the missing waveforms, which also happens by itself once the library has loaded (§6.8). */
+	startWaveforms() {
+		this.#waveforms?.start();
+	}
+
+	/** Stops generating after the file being decoded; playback is never affected either way. */
+	stopWaveforms() {
+		this.#waveforms?.stop();
+	}
+
+	/** @returns {WaveformStatus} */
+	getWaveformStatus() {
+		return this.#waveforms?.status ?? { running: false, done: 0, total: 0, failed: 0 };
+	}
+
+	/**
+	 * @param {string} id a sound or track
+	 * @returns {Promise<Int8Array | null>} min/max byte pairs, or null while there is no waveform yet (`waveform.ready` follows)
+	 */
+	getWaveform(id) {
+		return this.#waveforms?.get(id) ?? Promise.resolve(null);
+	}
+
 	/** @param {string} soundId */
 	isSoundActive(soundId) {
 		return this.#loaded?.sounds.isActive(soundId) ?? false;
@@ -482,7 +514,17 @@ export class Soundboard {
 			})]));
 
 			this.#loaded = { library, sounds, playlists };
+			const urls = new Map([...libraryJson.sounds, ...libraryJson.playlists.flatMap((playlist) => playlist.tracks)].map((file) => [file.id, file.url]));
+			this.#waveforms = new WaveformService({
+				api: this.#api,
+				decoder: this.#decoder,
+				clock: this.#clock,
+				logger: this.#logger,
+				emit,
+				urlOf: (id) => urls.get(id),
+			});
 			emit({ type: 'app.ready', library: libraryJson, volumes: this.#volume.volumes, unplayable: library.unplayable });
+			this.#waveforms.start();
 		} catch (error) {
 			this.#starting = null;
 			const message = error instanceof Error ? error.message : String(error);

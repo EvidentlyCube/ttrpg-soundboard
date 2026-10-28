@@ -11,6 +11,7 @@ import { SoundTile } from './sound-tile.js';
 import { Splash } from './splash.js';
 import { tileGrid } from './tile-grid.js';
 import { VolumeControls } from './volume-controls.js';
+import { WaveformIndicator } from './waveform-indicator.js';
 
 /** @typedef {import('../logic/ports.js').AudioFileJson} AudioFileJson */
 /** @typedef {import('../logic/ports.js').LibraryJson} LibraryJson */
@@ -123,6 +124,7 @@ class Board extends Component {
 		const header = h('header', { class: 'flex shrink-0 items-center justify-between gap-6 border-b border-line bg-panel px-5 py-3' },
 			h('h1', { class: 'text-lg font-semibold tracking-tight' }, 'Soundboard'),
 			controls);
+		this.#adopt(new WaveformIndicator(soundboard).mount(controls));
 		this.#adopt(new VolumeControls(soundboard).mount(controls));
 		this.#adopt(new DebugView(soundboard).mount(controls));
 

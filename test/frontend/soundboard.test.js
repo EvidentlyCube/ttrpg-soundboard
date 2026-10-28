@@ -5,6 +5,7 @@ import { Soundboard } from '../../public/app/logic/soundboard.js';
 import { FakeAudioEngine } from '../helpers/fake-audio-engine.js';
 import { FakeBackendApi } from '../helpers/fake-backend-api.js';
 import { FakeClock } from '../helpers/fake-clock.js';
+import { FakeWaveformDecoder } from '../helpers/fake-waveform-decoder.js';
 
 /** @typedef {import('../../public/app/logic/soundboard.js').SoundboardEvent} SoundboardEvent */
 
@@ -20,6 +21,7 @@ const EVENT_TYPES = /** @type {const} */ ([
 	'playlist.changed', 'playlist.saved', 'playlist.saveFailed',
 	'track.saved', 'track.saveFailed',
 	'voices.changed',
+	'waveforms.progress', 'waveform.ready',
 ]);
 
 /** @param {{ canPlay?: (format: 'mp3' | 'ogg') => boolean }} [options] */
@@ -30,7 +32,7 @@ function setup({ canPlay } = {}) {
 	/** @type {unknown[][]} */
 	const logged = [];
 	const logger = { warn: (/** @type {unknown[]} */ ...args) => logged.push(args), error: (/** @type {unknown[]} */ ...args) => logged.push(args) };
-	const soundboard = new Soundboard({ engine, clock, api, logger });
+	const soundboard = new Soundboard({ engine, clock, api, logger, decoder: new FakeWaveformDecoder() });
 	/** @type {SoundboardEvent[]} */
 	const events = [];
 	for (const type of EVENT_TYPES) {
@@ -606,6 +608,18 @@ describe('Soundboard', () => {
 			soundboard.playSound('Rain.ogg');
 			assert.equal(soundboard.isSoundActive('Rain.ogg'), true);
 			assert.match(String(logged[0]?.[0]), /sound\.activeChanged/);
+		});
+
+		it('starts making the missing waveforms once the library has loaded', async () => {
+			const { soundboard, api, eventsOf, advance } = setup();
+			api.missingWaveforms = ['Boom.mp3'];
+			await soundboard.start();
+			await advance(1);
+			await advance(1);
+			assert.deepEqual([...api.waveforms.keys()], ['Boom.mp3']);
+			assert.equal(eventsOf('waveform.ready').length, 1);
+			assert.deepEqual(soundboard.getWaveformStatus(), { running: false, done: 1, total: 1, failed: 0 });
+			assert.ok(await soundboard.getWaveform('Boom.mp3'));
 		});
 
 		it('can unsubscribe', async () => {

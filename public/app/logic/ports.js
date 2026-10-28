@@ -94,6 +94,16 @@
  * @property {(soundId: string, options: ItemOptions, request: { keepalive: boolean }) => Promise<void>} saveSoundOptions
  * @property {(playlistId: string, options: ItemOptions, request: { keepalive: boolean }) => Promise<void>} savePlaylistOptions
  * @property {(trackId: string, options: ItemOptions, request: { keepalive: boolean }) => Promise<void>} saveTrackOptions
+ * @property {() => Promise<string[]>} fetchMissingWaveforms ids of the sounds and tracks that have no waveform yet
+ * @property {(id: string) => Promise<Int8Array | null>} fetchWaveform null when there is none yet
+ * @property {(id: string, peaks: Int8Array) => Promise<void>} saveWaveform
+ */
+
+/**
+ * Turns an audio file into its waveform: 1024 min/max byte pairs (DESIGN.md §6.3). Only the peaks leave the adapter;
+ * the decoded audio is dropped before it returns.
+ * @typedef {object} WaveformDecoder
+ * @property {(url: string) => Promise<Int8Array>} decode
  */
 
 /**

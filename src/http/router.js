@@ -2,6 +2,7 @@ import { ValidationError } from '../library/errors.js';
 import { UnknownPlaylistError, UnknownSoundError, UnknownTrackError } from '../library/library-editor.js';
 import { isPlainObject, VOLUME_BUSES } from '../library/validate.js';
 import { findMediaFile, isMediaPath, mediaUrl, serveMedia } from './media.js';
+import { InvalidWaveformError, UnknownWaveformFileError } from '../library/waveform-store.js';
 import { allowMethods, HttpError, sendJson } from './responses.js';
 import { serveStaticFile } from './static-files.js';
 
@@ -11,18 +12,22 @@ import { serveStaticFile } from './static-files.js';
 /** @typedef {import('../library/settings-store.js').SettingsStore} SettingsStore */
 /** @typedef {import('../library/library-editor.js').LibraryEditor} LibraryEditor */
 /** @typedef {import('../library/library-editor.js').OptionChanges} OptionChanges */
+/** @typedef {import('../library/waveform-store.js').WaveformStore} WaveformStore */
 
 /**
  * @typedef {object} RouterContext
  * @property {Library} library
  * @property {SettingsStore} settings
  * @property {LibraryEditor} editor
+ * @property {WaveformStore} waveforms
  * @property {string} publicDir
  * @property {(error: unknown) => void} logError called for unexpected failures, never for client mistakes
  */
 
 const LIBRARY_FORMAT_VERSION = 1;
 const MAX_BODY_BYTES = 16 * 1024;
+const MAX_WAVEFORM_BODY_BYTES = 4 * 1024;
+const WAVEFORMS_PREFIX = '/api/waveforms/';
 const SOUNDS_PREFIX = '/api/sounds/';
 const PLAYLISTS_PREFIX = '/api/playlists/';
 const TRACKS_PREFIX = '/api/tracks/';
@@ -55,7 +60,7 @@ export function createRequestHandler(context) {
  * @param {Response} response
  * @param {RouterContext} context
  */
-async function route(request, response, { library, settings, editor, publicDir }) {
+async function route(request, response, { library, settings, editor, waveforms, publicDir }) {
 	// The raw path is used on purpose: URL parsing would resolve `..` before the static file guard could see it.
 	const pathname = (request.url ?? '/').split('?')[0];
 
@@ -68,6 +73,12 @@ async function route(request, response, { library, settings, editor, publicDir }
 	} else if (pathname === '/api/settings/volumes') {
 		allowMethods(request, ['PUT']);
 		sendJson(response, 200, await updateVolumes(settings, await readJsonBody(request)));
+	} else if (pathname === '/api/waveforms') {
+		allowMethods(request, ['GET']);
+		sendJson(response, 200, { missing: await waveforms.missing() });
+	} else if (pathname.startsWith(WAVEFORMS_PREFIX)) {
+		allowMethods(request, ['GET', 'PUT']);
+		await serveWaveform(request, response, waveforms, pathname);
 	} else if (pathname.startsWith(SOUNDS_PREFIX)) {
 		allowMethods(request, ['PATCH']);
 		const body = /** @type {OptionChanges} */ (await readJsonBody(request));
@@ -181,4 +192,65 @@ async function readJsonBody(request) {
 	} catch {
 		throw new HttpError(400, 'Request body is not valid JSON');
 	}
+}
+
+/**
+ * `GET` sends a waveform's peaks as raw bytes; `PUT` stores them (DESIGN.md §5.2).
+ * @param {Request} request
+ * @param {Response} response
+ * @param {WaveformStore} waveforms
+ * @param {string} pathname
+ */
+async function serveWaveform(request, response, waveforms, pathname) {
+	let id;
+	try {
+		id = decodeURIComponent(pathname.slice(WAVEFORMS_PREFIX.length));
+	} catch {
+		throw new HttpError(404, 'Not found');
+	}
+	try {
+		if (request.method === 'PUT') {
+			await waveforms.write(id, await readRawBody(request, MAX_WAVEFORM_BODY_BYTES));
+			response.writeHead(204, { 'Cache-Control': 'no-store' });
+			response.end();
+			return;
+		}
+		const peaks = await waveforms.read(id);
+		if (!peaks) {
+			throw new HttpError(404, 'No waveform yet');
+		}
+		response.writeHead(200, {
+			'Content-Type': 'application/octet-stream',
+			'Content-Length': peaks.length,
+			'Cache-Control': 'no-store',
+		});
+		response.end(peaks);
+	} catch (error) {
+		if (error instanceof UnknownWaveformFileError) {
+			throw new HttpError(404, error.message);
+		}
+		if (error instanceof InvalidWaveformError) {
+			throw new HttpError(400, error.message);
+		}
+		throw error;
+	}
+}
+
+/**
+ * @param {Request} request
+ * @param {number} limit
+ * @returns {Promise<Buffer>}
+ */
+async function readRawBody(request, limit) {
+	/** @type {Buffer[]} */
+	const chunks = [];
+	let size = 0;
+	for await (const chunk of request) {
+		size += chunk.length;
+		if (size > limit) {
+			throw new HttpError(413, 'Request body too large');
+		}
+		chunks.push(chunk);
+	}
+	return Buffer.concat(chunks);
 }

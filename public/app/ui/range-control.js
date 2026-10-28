@@ -2,24 +2,27 @@ import { MIN_CLIP_MS } from '../logic/clip.js';
 import { Component } from './component.js';
 import { h, on } from './dom.js';
 import { filledField } from './filled-field.js';
+import { drawWaveform, waveformColumns } from './waveform-draw.js';
 import { clampEnd, clampStart, fadeBands, formatTime, msAt, nearerHandle, parseTime, shareOf, stepFor, toFieldText } from './range-scale.js';
 
 /** @typedef {import('./range-scale.js').Handle} Handle */
 
 /**
  * Complete class names per accent, because the browser build only generates classes it sees written out (DESIGN.md §9.6).
- * @type {Record<'sfx' | 'music', { lit: string, ring: string, reset: string }>}
+ * @type {Record<'sfx' | 'music', { lit: string, ring: string, reset: string, wave: string }>}
  */
 const ACCENTS = {
 	sfx: {
 		lit: 'bg-sfx',
 		ring: 'focus-visible:ring-sfx',
 		reset: 'hover:border-sfx focus-visible:border-sfx',
+		wave: 'text-sfx',
 	},
 	music: {
 		lit: 'bg-music',
 		ring: 'focus-visible:ring-music',
 		reset: 'hover:border-music focus-visible:border-music',
+		wave: 'text-music',
 	},
 };
 
@@ -57,6 +60,10 @@ export class RangeControl extends Component {
 	#showMode = null;
 	/** @type {(() => void) | null} */
 	#showPosition = null;
+	/** @type {Int8Array | null} */
+	#peaks = null;
+	/** @type {(() => void) | null} */
+	#drawWaveform = null;
 
 	/**
 	 * @param {object} options
@@ -93,6 +100,15 @@ export class RangeControl extends Component {
 			this.#showMode?.(playback !== null);
 		}
 		this.#showPosition?.();
+	}
+
+	/**
+	 * Shows the file's waveform above the slider, or nothing for null. Min/max byte pairs, as the soundboard stores them.
+	 * @param {Int8Array | null} peaks
+	 */
+	showWaveform(peaks) {
+		this.#peaks = peaks;
+		this.#drawWaveform?.();
 	}
 
 	/**
@@ -169,6 +185,12 @@ export class RangeControl extends Component {
 			'style': { left: '0%' },
 		});
 		const handles = { start: handle('start', 'Start point'), end: handle('end', 'End point') };
+		// The waveform has the slider's width and margins, so a handle stands over the sound it cuts at. Outside the handles
+		// it is dimmed by two plain shades, which move with inline styles like the handles do.
+		const wave = h('canvas', { class: `block h-14 w-full ${colors.wave}` });
+		const shadeBefore = h('div', { class: 'absolute inset-y-0 left-0 bg-raised/70', style: { width: '0%' } });
+		const shadeAfter = h('div', { class: 'absolute inset-y-0 right-0 bg-raised/70', style: { width: '0%' } });
+		const waveBox = h('div', { 'class': 'relative mx-1.5', 'data-range-waveform': true, 'hidden': true }, wave, shadeBefore, shadeAfter);
 		const track = h('div', {
 			'class': 'relative mx-1.5 h-8 cursor-pointer touch-none select-none',
 			'title': 'Drag the handles to choose the part that plays',
@@ -216,6 +238,8 @@ export class RangeControl extends Component {
 			place(bands.fadeOut, 1 - fades.fadeOut, fades.fadeOut);
 			place(bands.overlap, fades.overlap?.from ?? 0, fades.overlap?.share ?? 0);
 			place(bands.tooLong, 0, fades.tooLong ? 1 : 0);
+			shadeBefore.style.width = `${startShare * 100}%`;
+			shadeAfter.style.width = `${(1 - shareOf(points.end, durationMs)) * 100}%`;
 			length.textContent = `Plays ${formatTime(points.end - points.start)} of ${formatTime(durationMs)}`;
 			this.#showPosition?.();
 		};
@@ -248,6 +272,29 @@ export class RangeControl extends Component {
 		};
 		this.#show = show;
 		show();
+
+		const drawWave = () => {
+			const peaks = this.#peaks;
+			waveBox.hidden = peaks === null;
+			const context = wave.getContext('2d');
+			const ratio = window.devicePixelRatio || 1;
+			const width = Math.round(wave.clientWidth * ratio);
+			const height = Math.round(wave.clientHeight * ratio);
+			if (!peaks || !context || width === 0 || height === 0) {
+				return;
+			}
+			wave.width = width;
+			wave.height = height;
+			const pitch = Math.max(2, Math.round(2 * ratio));
+			context.fillStyle = getComputedStyle(wave).color;
+			drawWaveform(context, waveformColumns(peaks, Math.floor(width / pitch)), width, height, pitch, pitch - Math.max(1, Math.round(ratio / 2)));
+		};
+		this.#drawWaveform = drawWave;
+		// The canvas has no size until the control is in the page, and it changes with the dialog.
+		const resizes = new ResizeObserver(drawWave);
+		resizes.observe(wave);
+		this.own(() => resizes.disconnect());
+		drawWave();
 
 		const showMode = (/** @type {boolean} */ playing) => {
 			track.dataset.mode = playing ? 'seek' : 'edit';
@@ -366,7 +413,7 @@ export class RangeControl extends Component {
 		this.own(on(reset, 'click', () => change(0, durationMs)));
 
 		return h('div', { 'class': 'space-y-3', 'data-range-control': true },
-			track,
+			h('div', {}, waveBox, track),
 			h('div', { class: 'flex items-center text-sm' },
 				startField.element,
 				// A bar in the fields' underline color joins them, with Reset in its middle.
