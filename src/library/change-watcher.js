@@ -91,6 +91,27 @@ export class ChangeWatcher {
 	});
 
 	/**
+	 * Runs a task that creates files, such as adding a download to the library, with nothing else in between, then
+	 * records the files it lists so they don't count as external changes.
+	 * @template {{ written: string[] }} T
+	 * @param {() => Promise<T>} task
+	 * @returns {Promise<T>}
+	 */
+	writeFiles(task) {
+		return this.#exclusive(async () => {
+			const result = await task();
+			for (const path of result.written) {
+				try {
+					this.#baseline.set(path, await stampFile(path));
+				} catch {
+					// Changed again before it could be read; the next comparison sees whatever it is now.
+				}
+			}
+			return result;
+		});
+	}
+
+	/**
 	 * @param {(changed: boolean) => void} listener called whenever `externalChanges` changes
 	 * @returns {() => void} unsubscribes
 	 */

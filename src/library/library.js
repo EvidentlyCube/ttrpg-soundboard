@@ -51,46 +51,63 @@ import { sortBy } from './sort.js';
  */
 export function buildLibrary(scan, optionsByPath) {
 	/** @param {ScannedAudio} scanned */
-	const toAudioFile = ({ id, name, format, size, absolutePath, optionsPath }) => {
-		const options = /** @type {AudioOptions | undefined} */ (optionsByPath.get(optionsPath));
-		return {
-			id,
-			title: options?.title ?? name,
-			format,
-			size,
-			gain: options?.gain ?? 1,
-			duration: options?.duration ?? null,
-			startAt: options?.startAt ?? 0,
-			endAt: options?.endAt ?? null,
-			fadeIn: options?.fadeIn ?? 0,
-			fadeOut: options?.fadeOut ?? 0,
-			absolutePath,
-		};
-	};
+	const toAudioFile = (scanned) => audioFileOf(scanned, /** @type {AudioOptions | undefined} */ (optionsByPath.get(scanned.optionsPath)));
 
 	const sounds = sortBy(scan.sounds.map(toAudioFile), (sound) => sound.title);
 	const playlists = sortBy(
 		scan.playlists
 			.filter((playlist) => playlist.tracks.length > 0)
-			.map((playlist) => {
-				const options = /** @type {PlaylistOptions | undefined} */ (optionsByPath.get(playlist.optionsPath));
-				return {
-					id: playlist.id,
-					title: options?.title ?? playlist.id,
-					gain: options?.gain ?? 1,
-					crossfade: options?.crossfade ?? 0,
-					fadeIn: options?.fadeIn ?? 0,
-					fadeOut: options?.fadeOut ?? 0,
-					order: options?.order ?? 'ordered',
-					trackLooping: options?.trackLooping ?? false,
-					stopMode: options?.stopMode ?? 'resetPlaylist',
-					tracks: playlist.tracks.map(toAudioFile),
-					includedSubdirectories: options?.includedSubdirectories ?? [],
-				};
-			}),
+			.map((playlist) => playlistOf(
+				playlist.id,
+				/** @type {PlaylistOptions | undefined} */ (optionsByPath.get(playlist.optionsPath)),
+				playlist.tracks.map(toAudioFile),
+			)),
 		(playlist) => playlist.title,
 	);
 
 	const files = new Map([...sounds, ...playlists.flatMap((playlist) => playlist.tracks)].map((file) => [file.id, file]));
 	return { root: scan.root, playlists, sounds, files };
+}
+
+/**
+ * @param {string} id the directory name
+ * @param {PlaylistOptions | undefined} options
+ * @param {AudioFile[]} tracks in path order
+ * @returns {Playlist}
+ */
+export function playlistOf(id, options, tracks) {
+	return {
+		id,
+		title: options?.title ?? id,
+		gain: options?.gain ?? 1,
+		crossfade: options?.crossfade ?? 0,
+		fadeIn: options?.fadeIn ?? 0,
+		fadeOut: options?.fadeOut ?? 0,
+		order: options?.order ?? 'ordered',
+		trackLooping: options?.trackLooping ?? false,
+		stopMode: options?.stopMode ?? 'resetPlaylist',
+		tracks,
+		includedSubdirectories: options?.includedSubdirectories ?? [],
+	};
+}
+
+/**
+ * @param {Pick<ScannedAudio, 'id' | 'name' | 'format' | 'size' | 'absolutePath'>} scanned
+ * @param {AudioOptions | undefined} options
+ * @returns {AudioFile}
+ */
+export function audioFileOf({ id, name, format, size, absolutePath }, options) {
+	return {
+		id,
+		title: options?.title ?? name,
+		format,
+		size,
+		gain: options?.gain ?? 1,
+		duration: options?.duration ?? null,
+		startAt: options?.startAt ?? 0,
+		endAt: options?.endAt ?? null,
+		fadeIn: options?.fadeIn ?? 0,
+		fadeOut: options?.fadeOut ?? 0,
+		absolutePath,
+	};
 }

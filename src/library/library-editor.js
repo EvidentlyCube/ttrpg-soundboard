@@ -1,6 +1,11 @@
+import { lstat, mkdir, rename, stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { safeFileName, uniqueName } from '../downloads/file-names.js';
+import { audioFormatOf } from './classify.js';
+import { measureIfNeeded } from './durations.js';
 import { ValidationError } from './errors.js';
-import { updateJsonFile } from './options-store.js';
+import { audioFileOf, playlistOf } from './library.js';
+import { updateJsonFile, writeJsonAtomic } from './options-store.js';
 import { sortBy } from './sort.js';
 import { checkClip, isPlainObject, validateAudioOptions, validatePlaylistOptions } from './validate.js';
 
@@ -13,6 +18,9 @@ import { checkClip, isPlainObject, validateAudioOptions, validatePlaylistOptions
  * 	endAt?: number | null, order?: import('./validate.js').PlaybackOrder, trackLooping?: boolean,
  * 	stopMode?: import('./validate.js').StopMode }} OptionChanges
  */
+
+/** @typedef {{ title: string, source: import('./validate.js').Source }} NewFileOptions */
+/** @typedef {{ written: string[] }} Addition `written` lists every file created, for the change watcher's baseline */
 
 /** @type {readonly ('crossfade' | 'fadeIn' | 'fadeOut')[]} */
 const SECONDS_KEYS = ['crossfade', 'fadeIn', 'fadeOut'];
@@ -140,6 +148,100 @@ export class LibraryEditor {
 	}
 
 	/**
+	 * Moves a finished download into the root as a new sound and writes its options file.
+	 * @param {string} from the file, on the same file system as the root
+	 * @param {string} name what to call it; ` (2)` and so on is added when the name is taken
+	 * @param {NewFileOptions} options
+	 * @returns {Promise<Addition & { sound: AudioFile }>}
+	 */
+	async addSound(from, name, options) {
+		const { file, written } = await this.#place(from, '', name, options);
+		this.#library.sounds = sortBy([...this.#library.sounds, file], (entry) => entry.title);
+		this.#library.files.set(file.id, file);
+		return { sound: file, written };
+	}
+
+	/**
+	 * Moves a finished download into a playlist's directory as a new track. Tracks sort by path (DESIGN.md §2.2), so it
+	 * takes its place by name.
+	 * @param {string} playlistId
+	 * @param {string} from
+	 * @param {string} name
+	 * @param {NewFileOptions} options
+	 * @returns {Promise<Addition & { playlist: Playlist, track: AudioFile }>}
+	 */
+	async addTrack(playlistId, from, name, options) {
+		const playlist = this.#library.playlists.find((entry) => entry.id === playlistId);
+		if (!playlist) {
+			throw new UnknownPlaylistError(playlistId);
+		}
+		const { file, written } = await this.#place(from, playlist.id, name, options);
+		playlist.tracks = sortBy([...playlist.tracks, file], (track) => track.id);
+		this.#library.files.set(file.id, file);
+		return { playlist, track: file, written };
+	}
+
+	/**
+	 * Creates a playlist together with its first track, so an empty playlist never exists. Its directory is named after
+	 * the title.
+	 * @param {string} title
+	 * @param {string} from the first track
+	 * @param {string} name
+	 * @param {NewFileOptions} options
+	 * @returns {Promise<Addition & { playlist: Playlist, track: AudioFile }>}
+	 */
+	async createPlaylist(title, from, name, options) {
+		const trimmed = title.trim();
+		if (trimmed === '') {
+			throw new ValidationError(null, ['"title" must be a non-empty string']);
+		}
+		const root = this.#library.root;
+		// "<directory>.json" next to it would become its options file, so that name counts as taken too.
+		const id = await uniqueName(safeFileName(trimmed, 'Playlist'), async (candidate) => (
+			await exists(join(root, candidate)) || exists(join(root, `${candidate}.json`))
+		));
+		await mkdir(join(root, id));
+		const optionsPath = join(root, `${id}.json`);
+		/** @type {import('./validate.js').PlaylistOptions} */
+		const playlistOptions = { title: trimmed, includedSubdirectories: [] };
+		await writeJsonAtomic(optionsPath, playlistOptions);
+		const { file, written } = await this.#place(from, id, name, options);
+		const playlist = playlistOf(id, playlistOptions, [file]);
+		this.#library.playlists = sortBy([...this.#library.playlists, playlist], (entry) => entry.title);
+		this.#library.files.set(file.id, file);
+		return { playlist, track: file, written: [optionsPath, ...written] };
+	}
+
+	/**
+	 * Moves a file into place under a free name, measures it, and writes its options file.
+	 * @param {string} from
+	 * @param {string} directoryId '' for the root, otherwise a playlist id
+	 * @param {string} name
+	 * @param {NewFileOptions} options
+	 * @returns {Promise<{ file: AudioFile, written: string[] }>}
+	 */
+	async #place(from, directoryId, name, { title, source }) {
+		const format = audioFormatOf(name);
+		if (format === null) {
+			throw new Error(`Not a supported audio file: ${name}`);
+		}
+		const directory = directoryId === '' ? this.#library.root : join(this.#library.root, directoryId);
+		// The options file must be free as well, or an old one would be taken over.
+		const finalName = await uniqueName(name, async (candidate) => (
+			await exists(join(directory, candidate)) || exists(join(directory, `${candidate}.json`))
+		));
+		const absolutePath = join(directory, finalName);
+		await rename(from, absolutePath);
+		const { size, mtime } = await stat(absolutePath);
+		const id = directoryId === '' ? finalName : `${directoryId}/${finalName}`;
+		const scanned = { id, name: finalName, format, size, modified: mtime.toISOString(), absolutePath, optionsPath: `${absolutePath}.json`, hasOptions: false };
+		/** @type {import('./validate.js').AudioOptions} */
+		const fileOptions = { title: title.trim() || finalName, source, ...(await measureIfNeeded(scanned, undefined)) };
+		await writeJsonAtomic(scanned.optionsPath, fileOptions);
+		return { file: audioFileOf(scanned, fileOptions), written: [absolutePath, scanned.optionsPath] };
+	}
+
+	/**
 	 * @param {string} path
 	 * @param {import('./options-store.js').JsonUpdate} update
 	 */
@@ -156,6 +258,11 @@ export class LibraryEditor {
 		write.then(forget, forget);
 		return write;
 	}
+}
+
+/** @param {string} path */
+async function exists(path) {
+	return lstat(path).then(() => true, () => false);
 }
 
 /**
