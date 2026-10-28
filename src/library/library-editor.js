@@ -148,6 +148,14 @@ export class LibraryEditor {
 	}
 
 	/**
+	 * @param {string} playlistId
+	 * @returns {Playlist | undefined}
+	 */
+	playlist(playlistId) {
+		return this.#library.playlists.find((entry) => entry.id === playlistId);
+	}
+
+	/**
 	 * Moves a finished download into the root as a new sound and writes its options file.
 	 * @param {string} from the file, on the same file system as the root
 	 * @param {string} name what to call it; ` (2)` and so on is added when the name is taken
