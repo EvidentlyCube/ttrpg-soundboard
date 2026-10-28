@@ -7,9 +7,36 @@ import { clampEnd, clampStart, fadeBands, formatTime, msAt, nearerHandle, parseT
 /** @typedef {import('./range-scale.js').Handle} Handle */
 
 /**
- * Chooses the part of a sound that plays (DESIGN.md §9.7): a slider with a start and an end handle that never cross,
- * two fields in seconds, the length that plays, and a Reset button. Positions are set with inline styles, so
+ * Complete class names per accent, because the browser build only generates classes it sees written out (DESIGN.md §9.6).
+ * @type {Record<'sfx' | 'music', { lit: string, ring: string, reset: string }>}
+ */
+const ACCENTS = {
+	sfx: {
+		lit: 'bg-sfx',
+		ring: 'focus-visible:ring-sfx',
+		reset: 'hover:border-sfx focus-visible:border-sfx',
+	},
+	music: {
+		lit: 'bg-music',
+		ring: 'focus-visible:ring-music',
+		reset: 'hover:border-music focus-visible:border-music',
+	},
+};
+
+/**
+ * Where a playing track is, for the control's seek mode.
+ * @typedef {object} Playback
+ * @property {number} positionMs from the start point
+ * @property {number | null} crossfadeFromMs from the start point; null when no crossfade is coming
+ */
+
+/**
+ * Chooses the part of a sound or track that plays (DESIGN.md §9.7): a slider with a start and an end handle that never
+ * cross, two fields in seconds, the length that plays, and a Reset button. Positions are set with inline styles, so
  * dragging never changes classes (DESIGN.md §9.6).
+ *
+ * `showPlayback` turns it into a seek bar for a track that is playing: the handles are hidden, the fields and Reset
+ * are disabled, and pressing the part that plays calls `onSeek`.
  */
 export class RangeControl extends Component {
 	#startMs;
@@ -17,11 +44,19 @@ export class RangeControl extends Component {
 	#durationMs;
 	#fadeInMs;
 	#fadeOutMs;
+	#accent;
 	#onChange;
+	#onSeek;
 	/** @type {Handle | null} */
 	#dragging = null;
 	/** @type {(() => void) | null} */
 	#show = null;
+	/** @type {Playback | null} */
+	#playback = null;
+	/** @type {((playing: boolean) => void) | null} */
+	#showMode = null;
+	/** @type {(() => void) | null} */
+	#showPosition = null;
 
 	/**
 	 * @param {object} options
@@ -30,16 +65,34 @@ export class RangeControl extends Component {
 	 * @param {number} options.durationMs the length of the file
 	 * @param {number} [options.fadeInMs] shown on the part that plays
 	 * @param {number} [options.fadeOutMs]
+	 * @param {'sfx' | 'music'} [options.accent]
 	 * @param {(startMs: number, endMs: number) => void} options.onChange called for every change the user makes
+	 * @param {(seconds: number) => void} [options.onSeek] called when the part that plays is pressed in seek mode, with
+	 * 	the position in seconds from the start point
 	 */
-	constructor({ startMs, endMs, durationMs, fadeInMs = 0, fadeOutMs = 0, onChange }) {
+	constructor({ startMs, endMs, durationMs, fadeInMs = 0, fadeOutMs = 0, accent = 'sfx', onChange, onSeek = () => {} }) {
 		super();
 		this.#startMs = startMs;
 		this.#endMs = endMs;
 		this.#durationMs = durationMs;
 		this.#fadeInMs = fadeInMs;
 		this.#fadeOutMs = fadeOutMs;
+		this.#accent = accent;
 		this.#onChange = onChange;
+		this.#onSeek = onSeek;
+	}
+
+	/**
+	 * Switches between the editor (null) and the seek bar of a playing track, and moves the playhead.
+	 * @param {Playback | null} playback
+	 */
+	showPlayback(playback) {
+		const wasPlaying = this.#playback !== null;
+		this.#playback = playback;
+		if (wasPlaying !== (playback !== null)) {
+			this.#showMode?.(playback !== null);
+		}
+		this.#showPosition?.();
 	}
 
 	/**
@@ -79,8 +132,18 @@ export class RangeControl extends Component {
 			overlap: band('bg-danger animate-warn'),
 			tooLong: band('bg-danger animate-warn'),
 		};
-		const lit = h('div', { class: 'absolute inset-y-0 overflow-hidden rounded-full bg-sfx', style: { left: '0%', width: '100%' } },
-			bands.fadeIn, bands.fadeOut, bands.overlap, bands.tooLong);
+		const colors = ACCENTS[this.#accent];
+		// Seek mode: what has not played yet is dimmed, and the stretch a crossfade will take over is lightened, as in the
+		// footer's progress bar (DESIGN.md §9.2).
+		const unplayed = h('div', { class: 'absolute inset-y-0 right-0 bg-black/45', style: { width: '0%' }, hidden: true });
+		const crossfade = h('div', {
+			class: 'absolute inset-y-0 right-0 bg-white/30',
+			title: 'Crossfade into the next track',
+			style: { width: '0%' },
+			hidden: true,
+		});
+		const lit = h('div', { class: `absolute inset-y-0 overflow-hidden rounded-full ${colors.lit}`, style: { left: '0%', width: '100%' } },
+			bands.fadeIn, bands.fadeOut, bands.overlap, bands.tooLong, unplayed, crossfade);
 		/**
 		 * @param {HTMLElement} element
 		 * @param {number} from share of the part that plays
@@ -102,7 +165,7 @@ export class RangeControl extends Component {
 			'aria-valuemax': String(durationMs),
 			'data-range-handle': which,
 			'class': 'absolute top-0 h-8 w-3 -translate-x-1/2 cursor-ew-resize rounded-sm bg-text shadow outline-none '
-				+ 'focus-visible:ring-2 focus-visible:ring-sfx focus-visible:ring-offset-2 focus-visible:ring-offset-raised',
+				+ `focus-visible:ring-2 ${colors.ring} focus-visible:ring-offset-2 focus-visible:ring-offset-raised`,
 			'style': { left: '0%' },
 		});
 		const handles = { start: handle('start', 'Start point'), end: handle('end', 'End point') };
@@ -119,7 +182,7 @@ export class RangeControl extends Component {
 		const field = (which, label) => filledField({
 			label,
 			unit: 's',
-			accent: 'sfx',
+			accent: this.#accent,
 			attributes: { 'inputmode': 'decimal', 'aria-label': `${label} point in seconds`, 'data-range-field': which },
 		});
 		const startField = field('start', 'Start');
@@ -130,7 +193,7 @@ export class RangeControl extends Component {
 		const reset = h('button', {
 			'type': 'button',
 			'class': 'cursor-pointer rounded-full border-2 border-line bg-surface px-3 py-0.5 text-xs text-muted transition-colors '
-				+ 'hover:border-sfx hover:text-text focus-visible:border-sfx focus-visible:text-text focus-visible:outline-none',
+				+ `${colors.reset} hover:text-text focus-visible:text-text focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50`,
 			'data-range-reset': true,
 		}, 'Reset');
 
@@ -154,6 +217,7 @@ export class RangeControl extends Component {
 			place(bands.overlap, fades.overlap?.from ?? 0, fades.overlap?.share ?? 0);
 			place(bands.tooLong, 0, fades.tooLong ? 1 : 0);
 			length.textContent = `Plays ${formatTime(points.end - points.start)} of ${formatTime(durationMs)}`;
+			this.#showPosition?.();
 		};
 		/**
 		 * @param {number} startMs
@@ -185,12 +249,53 @@ export class RangeControl extends Component {
 		this.#show = show;
 		show();
 
+		const showMode = (/** @type {boolean} */ playing) => {
+			track.dataset.mode = playing ? 'seek' : 'edit';
+			track.title = playing ? 'Seek' : 'Drag the handles to choose the part that plays';
+			handles.start.hidden = playing;
+			handles.end.hidden = playing;
+			startField.input.disabled = playing;
+			endField.input.disabled = playing;
+			reset.disabled = playing;
+			unplayed.hidden = !playing;
+			crossfade.hidden = !playing;
+		};
+		// The playhead and the crossfade stretch are shares of the part that plays, set inline (DESIGN.md §9.6).
+		const showPosition = () => {
+			const playback = this.#playback;
+			const clipMs = this.#endMs - this.#startMs;
+			if (!playback || clipMs <= 0) {
+				return;
+			}
+			const played = Math.min(1, Math.max(0, playback.positionMs / clipMs));
+			unplayed.style.width = `${(1 - played) * 100}%`;
+			const from = playback.crossfadeFromMs;
+			crossfade.hidden = from === null;
+			if (from !== null) {
+				crossfade.style.width = `${Math.max(0, 1 - from / clipMs) * 100}%`;
+			}
+		};
+		this.#showMode = (playing) => {
+			showMode(playing);
+			// A fresh seek bar must not keep an old playhead, nor an editor keep a half-dragged handle.
+			this.#dragging = null;
+		};
+		this.#showPosition = showPosition;
+		showMode(this.#playback !== null);
+		showPosition();
+
 		this.own(on(track, 'pointerdown', (event) => {
 			if (event.button !== 0) {
 				return;
 			}
 			event.preventDefault();
 			const ms = msAtPointer(event);
+			if (this.#playback) {
+				// Seeking: anywhere on the bar, within the part that plays.
+				const within = Math.min(Math.max(ms, this.#startMs), this.#endMs);
+				this.#onSeek((within - this.#startMs) / 1000);
+				return;
+			}
 			const pressed = /** @type {HTMLElement} */ (event.target).dataset.rangeHandle;
 			const which = pressed === 'start' || pressed === 'end' ? pressed : nearerHandle(ms, this.#startMs, this.#endMs);
 			handles[which].focus();

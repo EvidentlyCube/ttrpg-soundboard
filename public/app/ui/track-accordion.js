@@ -2,8 +2,9 @@ import { Component } from './component.js';
 import { card, titleField } from './customize-parts.js';
 import { h } from './dom.js';
 import { icon } from './icons.js';
-import { formatTime } from './format.js';
-import { progressFraction, seekPosition, trackAction, trackPlayback } from './track-playback.js';
+import { RangeControl } from './range-control.js';
+import { fromStored, toStoredEnd } from './range-scale.js';
+import { trackAction, trackPlayback } from './track-playback.js';
 
 /** @typedef {import('../logic/ports.js').AudioFileJson} AudioFileJson */
 /** @typedef {import('../logic/ports.js').PlaylistJson} PlaylistJson */
@@ -11,7 +12,8 @@ import { progressFraction, seekPosition, trackAction, trackPlayback } from './tr
 
 /**
  * The tracks of a playlist as an accordion (DESIGN.md §9.7): one row per track, at most one open. An open track shows
- * its settings: a progress bar and the title. Every header has a play / stop button for that track.
+ * its settings: the start and end points, which turn into a seek bar while the track plays, and the title. Every
+ * header has a play / stop button for that track.
  */
 export class TrackAccordion extends Component {
 	#soundboard;
@@ -36,7 +38,7 @@ export class TrackAccordion extends Component {
 	/** @override */
 	render() {
 		/** @type {Map<string, { title: HTMLElement, toggle: HTMLButtonElement, body: HTMLElement, play: HTMLButtonElement,
-		 * 	bar: HTMLElement, fill: HTMLElement, crossfadeBand: HTMLElement }>} */
+		 * 	cropped: HTMLElement, range: RangeControl | null, durationMs: number | null }>} */
 		const rows = new Map();
 		const playlistId = this.#playlist.id;
 		const list = h('ol', { 'class': 'divide-y divide-line', 'data-track-accordion': true });
@@ -52,7 +54,7 @@ export class TrackAccordion extends Component {
 
 		// What the playlist is doing, to keep the rows in step with it and to know which row owns the progress.
 		const snapshot = this.#soundboard.getPlaylistSnapshot(playlistId);
-		let { state, trackIndex: currentIndex, duration } = snapshot;
+		let { state, trackIndex: currentIndex } = snapshot;
 
 		this.#playlist.tracks.forEach((track, index) => {
 			const title = h('span', { class: 'min-w-0 flex-1 truncate group-aria-expanded:text-music' }, track.title);
@@ -72,6 +74,12 @@ export class TrackAccordion extends Component {
 					}
 				},
 			});
+			const cropped = h('span', {
+				'class': 'shrink-0 rounded-full bg-music/20 px-2 py-0.5 text-[0.65rem] font-semibold uppercase text-music',
+				'title': 'Only part of the file plays',
+				'data-track-cropped': track.id,
+				'hidden': !isCropped(track),
+			}, 'Cropped');
 			const toggle = h('button', {
 				'type': 'button',
 				'class': 'group flex min-w-0 flex-1 cursor-pointer items-center gap-3 py-2 pr-3 pl-2 text-left text-sm',
@@ -81,40 +89,35 @@ export class TrackAccordion extends Component {
 			},
 			h('span', { class: 'w-6 shrink-0 text-right tabular-nums text-muted' }, String(index + 1)),
 			title,
-			h('span', { class: 'shrink-0 tabular-nums text-muted' }, formatTime(track.duration)),
+			cropped,
 			icon('chevronDown', 'size-4 shrink-0 text-muted transition-transform group-aria-expanded:rotate-180'));
 
-			const fill = h('div', { class: 'absolute inset-y-0 left-0 rounded-full bg-music', style: { width: '0%' } });
-			const crossfadeBand = h('div', {
-				class: 'absolute inset-y-0 right-0 rounded-r-full bg-music/40',
-				title: 'Crossfade into the next track',
-				hidden: true,
-			});
-			const bar = h('div', {
-				'class': 'group flex items-center py-2 data-[enabled=false]:cursor-not-allowed data-[enabled=true]:cursor-pointer',
-				'data-track-progress': track.id,
-				'data-enabled': 'false',
-				'aria-disabled': 'true',
-				'title': 'Seek',
-				'onPointerdown': (/** @type {PointerEvent} */ event) => {
-					if (bar.dataset.enabled !== 'true') {
-						return;
-					}
-					const seconds = seekPosition(event.clientX, bar.getBoundingClientRect(), duration);
-					if (seconds !== null) {
-						this.#soundboard.seek(playlistId, seconds);
-					}
-				},
-			}, h('div', {
-				// Diagonal stripes instead of a plain bar mark a track that isn't playing, where the bar does nothing.
-				class: 'relative h-1.5 w-full rounded-full group-data-[enabled=true]:bg-line '
-					+ 'group-data-[enabled=false]:bg-[repeating-linear-gradient(135deg,var(--color-line)_0_4px,transparent_4px_8px)]',
-			}, crossfadeBand, fill));
+			// The points are chosen over the whole file; a track whose length is unknown has no such control.
+			const durationMs = track.duration === null ? null : Math.round(track.duration * 1000);
+			const range = durationMs === null
+				? null
+				: new RangeControl({
+						...fromStored(track, durationMs),
+						durationMs,
+						accent: 'music',
+						onChange: (startMs, endMs) => {
+							this.#onEdit(track.id);
+							this.#soundboard.customizeTrack(track.id, { startAt: startMs / 1000, endAt: toStoredEnd(endMs, durationMs) });
+						},
+						onSeek: (seconds) => this.#soundboard.seek(playlistId, seconds),
+					});
+			if (range) {
+				this.own(() => range.destroy());
+			}
 			// The cards' title pills stick out above them, so they need the extra space.
-			const body = h('div', { 'class': 'space-y-8 px-4 pt-5 pb-5', 'hidden': true, 'data-track-body': track.id },
-				card('Progress', 'music', bar),
-				card('Track', 'music', this.#settings(track)));
-			rows.set(track.id, { title, toggle, body, play, bar, fill, crossfadeBand });
+			const body = h('div', { 'class': 'space-y-8 px-4 pt-5 pb-5', 'hidden': true, 'data-track-body': track.id });
+			if (range) {
+				const slot = h('div');
+				range.mount(slot);
+				body.append(card('Start and end', 'music', slot));
+			}
+			body.append(card('Track', 'music', this.#settings(track)));
+			rows.set(track.id, { title, toggle, body, play, cropped, range, durationMs });
 			list.append(h('li', {}, h('div', { class: 'flex items-center hover:bg-music/15 has-[[aria-expanded=true]]:bg-music/20' }, play, toggle), body));
 		});
 
@@ -130,29 +133,25 @@ export class TrackAccordion extends Component {
 				row.play.title = label;
 				row.play.setAttribute('aria-label', label);
 				row.play.replaceChildren(icon(playback === 'playing' ? 'stop' : 'play', 'size-4'));
-				row.bar.dataset.enabled = String(playback !== 'idle');
-				row.bar.setAttribute('aria-disabled', String(playback === 'idle'));
-				if (playback === 'idle') {
-					row.fill.style.width = '0%';
-					row.crossfadeBand.hidden = true;
+				// Only a playing track is a seek bar. A stopped or paused one can be edited; editing a paused track stops it.
+				if (playback !== 'playing') {
+					row.range?.showPlayback(null);
 				}
 			});
 		};
 		/**
-		 * Only the current track's row shows progress; the others stay empty.
-		 * @param {number} position
-		 * @param {number | null} crossfadeFrom
+		 * Only the playing track's row shows progress.
+		 * @param {number} position seconds from the start point
+		 * @param {number | null} crossfadeFrom seconds from the start point
 		 */
 		const showProgress = (position, crossfadeFrom) => {
-			const row = currentIndex === null ? undefined : rows.get(this.#playlist.tracks[currentIndex]?.id ?? '');
-			if (!row) {
+			if (currentIndex === null || trackPlayback(state, currentIndex, currentIndex) !== 'playing') {
 				return;
 			}
-			row.fill.style.width = `${progressFraction(position, duration) * 100}%`;
-			row.crossfadeBand.hidden = crossfadeFrom === null || !duration;
-			if (crossfadeFrom !== null && duration) {
-				row.crossfadeBand.style.width = `${Math.max(0, 100 - (crossfadeFrom / duration) * 100)}%`;
-			}
+			rows.get(this.#playlist.tracks[currentIndex]?.id ?? '')?.range?.showPlayback({
+				positionMs: position * 1000,
+				crossfadeFromMs: crossfadeFrom === null ? null : crossfadeFrom * 1000,
+			});
 		};
 		showPlayback();
 		showProgress(snapshot.position, snapshot.crossfadeFrom);
@@ -160,25 +159,28 @@ export class TrackAccordion extends Component {
 			if (event.playlistId === playlistId) {
 				state = event.state;
 				currentIndex = event.trackIndex;
-				duration = event.duration;
 				showPlayback();
 				showProgress(this.#soundboard.getPlaylistSnapshot(playlistId).position, event.crossfadeFrom);
 			}
 		}));
 		this.own(this.#soundboard.on('playlist.progress', (event) => {
 			if (event.playlistId === playlistId) {
-				duration = event.duration;
 				showProgress(event.position, event.crossfadeFrom);
 			}
 		}));
 
-		// Titles change as they are typed; only the row headers follow, so an open title field keeps its focus.
+		// Titles change as they are typed; only the row headers follow, so an open title field keeps its focus. The points
+		// follow too, unless one is being dragged.
 		this.own(this.#soundboard.on('playlist.changed', ({ playlist }) => {
 			if (playlist.id === this.#playlist.id) {
 				for (const track of playlist.tracks) {
 					const row = rows.get(track.id);
 					if (row) {
 						row.title.textContent = track.title;
+						row.cropped.hidden = !isCropped(track);
+						if (row.range && row.durationMs !== null) {
+							row.range.update(fromStored(track, row.durationMs));
+						}
 					}
 				}
 			}
@@ -197,4 +199,12 @@ export class TrackAccordion extends Component {
 			},
 		}).element;
 	}
+}
+
+/**
+ * Whether only part of the file plays.
+ * @param {AudioFileJson} track
+ */
+function isCropped(track) {
+	return track.startAt > 0 || track.endAt !== null;
 }

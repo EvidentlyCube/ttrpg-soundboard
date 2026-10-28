@@ -115,12 +115,19 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] Pressing the stop button stops the playlist at once. The playlist's stop mode applies: with Pause, playing it from the tile continues there.
 - [ ] A track started from the tile, the footer or its next button shows as playing in the dialog, and the row follows when the playlist moves on to the next track by itself.
 - [ ] A paused track shows the play button; pressing it resumes the track rather than restarting it.
-- [ ] An open row has a progress bar and nothing else with it. It is disabled (dim cursor, ignores presses) when the track isn't the current one, and fills while it plays. Pressing it seeks, as in the footer, also while paused.
 - [ ] The track list runs edge to edge between the tab bar and the Play row, and the last track is fully visible, not covered by the Play row, when scrolled to the bottom.
 - [ ] Hovering anywhere on a header, including the play button, tints the whole row blue; the open row's header has a stronger tint and a blue title.
-- [ ] An open row shows two cards, "Progress" and "Track", that light up on hover or focus like those on the first tab.
-- [ ] The bar of a track that isn't the current one is drawn as diagonal stripes with a "not allowed" cursor, and turns solid when the track plays.
-- [ ] With a crossfade set, the playing track's bar shows the lighter crossfade section at its end, as the footer's does, and none while the track repeats.
+- [ ] An open row shows two cards, "Start and end" and "Track", that light up on hover or focus like those on the first tab.
+- [ ] Row headers show no duration. A track whose points differ from the whole file shows a small blue "Cropped" bubble; Reset in its card removes the bubble.
+- [ ] Track start and end points. In a track's "Start and end" card, a stopped track has the two handles, the fields and Reset, in blue. Dragging a handle, typing a value and Reset all change the points as they do for a sound, and the card's readout says "Plays 0:07 of 0:10"-style lengths. The change survives closing the dialog and reloading the page.
+- [ ] Play a track whose points are set: it starts at the start point and ends at the end point, then the next track starts. The footer shows time from 0:00 to the trimmed length, and its progress bar covers only that part.
+- [ ] While the track plays, the handles disappear, the fields and Reset are disabled, and the card's bar is a seek bar: the part that has played is bright and the rest dimmed, and pressing it seeks within the trimmed part (the footer follows). Pressing the grey outside the points seeks to the nearest point.
+- [ ] With a crossfade set, the playing track's bar shows a lighter stretch at its end where the crossfade starts, as the footer's does (relative to the end point), and none while the track repeats.
+- [ ] Pause the track: the handles come back. Dragging one (or typing a value) stops the playlist, the footer bar empties, and playing the track again starts at the new start point.
+- [ ] A stopped playlist that remembers a position ("Resumes at 0:07", stop mode Pause): changing that track's points makes it resume from the new start point instead.
+- [ ] Changing the points of the track that is currently playing is impossible (no handles, fields disabled), but another track's points can be edited while it plays, and take effect when that track starts.
+- [ ] With track looping on, a trimmed track repeats between its points without a gap, and the footer's time wraps to 0:00 at each repeat.
+- [ ] The footer's Previous after more than 3 s into a trimmed track restarts it at the start point.
 - [ ] Opening the dialog while a track is already playing shows its button and bar in the right state at once.
 - [ ] A playlist with many tracks scrolls inside the dialog, with the tabs and the Play row staying in place.
 
