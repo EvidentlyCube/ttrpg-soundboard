@@ -104,6 +104,22 @@ describe('validateAudioOptions', () => {
 			'"fadeOut" must be a number of seconds from 0 to 30',
 		]);
 	});
+
+	it('accepts where a download came from, with unknown keys inside', () => {
+		assert.deepEqual(validateAudioOptions({ source: { url: 'https://example.com/a.mp3' } }), []);
+		assert.deepEqual(validateAudioOptions({
+			source: { url: 'https://youtu.be/v', extractor: 'Youtube', videoId: 'v', playlistId: 'PL1', chapter: 3, future: true },
+		}), []);
+	});
+
+	it('rejects a malformed source', () => {
+		assert.deepEqual(validateAudioOptions({ source: 'https://example.com' }), ['"source" must be a JSON object']);
+		assert.deepEqual(validateAudioOptions({ source: { url: 1, videoId: null, chapter: 0 } }), [
+			'"source.url" must be a string',
+			'"source.videoId" must be a string',
+			'"source.chapter" must be a positive integer',
+		]);
+	});
 });
 
 describe('validatePlaylistOptions', () => {

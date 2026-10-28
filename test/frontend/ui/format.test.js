@@ -1,6 +1,16 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatTime } from '../../../public/app/ui/format.js';
+import { formatBytes, formatTime } from '../../../public/app/ui/format.js';
+
+describe('formatBytes', () => {
+	it('uses decimal units, with a decimal below 10', () => {
+		assert.equal(formatBytes(0), '0 B');
+		assert.equal(formatBytes(999), '999 B');
+		assert.equal(formatBytes(252_182), '252 KB');
+		assert.equal(formatBytes(1_400_000_000), '1.4 GB');
+		assert.equal(formatBytes(45_600_000), '46 MB');
+	});
+});
 
 describe('formatTime', () => {
 	it('shows minutes and zero-padded seconds', () => {

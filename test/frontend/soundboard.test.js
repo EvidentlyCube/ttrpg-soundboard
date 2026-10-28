@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { InvalidCommandError, NotReadyError } from '../../public/app/logic/errors.js';
 import { Soundboard } from '../../public/app/logic/soundboard.js';
 import { FakeAudioEngine } from '../helpers/fake-audio-engine.js';
-import { FakeBackendApi } from '../helpers/fake-backend-api.js';
+import { exampleLibrary, FakeBackendApi } from '../helpers/fake-backend-api.js';
 import { FakeClock } from '../helpers/fake-clock.js';
 import { FakeWaveformDecoder } from '../helpers/fake-waveform-decoder.js';
 
@@ -23,6 +23,7 @@ const EVENT_TYPES = /** @type {const} */ ([
 	'voices.changed',
 	'waveforms.progress', 'waveform.ready',
 	'library.externalChanges', 'library.refreshing', 'library.refreshed', 'library.refreshFailed',
+	'download.changed', 'download.log', 'sound.added', 'playlist.added',
 ]);
 
 /** Stands in for the server's pushed messages; the test sends them with `push`. */
@@ -43,6 +44,11 @@ class FakeServerEvents {
 	/** @param {boolean} pending */
 	push(pending) {
 		this.#onMessage?.({ type: 'externalChanges', pending });
+	}
+
+	/** @param {import('../../public/app/logic/ports.js').ServerMessage} message */
+	send(message) {
+		this.#onMessage?.(message);
 	}
 }
 
@@ -606,6 +612,103 @@ describe('Soundboard', () => {
 			assert.throws(() => soundboard.customizeTrack('Combat/1.mp3', { title: ' ' }), InvalidCommandError);
 			assert.throws(() => soundboard.customizeTrack('Nope.mp3', { title: 'X' }), InvalidCommandError);
 			assert.deepEqual(events, []);
+		});
+	});
+
+	describe('downloads', () => {
+		/** @returns {import('../../public/app/logic/ports.js').DownloadJob} */
+		const job = (id = 'job-1', state = /** @type {'running' | 'done'} */ ('running')) => ({
+			id, title: 'Zoo', target: { kind: 'sound' }, targetTitle: 'Sound effects', state, items: [], current: null, added: 0, failed: 0,
+		});
+		const file = (/** @type {string} */ id) => ({
+			id, title: id, format: /** @type {const} */ ('mp3'), size: 1, gain: 1, duration: 5, startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0, url: `/media/${id}`,
+		});
+
+		it('knows the tools and a download already running when it starts', async () => {
+			const { soundboard, api } = setup();
+			api.download = { tools: { ytDlp: null, ffmpeg: '7.1' }, job: { ...job(), log: ['one', 'two'] } };
+			await soundboard.start();
+			assert.deepEqual(soundboard.getDownloadTools(), { ytDlp: null, ffmpeg: '7.1' });
+			assert.deepEqual(soundboard.getDownload(), { job: job(), log: ['one', 'two'] });
+		});
+
+		it('starts without download information when the server can\'t give it', async () => {
+			const { soundboard, api, eventsOf } = setup();
+			api.fetchDownload = async () => {
+				throw new Error('offline');
+			};
+			await soundboard.start();
+			assert.equal(eventsOf('app.ready').length, 1);
+			assert.deepEqual(soundboard.getDownloadTools(), { ytDlp: null, ffmpeg: null });
+		});
+
+		it('follows the job and its log, replacing progress lines', async () => {
+			const { soundboard, serverEvents, eventsOf } = await started();
+			serverEvents.send({ type: 'download', job: job(), log: ['$ yt-dlp'] });
+			serverEvents.send({ type: 'download.log', lines: ['10%'], replaceLast: false });
+			serverEvents.send({ type: 'download.log', lines: ['50%', 'done'], replaceLast: true });
+			assert.deepEqual(soundboard.getDownload()?.log, ['$ yt-dlp', '50%', 'done']);
+			serverEvents.send({ type: 'download', job: job('job-1', 'done') });
+			assert.deepEqual(soundboard.getDownload()?.log, ['$ yt-dlp', '50%', 'done']);
+			assert.deepEqual(eventsOf('download.changed').map((event) => event.type === 'download.changed' && [event.job?.state, event.logReset]), [['running', true], ['done', false]]);
+			serverEvents.send({ type: 'download', job: job('job-2') });
+			assert.deepEqual(soundboard.getDownload()?.log, []);
+			serverEvents.send({ type: 'download', job: null });
+			assert.equal(soundboard.getDownload(), null);
+		});
+
+		it('passes lookups and downloads to the server', async () => {
+			const { soundboard, api, eventsOf } = await started();
+			api.probe = { probeId: 'p1', kind: 'file', url: 'https://x/a.mp3', name: 'a.mp3', size: 3, contentType: 'audio/mpeg' };
+			assert.equal((await soundboard.probeLink('https://x/a.mp3')).kind, 'file');
+			await soundboard.probeLink('https://x/watch?v=1&list=2', { playlist: true });
+			assert.deepEqual(api.probes, [{ url: 'https://x/a.mp3', playlist: false }, { url: 'https://x/watch?v=1&list=2', playlist: true }]);
+			api.probe = new Error('Unsupported URL');
+			await assert.rejects(soundboard.probeLink('https://nope/'), /Unsupported URL/);
+
+			await soundboard.startDownload({ probeId: 'p1', target: { kind: 'sound' } });
+			assert.deepEqual(api.downloadRequests, [{ probeId: 'p1', target: { kind: 'sound' } }]);
+			assert.equal(soundboard.getDownload()?.job.id, 'job-1');
+			assert.equal(eventsOf('download.changed').length, 1);
+			soundboard.dismissDownload();
+			await Promise.resolve();
+			assert.equal(api.dismissals, 1);
+		});
+
+		it('adds a new sound once, wherever the message comes from, and makes its waveform', async () => {
+			const { soundboard, serverEvents, api, eventsOf, settle } = await started();
+			api.missingWaveforms = ['New.mp3'];
+			serverEvents.send({ type: 'library.added', sound: file('New.mp3') });
+			serverEvents.send({ type: 'library.added', sound: file('New.mp3') });
+			assert.deepEqual(eventsOf('sound.added'), [{ type: 'sound.added', sound: file('New.mp3') }]);
+			assert.ok(soundboard.getLibrary()?.sounds.some((sound) => sound.id === 'New.mp3'));
+			assert.doesNotThrow(() => soundboard.playSound('New.mp3'));
+			await settle();
+			assert.equal(soundboard.getWaveformStatus().total, 1);
+		});
+
+		it('adds a new playlist with a player of its own', async () => {
+			const { soundboard, serverEvents, eventsOf } = await started();
+			const playlist = { ...exampleLibrary().playlists[1], id: 'Dungeon', title: 'Dungeon', tracks: [file('Dungeon/1.mp3')] };
+			serverEvents.send({ type: 'library.added', playlist });
+			assert.deepEqual(eventsOf('playlist.added'), [{ type: 'playlist.added', playlist }]);
+			soundboard.playPlaylist('Dungeon');
+			assert.equal(soundboard.getPlaylistSnapshot('Dungeon').state, 'loading');
+		});
+
+		it('gives a playlist that is playing its new tracks without interrupting it', async () => {
+			const { soundboard, serverEvents, eventsOf, engine } = await started();
+			soundboard.playPlaylist('Combat');
+			const playing = engine.voices.at(-1);
+			const combat = exampleLibrary().playlists[0];
+			const added = { ...combat, tracks: [file('Combat/0.mp3'), ...combat.tracks] };
+			serverEvents.send({ type: 'library.added', playlist: added });
+			serverEvents.send({ type: 'library.added', playlist: added });
+			const changed = eventsOf('playlist.changed');
+			assert.equal(changed.length, 1);
+			assert.deepEqual(changed[0].type === 'playlist.changed' && changed[0].playlist.tracks.map((track) => track.id), ['Combat/0.mp3', 'Combat/1.mp3', 'Combat/2.ogg']);
+			assert.equal(engine.voices.at(-1), playing);
+			assert.equal(soundboard.getPlaylistSnapshot('Combat').trackIndex, 1);
 		});
 	});
 

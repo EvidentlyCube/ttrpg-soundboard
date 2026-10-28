@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { buildLibrary } from '../../../src/library/library.js';
 import { LibraryEditor, UnknownPlaylistError, UnknownSoundError, UnknownTrackError } from '../../../src/library/library-editor.js';
@@ -351,5 +351,70 @@ describe('LibraryEditor.updateTrack', () => {
 		await assert.rejects(editor.updateTrack('Combat/1.mp3', { title: ' ' }), /"title" must be a non-empty string/);
 		await assert.rejects(editor.updateTrack('Combat/nope.mp3', { title: 'X' }), UnknownTrackError);
 		await assert.rejects(editor.updateTrack('Alpha.mp3', { title: 'X' }), UnknownTrackError);
+	});
+});
+
+describe('LibraryEditor additions', () => {
+	const source = { url: 'https://example.com/x' };
+
+	/** @param {string} name a file to add, made in a folder of its own like a download's */
+	async function download(name, content = 'audio') {
+		const directory = join(tree.root, '.soundboard-downloads');
+		await mkdir(directory, { recursive: true });
+		const path = join(directory, name);
+		await writeFile(path, content);
+		return path;
+	}
+
+	it('moves a new sound into the root, writes its options file and sorts it in', async () => {
+		const current = library();
+		const editor = new LibraryEditor(current);
+		const { sound, written } = await editor.addSound(await download('a.ogg'), 'Aardvark.ogg', { title: 'Aardvark', source });
+		assert.equal(sound.id, 'Aardvark.ogg');
+		assert.equal(sound.format, 'ogg');
+		assert.deepEqual(written, [join(tree.root, 'Aardvark.ogg'), join(tree.root, 'Aardvark.ogg.json')]);
+		assert.deepEqual(current.sounds.map((entry) => entry.title), ['Aardvark', 'Alpha', 'Beta']);
+		assert.equal(current.files.get('Aardvark.ogg'), sound);
+		const options = await readOptions('Aardvark.ogg');
+		assert.equal(options.title, 'Aardvark');
+		assert.deepEqual(options.source, source);
+		assert.equal(options.duration, null);
+		assert.equal(options.measuredFrom.size, 5);
+	});
+
+	it('never overwrites a file or takes over an options file: a taken name gets (2)', async () => {
+		await writeFile(join(tree.root, 'Gamma.mp3.json'), '{}');
+		const editor = new LibraryEditor(library());
+		const alpha = await editor.addSound(await download('1.mp3'), 'Alpha.mp3', { title: 'Alpha again', source });
+		const gamma = await editor.addSound(await download('2.mp3'), 'Gamma.mp3', { title: 'Gamma', source });
+		assert.equal(alpha.sound.id, 'Alpha (2).mp3');
+		assert.equal(gamma.sound.id, 'Gamma (2).mp3');
+	});
+
+	it('adds a track to a playlist in path order', async () => {
+		const current = library();
+		const editor = new LibraryEditor(current);
+		const { playlist, track } = await editor.addTrack('Combat', await download('0.ogg'), '0 Intro.ogg', { title: 'Intro', source });
+		assert.equal(track.id, 'Combat/0 Intro.ogg');
+		assert.deepEqual(playlist.tracks.map((entry) => entry.id), ['Combat/0 Intro.ogg', 'Combat/1.mp3']);
+		assert.equal((await readOptions('Combat/0 Intro.ogg')).title, 'Intro');
+		await assert.rejects(editor.addTrack('Nope', await download('x.ogg'), 'x.ogg', { title: 'x', source }), UnknownPlaylistError);
+	});
+
+	it('creates a playlist with its first track, named after its title', async () => {
+		const current = library();
+		const editor = new LibraryEditor(current);
+		const { playlist, track, written } = await editor.createPlaylist(' Boss: Fight ', await download('b.ogg'), 'Theme.ogg', { title: 'Theme', source });
+		assert.equal(playlist.id, 'Boss Fight');
+		assert.equal(playlist.title, 'Boss: Fight');
+		assert.equal(track.id, 'Boss Fight/Theme.ogg');
+		assert.deepEqual(JSON.parse(await readFile(join(tree.root, 'Boss Fight.json'), 'utf8')), { title: 'Boss: Fight', includedSubdirectories: [] });
+		assert.ok(written.includes(join(tree.root, 'Boss Fight.json')));
+		assert.deepEqual(current.playlists.map((entry) => entry.id), ['Ambient', 'Boss Fight', 'Combat']);
+		assert.equal(editor.playlist('Boss Fight'), playlist);
+
+		const again = await editor.createPlaylist('Combat', await download('c.ogg'), 'c.ogg', { title: 'c', source });
+		assert.equal(again.playlist.id, 'Combat (2)');
+		await assert.rejects(editor.createPlaylist(' ', await download('d.ogg'), 'd.ogg', { title: 'd', source }), ValidationError);
 	});
 });

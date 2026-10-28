@@ -6,6 +6,7 @@ import { PassThrough } from 'node:stream';
 import { join } from 'node:path';
 import { main } from '../../../src/cli/main.js';
 import { USAGE } from '../../../src/cli/args.js';
+import { fakeProcessRunner } from '../../helpers/fake-process-runner.js';
 import { findFreePort } from '../../helpers/http-client.js';
 import { buildId3v2, textFrame } from '../../helpers/tag-builders.js';
 import { createTmpTree } from '../../helpers/tmp-tree.js';
@@ -28,8 +29,10 @@ async function tree(spec) {
  * @param {object} [options]
  * @param {string} [options.typed] what the user types in answer to questions
  * @param {(output: () => string) => Promise<void>} [options.whileRunning] runs once the server is up; shutdown follows
+ * @param {import('../../helpers/fake-process-runner.js').FakeProgram} [options.tools] answers `yt-dlp` and `ffmpeg`;
+ * 	both are installed by default
  */
-async function run(argv, { typed = '', whileRunning = async () => {} } = {}) {
+async function run(argv, { typed = '', whileRunning = async () => {}, tools = installedTools } = {}) {
 	const input = new PassThrough();
 	input.end(typed);
 	let output = '';
@@ -40,8 +43,14 @@ async function run(argv, { typed = '', whileRunning = async () => {} } = {}) {
 		errorOutput: { write: (chunk) => (errorOutput += chunk, true) },
 		env: {},
 		waitForShutdown: () => whileRunning(() => output),
+		run: fakeProcessRunner(tools).run,
 	});
 	return { code, output, errorOutput };
+}
+
+/** @type {import('../../helpers/fake-process-runner.js').FakeProgram} */
+function installedTools(command) {
+	return { stdout: command === 'yt-dlp' ? '2026.08.19\n' : 'ffmpeg version 7.1.1 Copyright (c) 2000-2025\n' };
 }
 
 describe('main', () => {
@@ -120,6 +129,16 @@ describe('main', () => {
 		const result = await run([root, '--port', String(await findFreePort())], { typed: 'y\ny\n' });
 		assert.equal(result.code, 0);
 		assert.equal(JSON.parse(await readFile(join(root, 'Combat', 'Boss', '1.mp3.json'), 'utf8')).title, 'Tagged');
+	});
+
+	it('says which download tools it found, and clears what an earlier run left behind', async () => {
+		const root = await tree({ 'a.mp3': '', '.soundboard-downloads': { job: { 'half.webm': 'partial' } } });
+		const found = await run([root, '--port', String(await findFreePort())]);
+		assert.match(found.output, /Downloads: yt-dlp 2026\.08\.19, ffmpeg 7\.1\.1\n/);
+		await assert.rejects(readFile(join(root, '.soundboard-downloads', 'job', 'half.webm')));
+
+		const missing = await run([root, '--port', String(await findFreePort())], { tools: (command) => (command === 'ffmpeg' ? 'missing' : installedTools(command, [], /** @type {any} */ ({}))) });
+		assert.match(missing.output, /Downloads are off: ffmpeg was not found\.\n/);
 	});
 
 	it('exits with 1 when options files are invalid', async () => {

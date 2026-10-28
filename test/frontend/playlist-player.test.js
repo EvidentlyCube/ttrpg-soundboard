@@ -66,6 +66,54 @@ function setup({ tracks = 3, rules = {}, isPlayable, gains, seed = 1 } = {}) {
 }
 
 describe('PlaylistPlayer', () => {
+	describe('adding tracks', () => {
+		/** @param {number[]} order the indices of `playlistOf(count)` tracks, then new ones as -1, -2… */
+		function withAdded(order) {
+			const base = playlistOf(3);
+			return {
+				...base,
+				tracks: order.map((index) => (index >= 0
+					? base.tracks[index]
+					: { ...base.tracks[0], id: `Combat/new${-index}.mp3`, title: `New ${-index}`, url: `/new${-index}` })),
+			};
+		}
+
+		it('keeps the current track playing where it moved to, and plays the new ones in path order', () => {
+			const { player, advance, engine, current, eventsOf } = setup();
+			player.jumpTo(1);
+			advance(0.1);
+			const playing = current();
+			// A new first track moves every other one down by one.
+			player.addTracks(withAdded([-1, 0, 1, 2]));
+			assert.equal(current(), playing);
+			assert.equal(player.snapshot().trackIndex, 2);
+			assert.equal(player.snapshot().track?.id, 'Combat/1.mp3');
+			const last = eventsOf('playlist.stateChanged').at(-1);
+			assert.equal(last?.type === 'playlist.stateChanged' && last.trackIndex, 2);
+			player.next('instant');
+			player.next('instant');
+			assert.equal(engine.voices.at(-1)?.url, '/new1');
+		});
+
+		it('moves a remembered resume point with its track', () => {
+			const { player, advance } = setup({ rules: { stopMode: 'resetTrack' } });
+			player.jumpTo(2);
+			advance(0.1);
+			player.stop('instant');
+			player.addTracks(withAdded([0, -1, 1, 2]));
+			assert.equal(player.snapshot().resume?.trackIndex, 3);
+			assert.equal(player.snapshot().resume?.track.id, 'Combat/2.mp3');
+		});
+
+		it('takes the tracks quietly while idle', () => {
+			const { player, events } = setup();
+			player.addTracks(withAdded([0, 1, 2, -1]));
+			assert.equal(events.length, 0);
+			player.jumpTo(3);
+			assert.equal(player.snapshot().track?.id, 'Combat/new1.mp3');
+		});
+	});
+
 	describe('playing', () => {
 		it('calls play() synchronously, so it happens inside the user gesture', () => {
 			const { player, engine } = setup();

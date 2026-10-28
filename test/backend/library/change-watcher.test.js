@@ -194,6 +194,38 @@ describe('ChangeWatcher', () => {
 			assert.equal(await watcher.check(), false);
 			assert.equal(JSON.parse(await readFile(join(root, 'Boom.mp3.json'), 'utf8')).title, 'Big Boom');
 		});
+
+		it('never counts files a task created and listed', async () => {
+			const { root, fakeWatch, watcher, advance } = await setup();
+			const written = [join(root, 'New.ogg'), join(root, 'New.ogg.json')];
+			const result = await watcher.writeFiles(async () => {
+				await writeFile(written[0], 'new');
+				await writeFile(written[1], '{}');
+				return { written, value: 7 };
+			});
+			assert.equal(result.value, 7);
+			fakeWatch.fire();
+			await advance(QUIET_MS);
+			assert.equal(watcher.externalChanges, false);
+			assert.equal(await watcher.check(), false);
+		});
+
+		it('runs such a task only after a rebuild queued before it', async () => {
+			const { watcher } = await setup();
+			/** @type {string[]} */
+			const order = [];
+			const rebuild = watcher.refresh(async () => {
+				await new Promise((resolve) => setTimeout(resolve, 10));
+				order.push('rebuild');
+				return { status: 'idle' };
+			});
+			const task = watcher.writeFiles(async () => {
+				order.push('task');
+				return { written: [] };
+			});
+			await Promise.all([rebuild, task]);
+			assert.deepEqual(order, ['rebuild', 'task']);
+		});
 	});
 
 	describe('when the directory cannot be watched', () => {

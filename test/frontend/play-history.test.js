@@ -155,4 +155,31 @@ describe('PlayHistory', () => {
 		nexts(played, 70_000);
 		assert.ok(played.length <= 2 ** 16);
 	});
+
+	describe('setTracks', () => {
+		it('follows the current track to its new index and refills the history around it', () => {
+			const played = history('ordered', { trackCount: 3 });
+			played.start(1);
+			// A track added before the current one moves it from 1 to 2.
+			played.setTracks(4, (index) => (index >= 1 ? index + 1 : index));
+			assert.equal(played.current, 2);
+			assert.deepEqual(nexts(played, 2), [3, 0]);
+		});
+
+		it('lets shuffle reach the new tracks', () => {
+			const played = history('shuffle', { trackCount: 2 });
+			played.start(0);
+			played.setTracks(5, (index) => index);
+			assert.equal(played.current, 0);
+			assert.deepEqual(new Set([played.current, ...nexts(played, 4)]), new Set([0, 1, 2, 3, 4]));
+		});
+
+		it('only counts the tracks before the playlist has started', () => {
+			const played = history('ordered', { trackCount: 1 });
+			played.setTracks(3, (index) => index);
+			assert.equal(played.current, null);
+			assert.equal(played.start(), 0);
+			assert.deepEqual(nexts(played, 2), [1, 2]);
+		});
+	});
 });

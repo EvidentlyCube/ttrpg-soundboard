@@ -6,6 +6,7 @@ import { HttpBackendApi } from '../../public/app/api/backend-api.js';
 import { startServer } from '../../src/http/server.js';
 import { BootstrapService } from '../../src/library/bootstrap-service.js';
 import { ChangeWatcher } from '../../src/library/change-watcher.js';
+import { fakeProcessRunner } from '../helpers/fake-process-runner.js';
 import { FakePrompter } from '../helpers/fake-prompter.js';
 import { FakeReporter } from '../helpers/fake-reporter.js';
 import { createTmpTree } from '../helpers/tmp-tree.js';
@@ -144,5 +145,55 @@ describe('HttpBackendApi refreshing against the real server', () => {
 		await rename(join(tree.root, '.soundboard'), join(tree.root, 'settings.bak'));
 		assert.deepEqual(await api.refresh(), { status: 'restartNeeded', message: 'The .soundboard file is gone. Restart the app.' });
 		await rename(join(tree.root, 'settings.bak'), join(tree.root, '.soundboard'));
+	});
+});
+
+describe('HttpBackendApi downloads against the real server', () => {
+	/** @type {import('../helpers/tmp-tree.js').TmpDir} */
+	let tree;
+	/** @type {Awaited<ReturnType<typeof startServer>>} */
+	let server;
+	/** @type {HttpBackendApi} */
+	let api;
+
+	before(async () => {
+		tree = await createTmpTree({ '.soundboard': '{ "version": 1 }', 'Boom.mp3': '' });
+		const outcome = await new BootstrapService({ prompter: new FakePrompter(), reporter: new FakeReporter() }).run(tree.root);
+		assert.equal(outcome.status, 'ready');
+		const run = fakeProcessRunner((command, args) => (args.includes('-J')
+			? { stdout: JSON.stringify({ _type: 'video', id: 'v', title: 'Video' }) }
+			: { code: 1 })).run;
+		/** @type {import('../../src/downloads/link-fetcher.js').LinkFetcher} */
+		const fetcher = { inspect: async () => null, download: async () => {} };
+		server = await startServer({
+			library: outcome.library,
+			settings: outcome.settings,
+			port: 0,
+			logError: () => {},
+			downloads: { tools: { ytDlp: '2026.08.19', ffmpeg: '7.1' }, run, fetcher },
+		});
+		api = new HttpBackendApi(server.url);
+	});
+	after(async () => {
+		await server.close();
+		await tree.remove();
+	});
+
+	it('fetches the tools and the job', async () => {
+		assert.deepEqual(await api.fetchDownload(), { tools: { ytDlp: '2026.08.19', ffmpeg: '7.1' }, job: null });
+	});
+
+	it('looks links up and rejects with the server\'s message alone', async () => {
+		const probe = await api.probeLink('https://example.com/watch?v=v', { playlist: false });
+		assert.equal(probe.kind === 'video' && probe.title, 'Video');
+		await assert.rejects(api.probeLink('ftp://example.com/', { playlist: false }), (error) => error instanceof Error && error.message === 'Only http and https links can be downloaded.');
+	});
+
+	it('starts and dismisses a download', async () => {
+		await assert.rejects(api.startDownload({ probeId: 'old', target: { kind: 'sound' } }), /too old/);
+		const probe = await api.probeLink('https://example.com/watch?v=v', { playlist: false });
+		const job = await api.startDownload({ probeId: probe.probeId, target: { kind: 'sound' } });
+		assert.equal(job.title, 'Video');
+		await api.dismissDownload();
 	});
 });

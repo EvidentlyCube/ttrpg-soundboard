@@ -35,7 +35,7 @@ export const httpLinkFetcher = {
 		}
 		return {
 			contentType: (response.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase(),
-			size: parseSize(response.headers.get('content-length')),
+			size: response.headers.has('content-encoding') ? null : parseSize(response.headers.get('content-length')),
 			name: nameFromDisposition(response.headers.get('content-disposition')) ?? nameFromUrl(response.url || url),
 		};
 	},
@@ -46,10 +46,12 @@ export const httpLinkFetcher = {
 			throw new Error(`The server answered ${response.status} ${response.statusText}`.trim());
 		}
 		let received = 0;
+		// A compressed response's announced size counts the compressed bytes, so it can't be held against the file.
+		const limit = response.headers.has('content-encoding') ? null : expectedSize;
 		const counter = new Transform({
 			transform(chunk, _encoding, callback) {
 				received += chunk.length;
-				if (expectedSize !== null && received > expectedSize) {
+				if (limit !== null && received > limit) {
 					callback(new Error('The file is larger than the server said it would be.'));
 					return;
 				}

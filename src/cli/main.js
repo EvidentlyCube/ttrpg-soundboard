@@ -19,6 +19,7 @@ import { ConsoleReporter } from './reporter.js';
  * @property {Record<string, string | undefined>} env
  * @property {() => Promise<void>} waitForShutdown resolves when the server should stop, e.g. on SIGINT;
  * 	only called once the server is up, so Ctrl+C during the startup questions still ends the process immediately
+ * @property {import('../downloads/process-runner.js').ProcessRunner} [run] starts yt-dlp and ffmpeg; tests pass a fake
  */
 
 /**
@@ -27,7 +28,7 @@ import { ConsoleReporter } from './reporter.js';
  * @param {Terminal} terminal
  * @returns {Promise<number>}
  */
-export async function main(argv, { input, output, errorOutput, env, waitForShutdown }) {
+export async function main(argv, { input, output, errorOutput, env, waitForShutdown, run = runProcess }) {
 	let args;
 	try {
 		args = parseArguments(argv);
@@ -62,7 +63,7 @@ export async function main(argv, { input, output, errorOutput, env, waitForShutd
 	}
 
 	await clearWorkspace(root);
-	const tools = await findTools(runProcess);
+	const tools = await findTools(run);
 	const missing = missingTools(tools);
 	output.write(`${missing.length > 0 ? colors.yellow(describeTools(tools)) : describeTools(tools)}\n`);
 
@@ -76,7 +77,7 @@ export async function main(argv, { input, output, errorOutput, env, waitForShutd
 			logError: (error) => errorOutput.write(`${error instanceof Error ? error.stack : String(error)}\n`),
 			logRequest: args.verbose ? (line) => output.write(`${line}\n`) : undefined,
 			watcher,
-			downloads: { tools },
+			downloads: { tools, run },
 			refresh: () => watcher.refresh(() => {
 				output.write('Refreshing after external changes…\n');
 				return bootstrap.refresh(root);

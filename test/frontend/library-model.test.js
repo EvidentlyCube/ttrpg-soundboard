@@ -158,4 +158,35 @@ describe('LibraryModel', () => {
 			assert.deepEqual(model.json, exampleLibrary());
 		});
 	});
+
+	describe('additions from downloads', () => {
+		const track = (/** @type {string} */ id, format = /** @type {'mp3' | 'ogg'} */ ('mp3')) => ({
+			id, title: id, format, size: 1, gain: 1, duration: 1, startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0, url: `/media/${id}`,
+		});
+
+		it('adds a sound in title order and checks whether it can play', () => {
+			const model = new LibraryModel(exampleLibrary(), (format) => format === 'mp3');
+			model.addSound({ ...track('Cave.ogg', 'ogg'), title: 'Cave' });
+			assert.deepEqual(model.json.sounds.map((sound) => sound.title), ['Boom', 'Cave', 'Rain']);
+			assert.equal(model.hasSound('Cave.ogg'), true);
+			assert.equal(model.isPlayable(model.sound('Cave.ogg')), false);
+		});
+
+		it('adds a playlist in title order', () => {
+			const model = new LibraryModel(exampleLibrary(), () => true);
+			model.addPlaylist({ ...exampleLibrary().playlists[0], id: 'Dungeon', title: 'Dungeon', tracks: [track('Dungeon/1.mp3')] });
+			assert.deepEqual(model.json.playlists.map((playlist) => playlist.id), ['Combat', 'Dungeon', 'Tavern']);
+			assert.equal(model.hasPlaylist('Dungeon'), true);
+		});
+
+		it('takes only the new tracks from the server, in path order, keeping what is known here', () => {
+			const model = new LibraryModel(exampleLibrary(), () => true);
+			model.updatePlaylist('Combat', { title: 'Renamed here' });
+			const fromServer = { ...exampleLibrary().playlists[0], tracks: [track('Combat/0.ogg'), ...exampleLibrary().playlists[0].tracks] };
+			const playlist = model.addTracks(fromServer);
+			assert.equal(playlist.title, 'Renamed here');
+			assert.deepEqual(playlist.tracks.map((entry) => entry.id), ['Combat/0.ogg', 'Combat/1.mp3', 'Combat/2.ogg']);
+			assert.equal(model.playlist('Combat'), playlist);
+		});
+	});
 });
