@@ -184,3 +184,14 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 
 **Long session**
 - [ ] Compare the tab's memory in Activity Monitor at the start and after an hour of play; it should not keep growing.
+
+**Debug view**
+- [ ] A bug button sits at the right end of the header, after the volume controls. Pressing it opens a panel right below it, above the board, the footer, dialogs and menus. Pressing it again closes it. After a reload it starts closed.
+- [ ] Press a sound several times: each press is a row, oldest at the top and newest at the bottom, with an amber `SFX` badge, the sound's title, a status and its volume in dB. Existing rows never move.
+- [ ] The status goes `loading`, then `playing`; a sound with a fade-in shows `fading in` while its volume climbs from `−∞ dB` to its gain, and one with a fade-out shows `fading out` while it drops.
+- [ ] A sound's volume equals its Customize volume (`0.0 dB` at the default, `−6.0 dB` after setting that), and ignores the Master and Sound Effects sliders.
+- [ ] When a sound ends the row turns `ended` and dims, and disappears 5 seconds later. Stop All and a ninth press show `stopped` and also linger 5 seconds.
+- [ ] Start a playlist: a blue `Music` row appears. Pause shows `paused`, resume `playing`. Next and Previous with a crossfade show the old track `fading out` and the new one `fading in` at the same time, volumes moving in opposite directions, and the old row `ended`/`stopped` afterwards.
+- [ ] A playlist's volume in the panel is its gain times the track's; changing the playlist volume while it plays updates the row.
+- [ ] With the panel open, the playlist dialog and its test playback still work, and the panel stays on top of the dialog. Esc closes the panel only when no dialog or menu is open.
+- [ ] A track that fails to load (for example a file removed from the temp directory after the scan) shows `error`; hovering the status shows the message.

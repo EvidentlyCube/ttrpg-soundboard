@@ -7,6 +7,7 @@ const SHAPES = {
 	next: '<path fill="currentColor" d="M15.5 5H18v14h-2.5zM5 5.5v13L14.5 12z"/>',
 	volume: '<path fill="currentColor" d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/>'
 		+ '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/>',
+	bug: '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M9 8a3 3 0 0 1 6 0M8 9.5h8v5a4 4 0 0 1-8 0zM12 9.5V19M8 12H4M16 12h4M8.5 16.5 5.5 18.5M15.5 16.5l3 2M9 6 7 4M15 6l2-2"/>',
 	chevronDown: '<path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M7 10l5 5 5-5"/>',
 	spinner: '<circle fill="none" stroke="currentColor" stroke-width="2.5" opacity="0.25" cx="12" cy="12" r="8.5"/>'
 		+ '<path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5"/>',

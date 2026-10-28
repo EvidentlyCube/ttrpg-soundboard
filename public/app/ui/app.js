@@ -1,4 +1,5 @@
 import { Component } from './component.js';
+import { DebugView } from './debug-view.js';
 import { Dialog } from './dialog.js';
 import { h, on } from './dom.js';
 import { Overlay } from './overlay.js';
@@ -118,9 +119,12 @@ class Board extends Component {
 		const overlay = this.#overlay;
 		const isPlayable = (/** @type {AudioFileJson} */ file) => !this.#unplayable.has(file.id);
 
+		const controls = h('div', { class: 'flex items-center gap-5' });
 		const header = h('header', { class: 'flex shrink-0 items-center justify-between gap-6 border-b border-line bg-panel px-5 py-3' },
-			h('h1', { class: 'text-lg font-semibold tracking-tight' }, 'Soundboard'));
-		this.#adopt(new VolumeControls(soundboard).mount(header));
+			h('h1', { class: 'text-lg font-semibold tracking-tight' }, 'Soundboard'),
+			controls);
+		this.#adopt(new VolumeControls(soundboard).mount(controls));
+		this.#adopt(new DebugView(soundboard).mount(controls));
 
 		const main = h('main', { class: 'min-h-0 flex-1 space-y-8 overflow-y-auto px-5 py-5' });
 		const { playlists, sounds } = this.#library;
