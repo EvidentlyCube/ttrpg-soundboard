@@ -42,24 +42,27 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
   - On success the new `Library` and `SettingsStore` replace the old ones (below), and a new file baseline is taken.
 - **§5.1, new "Change watcher" (`src/library/change-watcher.js`).** Decides whether the directory differs from what the app last loaded.
   - *Baseline.* At the end of bootstrap: every file the scanner uses (§2.1: audio files, options files, `.soundboard`) with its size, modified time and SHA-1. Audio files take the SHA-1 already stored in `measuredFrom` (§3.5), so building the baseline reads no audio; the small `.json` files are hashed.
-  - *Watching.* `fs.watch(root, { recursive: true })` (built in, works on Linux and macOS in Node 24) only says that something under a path changed. For each path, after 1 s without further events, the watcher compares the path with the baseline:
+  - *Watching.* `fs.watch(root, { recursive: true })` (built in, works on Linux and macOS in Node 24) only says that something changed. After 1 s without further events, the watcher scans the tree again (listings and dates only, as the scanner always does) and compares it with the baseline:
     - a file the scanner would use (§2.1) that is not in the baseline: **change**;
-    - a baseline file that is gone, or a baseline directory that is gone: **change**;
+    - a baseline file that is gone: **change**;
     - a baseline file with the same size and modified time: no change; otherwise hash it, and a different SHA-1 is a **change** (a merely touched or copied file is not).
-    - Ignored: names starting with `.` (except `.soundboard`), `.wf` and `.tmp` files, unsupported audio, orphan `.json` files, empty directories, symlinks.
+    - Everything the scanner ignores is ignored here too: dot files (except `.soundboard`), `.wf` and `.tmp` files, unsupported audio, orphan `.json` files, empty directories, symlinks.
+  - *Quick checks.* The page asks for a check whenever it gets the focus back (another window or tab was in front), and the watcher checks every 30 s if `fs.watch` fails or reports an error (for example the Linux inotify limit). These checks compare **size and modified time only** and never hash, so a merely touched file counts as a change there.
   - *Once a change is found* the watcher sets `externalChanges = true`, announces it, and stops checking until the next refresh. A half-copied file therefore costs at most one hash; whatever it looks like at refresh time is what bootstrap reads, and if it is still growing the next check after the refresh finds it changed again.
-  - *Own writes.* `LibraryEditor`, `SettingsStore` and bootstrap record the new size, modified time and SHA-1 of each file they write in the baseline right after the rename, so the app's own saves are never external changes.
-  - *Missed events.* Right after it starts, the watcher compares the whole tree with the baseline once, which covers changes made between the startup scan and the watcher starting. If `fs.watch` fails or reports an error (for example the Linux inotify limit), it falls back to the same full comparison every 30 s.
+  - *Own writes.* `LibraryEditor` and `SettingsStore` save through the watcher, which records the new size, modified time and SHA-1 of the file once it is written. Checks and own writes take turns, so the app's own saves are never external changes. Bootstrap's writes happen before the baseline is taken.
+  - *Missed events.* The baseline is taken after bootstrap, and its audio files are compared with the ones bootstrap scanned, which covers changes made while bootstrap ran.
 - **§5.1, replacing the library.** The router, `LibraryEditor` and `WaveformStore` hold the `Library` and `SettingsStore` today. They get them from a holder (`AppState`) that a refresh swaps. The refresh and the writing requests (`PATCH`, `PUT`) take turns through one lock, so a save is never lost between the rebuild reading a file and the swap. A second refresh request while one runs waits for it and gets its result.
 - **§5.2 HTTP API.**
   - `GET /api/events`: a server-sent event stream (`text/event-stream`, plain `node:http`). On connect it sends the current state, `{ "externalChanges": false }` or `true`, and again whenever changes are found. A comment line every 30 s keeps the connection open. The server closes the streams on shutdown, like media streams (§5.2).
+  - `POST /api/changes/check`: no body. Runs a quick check (size and modified time) and returns `200 { externalChanges }`.
   - `POST /api/refresh`: no body. `200 {}` once the rebuild has finished. `422 { error, errors: [{ path, message }] }` for validation errors. `503 { error }` when `.soundboard` is gone.
-- **§6, §6.1, §6.2.** A new port, `ServerEvents` (`api/server-events.js` over `EventSource`, which reconnects by itself; a fake for tests), and `BackendApi.refresh()`. The facade:
-  - emits `library.externalChanges {}` when the server reports changes;
+- **§6, §6.1, §6.2.** A new port, `ServerEvents` (`api/server-events.js` over `EventSource`, which reconnects by itself; a fake for tests), and `BackendApi.checkExternalChanges()` and `refresh()`. The facade:
+  - emits `library.externalChanges { pending }` when the server reports changes;
+  - `checkExternalChanges()` asks the server for a quick check; the UI calls it when the window gets the focus back or the tab becomes visible again;
   - `refreshLibrary()` flushes every pending save and **waits for them to finish** first, so the rebuild reads the user's latest edits, then calls the server. It emits `library.refreshing {}`, then `library.refreshed {}` or `library.refreshFailed { message, errors }`.
   - The UI reloads the page on `library.refreshed` (logic never touches `window`). After the reload the splash asks for a click again, because the browser needs a gesture to start audio (§9.0).
 - **§9.1 Layout, new §9.x.** The yellow **External Changes – Refresh** button sits in the header, left of the waveform indicator, and is shown only while the server reports changes. While refreshing it is disabled and reads "Refreshing…". Validation errors open a dialog listing each file and problem; the button stays so the user can retry after fixing them. A missing `.soundboard` shows a blocking message: "The audio directory was reset. Restart the app."
-- **TESTING.md.** Manual checks: copy a large file in and click Refresh during and after the copy; replace a file with the same content (no button); delete a file; edit an options file by hand; save options in the dialog (no button); add a nested directory, refresh, then restart (the terminal asks); delete `.soundboard`.
+- **TESTING.md.** Manual checks: copy a large file in and click Refresh during and after the copy; replace a file with the same content (no button); delete a file; change a file while another window has the focus, then come back (the button appears without waiting); edit an options file by hand; save options in the dialog (no button); add a nested directory, refresh, then restart (the terminal asks); delete `.soundboard`.
 
 **Decided.**
 - Server-sent events for the push channel; Node's built-in `fs.watch` for watching, with no vendored watcher.
@@ -69,13 +72,14 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 - A refresh ignores orphaned files beyond the usual warnings; a normal start treats them as it does today.
 
 **Plan.**
-1. Backend clock port and `FileBaseline`: built from a scan and the loaded options, compares a path (new, gone, same size and time, different hash) — tests on temp trees.
-2. `ChangeWatcher`: watcher port with a fake, the 1 s quiet period per path, ignored names, own writes recorded by `LibraryEditor`, `SettingsStore` and bootstrap, the startup comparison, the 30 s fallback — tests with the fake watcher and fake clock, plus one test with the real `fs.watch` on a temp directory.
-3. `AppState` and the lock; the refresh through `BootstrapService` — tests: the swap is seen by the router, editor and waveform store; a `PATCH` during a refresh is not lost; validation errors and a missing `.soundboard` replace nothing; new nested directories are in the library but not in any options file; concurrent refreshes share one run.
-4. `POST /api/refresh` and `GET /api/events` — HTTP tests for every status code and the event stream.
-5. Frontend: `ServerEvents` port, `BackendApi.refresh`, the facade's flush-then-refresh and its events — tests with fakes.
-6. UI: the header button, the error dialog, the blocking message, the reload — manual checks, added to `TESTING.md`.
-7. Update `DESIGN.md` and remove this proposal and its backlog entry.
+Implemented in one go (lean flow): the code first, then the owner checks it in the browser, then tests and `DESIGN.md` in one sweep.
+1. Tree snapshot and baseline: compare with and without hashing (new, gone, same size and time, same or different hash).
+2. `ChangeWatcher`: watcher and timers injected, 1 s quiet period, quick checks, 30 s fallback, own writes, the startup comparison.
+3. The refresh through `BootstrapService`, the swap in the server and the waiting requests.
+4. `GET /api/events`, `POST /api/changes/check`, `POST /api/refresh`.
+5. Frontend: `ServerEvents` port, `BackendApi`, the facade's check, flush-then-refresh and events.
+6. UI: the header button, the focus check, the error dialog, the blocking message, the reload.
+7. Tests for 1–5, manual checks in `TESTING.md`, `DESIGN.md`, and removing this proposal and its backlog entry.
 
 ---
 
