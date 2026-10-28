@@ -78,6 +78,15 @@ describe('LibraryModel', () => {
 			assert.equal(model.json.playlists.find((entry) => entry.id === 'Combat'), playlist);
 		});
 
+		it('changes the gain, and rejects one out of range', () => {
+			const model = fresh();
+			assert.equal(model.updateTrack('Combat/1.mp3', { gain: 0.5 }).track.gain, 0.5);
+			const before = model.json;
+			assert.throws(() => model.updateTrack('Combat/1.mp3', { gain: 4.1 }), InvalidCommandError);
+			assert.throws(() => model.updateTrack('Combat/1.mp3', { gain: -0.1 }), InvalidCommandError);
+			assert.equal(model.json, before);
+		});
+
 		it('changes the points rounded to milliseconds, and an end of null', () => {
 			const model = fresh();
 			const { track } = model.updateTrack('Combat/1.mp3', { startAt: 1.00049, endAt: 5 });

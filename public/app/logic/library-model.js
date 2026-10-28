@@ -89,16 +89,16 @@ export class LibraryModel {
 	 * Renames a track or changes its points. Its playlist is replaced by a copy holding the changed track, in the same
 	 * order, so everything that shows the playlist can take the new copy.
 	 * @param {string} trackId
-	 * @param {ItemOptions} changes only `title`, `startAt` and `endAt` are used
+	 * @param {ItemOptions} changes only `title`, `gain`, `startAt` and `endAt` are used
 	 * @returns {{ playlist: PlaylistJson, track: AudioFileJson }}
 	 */
-	updateTrack(trackId, { title, startAt, endAt }) {
+	updateTrack(trackId, { title, gain, startAt, endAt }) {
 		const current = this.#json.playlists.find((entry) => entry.tracks.some((track) => track.id === trackId));
 		if (!current) {
 			throw new InvalidCommandError(`Unknown track "${trackId}"`);
 		}
 		const index = current.tracks.findIndex((track) => track.id === trackId);
-		const track = applyChanges(current.tracks[index], { title });
+		const track = applyChanges(current.tracks[index], { title, gain });
 		applyPoints(track, { startAt, endAt });
 		const playlist = { ...current, tracks: current.tracks.with(index, track) };
 		this.#playlists.set(playlist.id, playlist);

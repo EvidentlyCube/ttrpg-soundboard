@@ -295,6 +295,10 @@ export class PlaylistPlayer {
 	 */
 	setGain(gain) {
 		this.#gain = gain;
+		this.#applyGains();
+	}
+
+	#applyGains() {
 		if (this.#current) {
 			this.#current.voice.setGain(this.#voiceGain(this.#current.trackIndex));
 		}
@@ -307,7 +311,7 @@ export class PlaylistPlayer {
 	 * Takes a changed copy of the playlist, with the same tracks in the same order (a renamed track, say), and announces
 	 * the current track again so its new title shows.
 	 *
-	 * Changed start or end points never reach a track that is playing. But a paused track and a remembered one go back
+	 * A changed track gain reaches the voices at once. Changed start or end points never reach a track that is playing. But a paused track and a remembered one go back
 	 * to their new start: the paused playlist stops, and a resume point keeps its track without the position.
 	 * @param {PlaylistJson} playlist
 	 */
@@ -316,6 +320,7 @@ export class PlaylistPlayer {
 		const moved = (/** @type {number | null} */ index) => index !== null
 			&& (playlist.tracks[index].startAt !== old.tracks[index].startAt || playlist.tracks[index].endAt !== old.tracks[index].endAt);
 		this.#playlist = playlist;
+		this.#applyGains();
 		const pausedTrack = this.#state === 'paused' ? this.#current?.trackIndex ?? null : null;
 		if (moved(pausedTrack)) {
 			this.#stop('instant', true);

@@ -209,10 +209,10 @@ export class Soundboard {
 				this.#settingsSync.schedule(this.#volume.volumes);
 				return;
 			case 'track.customize': {
-				const { title, startAt, endAt } = command;
-				const { playlist, track } = loaded.library.updateTrack(command.trackId, { title, startAt, endAt });
+				const { title, gain, startAt, endAt } = command;
+				const { playlist, track } = loaded.library.updateTrack(command.trackId, { title, gain, startAt, endAt });
 				loaded.playlists.get(playlist.id)?.setPlaylist(playlist);
-				this.#optionsSync.schedule({ kind: 'track', id: track.id }, { title: track.title, startAt: track.startAt, endAt: track.endAt });
+				this.#optionsSync.schedule({ kind: 'track', id: track.id }, { title: track.title, gain: track.gain, startAt: track.startAt, endAt: track.endAt });
 				this.#events.emit({ type: 'playlist.changed', playlist });
 				return;
 			}
@@ -413,14 +413,14 @@ export class Soundboard {
 	}
 
 	/**
-	 * Renames a track or changes its start and end points (`endAt: null` is the end of the file). It is announced as
+	 * Renames a track or changes its volume or its start and end points (`endAt: null` is the end of the file). It is announced as
 	 * `playlist.changed` with its playlist, so every view of the playlist follows; saving is reported with `track.saved`
 	 * or `track.saveFailed`.
 	 * @param {string} trackId
-	 * @param {{ title?: string, startAt?: number, endAt?: number | null }} changes the title must not be empty
+	 * @param {{ title?: string, gain?: number, startAt?: number, endAt?: number | null }} changes the title must not be empty
 	 */
-	customizeTrack(trackId, { title, startAt, endAt }) {
-		this.dispatch({ type: 'track.customize', trackId, title, startAt, endAt });
+	customizeTrack(trackId, { title, gain, startAt, endAt }) {
+		this.dispatch({ type: 'track.customize', trackId, title, gain, startAt, endAt });
 	}
 
 	/** @returns {LibraryJson | null} null until started */

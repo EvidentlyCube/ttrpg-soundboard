@@ -21,7 +21,7 @@ const SECONDS_KEYS = ['crossfade', 'fadeIn', 'fadeOut'];
 const EDITABLE = {
 	sound: { keys: ['title', 'gain', 'startAt', 'endAt', 'fadeIn', 'fadeOut'], validate: validateAudioOptions },
 	playlist: { keys: ['title', 'gain', ...SECONDS_KEYS, 'order', 'trackLooping', 'stopMode'], validate: validatePlaylistOptions },
-	track: { keys: ['title', 'startAt', 'endAt'], validate: validateAudioOptions },
+	track: { keys: ['title', 'gain', 'startAt', 'endAt'], validate: validateAudioOptions },
 };
 
 /** The id does not belong to a sound in the library. */
@@ -97,7 +97,7 @@ export class LibraryEditor {
 	}
 
 	/**
-	 * Like `updateSound`, for a track; only its title and its start and end points can change for now. Tracks keep their
+	 * Like `updateSound`, for a track; only its title, gain and start and end points can change. Tracks keep their
 	 * path order (DESIGN.md §2.2), so nothing is sorted again.
 	 * @param {string} trackId
 	 * @param {OptionChanges} changes

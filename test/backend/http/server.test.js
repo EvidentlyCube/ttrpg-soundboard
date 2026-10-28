@@ -322,8 +322,16 @@ describe('server', () => {
 			assert.equal((await json(await get('/api/library'))).playlists[0].tracks[0].title, 'Calmer');
 		});
 
+		it('saves a gain and rejects one out of range', async () => {
+			const id = encodeURIComponent('Combat/Zażółć ♪ #1.ogg');
+			const saved = await patchTrack(id, { gain: 0.5 });
+			assert.equal(saved.status, 200);
+			assert.equal((await json(saved)).gain, 0.5);
+			assert.equal((await patchTrack(id, { gain: 5 })).status, 400);
+		});
+
 		it('rejects other options with 400 and unknown or sound ids with 404', async () => {
-			assert.equal((await patchTrack(encodeURIComponent('Combat/Zażółć ♪ #1.ogg'), { gain: 1 })).status, 400);
+			assert.equal((await patchTrack(encodeURIComponent('Combat/Zażółć ♪ #1.ogg'), { fadeIn: 1 })).status, 400);
 			assert.equal((await patchTrack('Combat%2Fnope.ogg', { title: 'X' })).status, 404);
 			assert.equal((await patchTrack('Boom.mp3', { title: 'X' })).status, 404);
 		});

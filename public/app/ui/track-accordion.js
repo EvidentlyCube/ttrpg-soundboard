@@ -3,6 +3,8 @@ import { card, titleField } from './customize-parts.js';
 import { h } from './dom.js';
 import { icon } from './icons.js';
 import { RangeControl } from './range-control.js';
+import { GainControl } from './gain-control.js';
+import { formatDb } from './gain-scale.js';
 import { fromStored, toStoredEnd } from './range-scale.js';
 import { trackAction, trackPlayback } from './track-playback.js';
 
@@ -12,7 +14,7 @@ import { trackAction, trackPlayback } from './track-playback.js';
 
 /**
  * The tracks of a playlist as an accordion (DESIGN.md §9.7): one row per track, at most one open. An open track shows
- * its settings: the start and end points, which turn into a seek bar while the track plays, and the title. Every
+ * its settings: the start and end points, which turn into a seek bar while the track plays, the volume and the title. Every
  * header has a play / stop button for that track.
  */
 export class TrackAccordion extends Component {
@@ -38,7 +40,7 @@ export class TrackAccordion extends Component {
 	/** @override */
 	render() {
 		/** @type {Map<string, { title: HTMLElement, toggle: HTMLButtonElement, body: HTMLElement, play: HTMLButtonElement,
-		 * 	cropped: HTMLElement, range: RangeControl | null, durationMs: number | null }>} */
+		 * 	cropped: HTMLElement, volume: HTMLElement, gain: GainControl, range: RangeControl | null, durationMs: number | null }>} */
 		const rows = new Map();
 		const playlistId = this.#playlist.id;
 		const list = h('ol', { 'class': 'divide-y divide-line', 'data-track-accordion': true });
@@ -80,6 +82,12 @@ export class TrackAccordion extends Component {
 				'data-track-cropped': track.id,
 				'hidden': !isCropped(track),
 			}, 'Cropped');
+			const volume = h('span', {
+				'class': 'shrink-0 rounded-full px-2 py-0.5 text-[0.65rem] font-semibold tabular-nums data-[change=louder]:bg-boost/20 data-[change=louder]:text-boost data-[change=quieter]:bg-cyan-400/20 data-[change=quieter]:text-cyan-300',
+				'title': 'This track\'s volume differs from the file',
+				'data-track-volume': track.id,
+			});
+			showVolume(volume, track);
 			const toggle = h('button', {
 				'type': 'button',
 				'class': 'group flex min-w-0 flex-1 cursor-pointer items-center gap-3 py-2 pr-3 pl-2 text-left text-sm',
@@ -90,6 +98,7 @@ export class TrackAccordion extends Component {
 			h('span', { class: 'w-6 shrink-0 text-right tabular-nums text-muted' }, String(index + 1)),
 			title,
 			cropped,
+			volume,
 			icon('chevronDown', 'size-4 shrink-0 text-muted transition-transform group-aria-expanded:rotate-180'));
 
 			// The points are chosen over the whole file; a track whose length is unknown has no such control.
@@ -116,8 +125,20 @@ export class TrackAccordion extends Component {
 				range.mount(slot);
 				body.append(card('Start and end', 'music', slot));
 			}
+			const gain = new GainControl({
+				value: track.gain,
+				label: 'Track volume',
+				onChange: (value) => {
+					this.#onEdit(track.id);
+					this.#soundboard.customizeTrack(track.id, { gain: value });
+				},
+			});
+			this.own(() => gain.destroy());
+			const gainSlot = h('div');
+			gain.mount(gainSlot);
+			body.append(card('Volume', 'music', gainSlot));
 			body.append(card('Track', 'music', this.#settings(track)));
-			rows.set(track.id, { title, toggle, body, play, cropped, range, durationMs });
+			rows.set(track.id, { title, toggle, body, play, cropped, volume, gain, range, durationMs });
 			list.append(h('li', {}, h('div', { class: 'flex items-center hover:bg-music/15 has-[[aria-expanded=true]]:bg-music/20' }, play, toggle), body));
 		});
 
@@ -178,6 +199,8 @@ export class TrackAccordion extends Component {
 					if (row) {
 						row.title.textContent = track.title;
 						row.cropped.hidden = !isCropped(track);
+						showVolume(row.volume, track);
+						row.gain.update(track.gain);
 						if (row.range && row.durationMs !== null) {
 							row.range.update(fromStored(track, row.durationMs));
 						}
@@ -199,6 +222,20 @@ export class TrackAccordion extends Component {
 			},
 		}).element;
 	}
+}
+
+/**
+ * Shows how far the track's own volume is from the file's, as a bubble in its header, hidden at 0.0 dB. A rounded
+ * value is compared, so the bubble never reads "0.0 dB".
+ * @param {HTMLElement} bubble
+ * @param {AudioFileJson} track
+ */
+function showVolume(bubble, track) {
+	const text = formatDb(track.gain);
+	const same = text === '0.0 dB';
+	bubble.hidden = same;
+	bubble.dataset.change = same ? 'none' : (track.gain > 1 ? 'louder' : 'quieter');
+	bubble.textContent = text;
 }
 
 /**

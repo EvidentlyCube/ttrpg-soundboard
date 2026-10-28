@@ -534,7 +534,7 @@ describe('Soundboard', () => {
 			const { soundboard, api, clock, settle, eventsOf } = await started();
 			soundboard.customizeTrack('Combat/2.ogg', { title: 'Final' });
 			clock.advance(500);
-			assert.deepEqual(api.trackSaves, [{ trackId: 'Combat/2.ogg', options: { title: 'Final', startAt: 0, endAt: null }, keepalive: false }]);
+			assert.deepEqual(api.trackSaves, [{ trackId: 'Combat/2.ogg', options: { title: 'Final', gain: 1, startAt: 0, endAt: null }, keepalive: false }]);
 			await settle();
 			assert.deepEqual(eventsOf('track.saved'), [{ type: 'track.saved', trackId: 'Combat/2.ogg' }]);
 
@@ -552,7 +552,19 @@ describe('Soundboard', () => {
 			const track = changed.type === 'playlist.changed' ? changed.playlist.tracks[0] : null;
 			assert.deepEqual([track?.startAt, track?.endAt], [1.5, 20]);
 			clock.advance(500);
-			assert.deepEqual(api.trackSaves.map((save) => save.options), [{ title: 'Battle', startAt: 1.5, endAt: 20 }]);
+			assert.deepEqual(api.trackSaves.map((save) => save.options), [{ title: 'Battle', gain: 1, startAt: 1.5, endAt: 20 }]);
+		});
+
+		it('saves a gain with the other options, and a playing track follows it at once', async () => {
+			const { soundboard, api, clock, engine, eventsOf, settle } = await started();
+			soundboard.togglePlaylist('Combat');
+			await settle();
+			soundboard.customizeTrack('Combat/1.mp3', { gain: 0.5 });
+			const [changed] = eventsOf('playlist.changed');
+			assert.equal(changed.type === 'playlist.changed' && changed.playlist.tracks[0].gain, 0.5);
+			assert.equal(engine.voices.at(-1)?.gain, 0.5 * (soundboard.getLibrary()?.playlists[0].gain ?? 1));
+			clock.advance(500);
+			assert.deepEqual(api.trackSaves.map((save) => save.options), [{ title: 'Battle', gain: 0.5, startAt: 0, endAt: null }]);
 		});
 
 		it('rejects points that do not fit together, announcing and saving nothing', async () => {

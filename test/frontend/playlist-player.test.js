@@ -769,6 +769,18 @@ describe('PlaylistPlayer', () => {
 			assert.deepEqual(old.gainRamps, [[0, 2]], 'the gain change does not touch the fade');
 		});
 
+		it('follows a changed track gain in a new copy of the playlist, for the current and the retiring voice', () => {
+			const { player, engine, advance } = setup({ rules: { crossfade: 2 }, gains: { gain: 0.5, trackGains: [1, 2] } });
+			player.play();
+			advance(1);
+			player.next();
+			const changed = playlistOf(3, { gain: 0.5, trackGains: [4, 1] });
+			player.setPlaylist(changed);
+			const [old, fresh] = engine.voices;
+			assert.deepEqual([old.gain, fresh.gain], [2, 0.5]);
+			assert.deepEqual(old.gainRamps, [[0, 2]], 'the gain change does not touch the fade');
+		});
+
 		it('starts later tracks at the new gain', () => {
 			const { player, engine } = setup();
 			player.setGain(2);

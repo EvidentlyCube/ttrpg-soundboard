@@ -117,7 +117,9 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] A paused track shows the play button; pressing it resumes the track rather than restarting it.
 - [ ] The track list runs edge to edge between the tab bar and the Play row, and the last track is fully visible, not covered by the Play row, when scrolled to the bottom.
 - [ ] Hovering anywhere on a header, including the play button, tints the whole row blue; the open row's header has a stronger tint and a blue title.
-- [ ] An open row shows two cards, "Start and end" and "Track", that light up on hover or focus like those on the first tab.
+- [ ] An open row shows three cards, "Start and end", "Volume" and "Track", that light up on hover or focus like those on the first tab.
+- [ ] Track volume. The Volume card has the gain widget (bars, orange boost, dB readout, typing, double-click resets). Changing it while the track plays changes the loudness at once, without a click or a restart of the track, and survives closing the dialog and reloading the page.
+- [ ] A track whose volume is not 0.0 dB shows a small bubble in its header with the change (`−6.0 dB` in cyan, `+3.5 dB` in orange); it follows the widget live and disappears at 0.0 dB.
 - [ ] Row headers show no duration. A track whose points differ from the whole file shows a small blue "Cropped" bubble; Reset in its card removes the bubble.
 - [ ] Track start and end points. In a track's "Start and end" card, a stopped track has the two handles, the fields and Reset, in blue. Dragging a handle, typing a value and Reset all change the points as they do for a sound, and the card's readout says "Plays 0:07 of 0:10"-style lengths. The change survives closing the dialog and reloading the page.
 - [ ] Play a track whose points are set: it starts at the start point and ends at the end point, then the next track starts. The footer shows time from 0:00 to the trimmed length, and its progress bar covers only that part.

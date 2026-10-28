@@ -334,9 +334,17 @@ describe('LibraryEditor.updateTrack', () => {
 		assert.deepEqual(await readOptions('Combat/1.mp3'), { startAt: 5, endAt: null });
 	});
 
-	it('accepts only a title and the points, and rejects unknown ids and sound ids', async () => {
+	it('saves a gain rounded to 4 decimals and rejects one out of range', async () => {
 		const editor = new LibraryEditor(library());
-		await assert.rejects(editor.updateTrack('Combat/1.mp3', /** @type {any} */ ({ gain: 1 })), /Unknown option "gain"/);
+		const updated = await editor.updateTrack('Combat/1.mp3', { gain: 0.123456 });
+		assert.equal(updated.gain, 0.1235);
+		assert.deepEqual(await readOptions('Combat/1.mp3'), { gain: 0.1235 });
+		await assert.rejects(editor.updateTrack('Combat/1.mp3', { gain: 4.5 }), /"gain" must be a number from 0 to 4/);
+		await assert.rejects(editor.updateTrack('Combat/1.mp3', { gain: -1 }), /"gain" must be a number from 0 to 4/);
+	});
+
+	it('accepts only a title, a gain and the points, and rejects unknown ids and sound ids', async () => {
+		const editor = new LibraryEditor(library());
 		for (const key of ['fadeIn', 'fadeOut']) {
 			await assert.rejects(editor.updateTrack('Combat/1.mp3', /** @type {any} */ ({ [key]: 1 })), new RegExp(`Unknown option "${key}"`));
 		}
