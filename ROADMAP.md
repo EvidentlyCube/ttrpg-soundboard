@@ -29,29 +29,7 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## Proposals
 
-### Track volume
-
-**Goal.** In the playlist dialog's track accordion, the open track gets a **Volume** card with the same gain widget the sound and playlist dialogs use (0 to +12 dB, orange boost). The track plays at `playlist gain × track gain`, as it already does. Changes apply at once, even to the track that is playing, so the volume can be set by ear using the row's test playback. They are saved with the usual 500 ms debounce.
-
-**Design changes.**
-- §2.3: remove "there is no UI for it yet" from the track's `gain`.
-- §5.1: `LibraryEditor.updateTrack(id, { title?, gain?, startAt?, endAt? })`: `gain` is validated and rounded like a sound's (0 to 4, 4 decimals).
-- §5.2: the `PATCH /api/tracks/<id>` row lists `gain` among the accepted keys.
-- §6.1: `customizeTrack(trackId, { title?, gain?, startAt?, endAt? })`; `BackendApi.saveTrackOptions` sends `gain` too.
-- §6.4: the "Extension point" paragraph is replaced by a description of the track volume: "Applying" now includes `customizeTrack`, which changes the library model and `PlaylistPlayer`.
-- §8.1: `setPlaylist` re-applies `playlist gain × track gain` to the current voice and the retiring ones, since the tracks' gains can now change (§6.3's separate fade stage keeps fades undisturbed). Unlike the points, a new gain reaches the playing track at once.
-- §9.7: the open track shows three cards: **Start and end**, **Volume** and **Track**; the "Later track settings go in the open row" sentence is updated.
-
-**Open questions.**
-1. *Does a gain change reach the track that is playing?* Recommended: yes. A volume is only worth setting by ear, and the engine already supports it (`setGain` on a voice). The points stay "later tracks only".
-2. *Where does the control go?* Recommended: its own **Volume** card between **Start and end** and **Track**, in the blue accent, rather than a row in the Track card, so it looks the same as in the other dialogs.
-3. *Does the card show the playlist's gain too?* Recommended: no. The widget shows the track's own gain only; the playlist's volume stays on the first tab.
-
-**Plan.**
-1. Backend: `LibraryEditor.updateTrack` and `PATCH /api/tracks/<id>` accept `gain` — editor and router tests for valid, rounded, out-of-range and unknown-key cases.
-2. Logic: `LibraryModel.updateTrack`, the `track.customize` command, `customizeTrack`, the options sync and `BackendApi.saveTrackOptions` carry `gain`; `PlaylistPlayer.setPlaylist` re-applies voice gains — model, command validation, player (current and retiring voices, gain × playlist gain) and facade save tests.
-3. UI: the Volume card in `ui/track-accordion.js`, following `playlist.changed` — checked with new items in the `TESTING.md` manual checklist.
-4. `DESIGN.md` updated as listed above, then this proposal and backlog item 12 removed.
+None yet.
 
 ---
 
@@ -70,12 +48,6 @@ None yet.
 These are the next features, in roughly the order they will be built. Each will get its own proposal when its turn comes. **Decided** lists the owner's answers already given; the notes list what else is known and the questions still to settle.
 
 **Decided for all of them.** Customization changes apply immediately and are saved with a 500 ms debounce, as the sound Customize dialog does (DESIGN.md §6.4, §9.7). Re-sorting on screen waits until the dialog closes. Playback state is never remembered across a page reload, so F5 always gives a clean start.
-
-#### 12. Track volume
-
-Per-track volume in the track's accordion.
-
-- **Seam:** only UI is needed: a track's `gain` from its options file is already applied, multiplied by the playlist's (DESIGN.md §6.4). Saving it means accepting `gain` in `LibraryEditor.updateTrack` and `customizeTrack` (DESIGN.md §5.1), and the control goes in the open row of the track accordion (§9.7).
 
 #### 13. Waveform
 
