@@ -16,7 +16,8 @@ export class SettingsSync {
 	#pending = null;
 	/** @type {number | null} */
 	#timer = null;
-	#saving = false;
+	/** The save in flight. @type {Promise<void> | null} */
+	#saving = null;
 
 	/**
 	 * @param {object} options
@@ -52,15 +53,26 @@ export class SettingsSync {
 		}
 	}
 
+	/**
+	 * Saves a pending change now and resolves once nothing is waiting or in flight, e.g. before the server rebuilds its
+	 * library from the files. A failed save is logged as usual and doesn't reject.
+	 */
+	async settle() {
+		this.#cancelTimer();
+		this.#drain();
+		while (this.#saving) {
+			await this.#saving;
+		}
+	}
+
 	#drain() {
 		const volumes = this.#pending;
 		if (this.#saving || !volumes) {
 			return;
 		}
 		this.#pending = null;
-		this.#saving = true;
-		this.#send(volumes, false).finally(() => {
-			this.#saving = false;
+		this.#saving = this.#send(volumes, false).finally(() => {
+			this.#saving = null;
 			this.#drain();
 		});
 	}

@@ -18,6 +18,7 @@ import { VolumeControl } from './volume.js';
 /** @typedef {import('./ports.js').Clock} Clock */
 /** @typedef {import('./ports.js').LibraryJson} LibraryJson */
 /** @typedef {import('./ports.js').Logger} Logger */
+/** @typedef {import('./ports.js').ServerEvents} ServerEvents */
 /** @typedef {import('./ports.js').Volumes} Volumes */
 /** @typedef {import('./ports.js').WaveformDecoder} WaveformDecoder */
 /** @typedef {import('./waveform-service.js').WaveformEvent} WaveformEvent */
@@ -46,7 +47,11 @@ import { VolumeControl } from './volume.js';
  * 	| { type: 'track.saved', trackId: string }
  * 	| { type: 'track.saveFailed', trackId: string, message: string }} CustomizeEvent
  * @typedef {{ type: 'voices.changed' }} VoicesEvent
- * @typedef {AppEvent | SoundEvent | PlaylistEvent | VolumeChangedEvent | CustomizeEvent | VoicesEvent | WaveformEvent} SoundboardEvent
+ * @typedef {{ type: 'library.externalChanges', pending: boolean }
+ * 	| { type: 'library.refreshing' }
+ * 	| { type: 'library.refreshed' }
+ * 	| { type: 'library.refreshFailed', message: string, errors: { path: string, message: string }[], restartNeeded: boolean }} RefreshEvent
+ * @typedef {AppEvent | SoundEvent | PlaylistEvent | VolumeChangedEvent | CustomizeEvent | VoicesEvent | WaveformEvent | RefreshEvent} SoundboardEvent
  */
 
 /** @typedef {{ transition?: Transition }} TransitionOptions */
@@ -77,6 +82,11 @@ export class Soundboard {
 	#starting = null;
 	/** Ids of non-idle playlists, in the order they started. @type {string[]} */
 	#activeOrder = [];
+	/** @type {ServerEvents | undefined} */
+	#serverEvents;
+	#externalChanges = false;
+	#checkingChanges = false;
+	#refreshing = false;
 
 	/**
 	 * @param {object} ports
@@ -86,8 +96,11 @@ export class Soundboard {
 	 * @param {Logger} ports.logger
 	 * @param {() => number} [ports.random] for the random playback orders; tests pass a seeded generator
 	 * @param {WaveformDecoder} ports.decoder
+	 * @param {ServerEvents} [ports.serverEvents] the server's pushed messages; without it external changes are only
+	 * 	found by `checkExternalChanges`
 	 */
-	constructor({ engine, clock, api, logger, decoder, random = Math.random }) {
+	constructor({ engine, clock, api, logger, decoder, serverEvents, random = Math.random }) {
+		this.#serverEvents = serverEvents;
 		this.#decoder = decoder;
 		this.#clock = clock;
 		this.#random = random;
@@ -484,6 +497,60 @@ export class Soundboard {
 		return this.#waveforms?.get(id) ?? Promise.resolve(null);
 	}
 
+	/** Whether the server reported files changed outside the app since the library was loaded. */
+	hasExternalChanges() {
+		return this.#externalChanges;
+	}
+
+	/**
+	 * Asks the server to look for external changes now, by size and date only; call it when the page gets the focus
+	 * back. The answer arrives as `library.externalChanges`. Does nothing before the library has loaded or while a check
+	 * is already running.
+	 */
+	checkExternalChanges() {
+		if (!this.#loaded || this.#checkingChanges) {
+			return;
+		}
+		this.#checkingChanges = true;
+		this.#api.checkExternalChanges().then(
+			(pending) => this.#setExternalChanges(pending),
+			(error) => this.#logger.warn('Could not check the audio directory for external changes.', error),
+		).finally(() => {
+			this.#checkingChanges = false;
+		});
+	}
+
+	/**
+	 * Has the server rebuild its library from the files, as a restart would. Pending saves are sent and awaited first,
+	 * so the rebuild reads the latest edits. Reports `library.refreshing`, then `library.refreshed` (the page should
+	 * reload to show the new library) or `library.refreshFailed`.
+	 * @returns {Promise<void>}
+	 */
+	async refreshLibrary() {
+		if (this.#refreshing) {
+			return;
+		}
+		this.#refreshing = true;
+		this.#events.emit({ type: 'library.refreshing' });
+		try {
+			await Promise.all([this.#settingsSync.settle(), this.#optionsSync.settleAll()]);
+			const result = await this.#api.refresh();
+			if (result.status === 'refreshed') {
+				this.#events.emit({ type: 'library.refreshed' });
+			} else if (result.status === 'invalid') {
+				this.#events.emit({ type: 'library.refreshFailed', message: 'Some options files are invalid.', errors: result.errors, restartNeeded: false });
+			} else {
+				this.#events.emit({ type: 'library.refreshFailed', message: result.message, errors: [], restartNeeded: true });
+			}
+		} catch (error) {
+			this.#logger.error('Could not refresh the library', error);
+			const message = error instanceof Error ? error.message : String(error);
+			this.#events.emit({ type: 'library.refreshFailed', message, errors: [], restartNeeded: false });
+		} finally {
+			this.#refreshing = false;
+		}
+	}
+
 	/** @param {string} soundId */
 	isSoundActive(soundId) {
 		return this.#loaded?.sounds.isActive(soundId) ?? false;
@@ -525,11 +592,20 @@ export class Soundboard {
 			});
 			emit({ type: 'app.ready', library: libraryJson, volumes: this.#volume.volumes, unplayable: library.unplayable });
 			this.#waveforms.start();
+			this.#serverEvents?.connect(({ externalChanges }) => this.#setExternalChanges(externalChanges));
 		} catch (error) {
 			this.#starting = null;
 			const message = error instanceof Error ? error.message : String(error);
 			this.#logger.error('Could not start the soundboard', error);
 			this.#events.emit({ type: 'app.startFailed', message });
+		}
+	}
+
+	/** @param {boolean} pending */
+	#setExternalChanges(pending) {
+		if (pending !== this.#externalChanges) {
+			this.#externalChanges = pending;
+			this.#events.emit({ type: 'library.externalChanges', pending });
 		}
 	}
 

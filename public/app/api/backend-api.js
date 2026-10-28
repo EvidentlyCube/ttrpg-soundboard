@@ -2,6 +2,7 @@
 /** @typedef {import('../logic/ports.js').LibraryJson} LibraryJson */
 /** @typedef {import('../logic/ports.js').Volumes} Volumes */
 /** @typedef {import('../logic/ports.js').ItemOptions} ItemOptions */
+/** @typedef {import('../logic/ports.js').RefreshResult} RefreshResult */
 
 /**
  * Talks to the soundboard server's JSON API (DESIGN.md §5.2).
@@ -96,8 +97,30 @@ export class HttpBackendApi {
 		}
 	}
 
+	/** @returns {Promise<boolean>} */
+	async checkExternalChanges() {
+		const { externalChanges } = await this.#request('POST', '/api/changes/check');
+		return externalChanges;
+	}
+
+	/** @returns {Promise<RefreshResult>} */
+	async refresh() {
+		const response = await fetch(`${this.#baseUrl}/api/refresh`, { method: 'POST' });
+		if (response.ok) {
+			return { status: 'refreshed' };
+		}
+		if (response.status === 422) {
+			const { errors } = /** @type {{ errors: { path: string, message: string }[] }} */ (await response.json());
+			return { status: 'invalid', errors };
+		}
+		if (response.status === 503) {
+			return { status: 'restartNeeded', message: await errorMessageOf(response) };
+		}
+		throw new Error(`POST /api/refresh failed: ${await errorMessageOf(response)}`);
+	}
+
 	/**
-	 * @param {'GET' | 'PUT' | 'PATCH'} method
+	 * @param {'GET' | 'PUT' | 'PATCH' | 'POST'} method
 	 * @param {string} path
 	 * @param {{ body?: unknown, keepalive?: boolean }} [options]
 	 * @returns {Promise<any>}

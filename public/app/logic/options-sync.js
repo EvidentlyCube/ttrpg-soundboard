@@ -13,7 +13,7 @@ const SAVE_DELAY_MS = 500;
  * @property {ItemRef} item
  * @property {ItemOptions | null} pending the latest options not yet sent
  * @property {number | null} timer
- * @property {boolean} saving
+ * @property {Promise<void> | null} saving the save in flight
  */
 
 /**
@@ -81,6 +81,22 @@ export class OptionsSync {
 		}
 	}
 
+	/**
+	 * Saves every pending change now and resolves once nothing is waiting or in flight, e.g. before the server rebuilds
+	 * its library from the files. Failed saves are reported as usual and don't reject.
+	 */
+	async settleAll() {
+		for (const entry of this.#entries.values()) {
+			this.#cancelTimer(entry);
+			this.#drain(entry);
+		}
+		let saving = [...this.#entries.values()].flatMap((entry) => entry.saving ?? []);
+		while (saving.length > 0) {
+			await Promise.all(saving);
+			saving = [...this.#entries.values()].flatMap((entry) => entry.saving ?? []);
+		}
+	}
+
 	/** @param {Entry} entry */
 	#drain(entry) {
 		const options = entry.pending;
@@ -88,9 +104,8 @@ export class OptionsSync {
 			return;
 		}
 		entry.pending = null;
-		entry.saving = true;
-		this.#send(entry.item, options, false).then((succeeded) => {
-			entry.saving = false;
+		entry.saving = this.#send(entry.item, options, false).then((succeeded) => {
+			entry.saving = null;
 			if (succeeded && !entry.pending) {
 				this.#onSaved(entry.item);
 			} else if (entry.timer === null) {
@@ -120,7 +135,7 @@ export class OptionsSync {
 		const key = keyOf(item);
 		let entry = this.#entries.get(key);
 		if (!entry) {
-			entry = { item: { ...item }, pending: null, timer: null, saving: false };
+			entry = { item: { ...item }, pending: null, timer: null, saving: null };
 			this.#entries.set(key, entry);
 		}
 		return entry;

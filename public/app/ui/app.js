@@ -1,5 +1,6 @@
 import { Component } from './component.js';
 import { DebugView } from './debug-view.js';
+import { ExternalChangesButton } from './external-changes-button.js';
 import { Dialog } from './dialog.js';
 import { h, on } from './dom.js';
 import { Overlay } from './overlay.js';
@@ -17,7 +18,7 @@ import { WaveformIndicator } from './waveform-indicator.js';
 /** @typedef {import('../logic/ports.js').LibraryJson} LibraryJson */
 /** @typedef {import('../logic/soundboard.js').Soundboard} Soundboard */
 
-/** @typedef {'start' | 'loading' | 'failed' | 'ready' | 'suspended'} AppPhase */
+/** @typedef {'start' | 'loading' | 'failed' | 'ready' | 'suspended' | 'stopped'} AppPhase */
 
 /** The whole page: the splash until the soundboard is ready, then the board (DESIGN.md §9). */
 export class App extends Component {
@@ -66,6 +67,16 @@ export class App extends Component {
 			if (this.#phase === 'suspended') {
 				this.#phase = 'ready';
 				splash.hide();
+			}
+		}));
+		// Coming back from another window or tab is when the user has most likely just changed files.
+		this.own(on(window, 'focus', () => soundboard.checkExternalChanges()));
+		this.own(soundboard.on('library.refreshed', () => location.reload()));
+		this.own(soundboard.on('library.refreshFailed', ({ message, restartNeeded }) => {
+			if (restartNeeded) {
+				this.#phase = 'stopped';
+				this.#overlay.close();
+				splash.show('The audio folder needs a restart. Restart the app, then reload this page.', message);
 			}
 		}));
 		this.own(() => this.#board?.destroy());
@@ -124,6 +135,7 @@ class Board extends Component {
 		const header = h('header', { class: 'flex shrink-0 items-center justify-between gap-6 border-b border-line bg-panel px-5 py-3' },
 			h('h1', { class: 'text-lg font-semibold tracking-tight' }, 'Soundboard'),
 			controls);
+		this.#adopt(new ExternalChangesButton(soundboard, (problems) => this.#showRefreshProblems(problems)).mount(controls));
 		this.#adopt(new WaveformIndicator(soundboard).mount(controls));
 		this.#adopt(new VolumeControls(soundboard).mount(controls));
 		this.#adopt(new DebugView(soundboard).mount(controls));
@@ -190,6 +202,18 @@ class Board extends Component {
 				sortTiles(soundboard.getLibrary()?.playlists ?? [], this.#playlistTiles, this.#playlistGrid);
 			});
 		}
+	}
+
+	/** @param {{ path: string, message: string }[]} problems */
+	#showRefreshProblems(problems) {
+		this.#overlay.close();
+		const list = h('ul', { class: 'space-y-2 text-sm' }, ...problems.map(({ path, message }) => h('li', {},
+			path !== '' && h('span', { class: 'font-medium text-text' }, `${path}: `),
+			h('span', { class: 'text-muted' }, message))));
+		const body = h('div', { class: 'space-y-4' },
+			h('p', {}, 'Nothing was loaded. Fix or delete these files, then refresh again:'),
+			list);
+		this.#dialog.open({ title: 'Could not load the changes', body });
 	}
 
 	/**

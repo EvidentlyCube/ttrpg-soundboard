@@ -97,6 +97,22 @@
  * @property {() => Promise<string[]>} fetchMissingWaveforms ids of the sounds and tracks that have no waveform yet
  * @property {(id: string) => Promise<Int8Array | null>} fetchWaveform null when there is none yet
  * @property {(id: string, peaks: Int8Array) => Promise<void>} saveWaveform
+ * @property {() => Promise<boolean>} checkExternalChanges asks the server to compare the files' sizes and dates now;
+ * 	resolves with whether files changed outside the app
+ * @property {() => Promise<RefreshResult>} refresh asks the server to rebuild its library from the files
+ */
+
+/**
+ * @typedef {{ status: 'refreshed' }
+ * 	| { status: 'invalid', errors: { path: string, message: string }[] }
+ * 	| { status: 'restartNeeded', message: string }} RefreshResult
+ */
+
+/**
+ * Messages the server pushes to the page.
+ * @typedef {object} ServerEvents
+ * @property {(onMessage: (message: { externalChanges: boolean }) => void) => () => void} connect returns a disconnect
+ * 	function; the connection is restored by itself after the server was unreachable
  */
 
 /**
