@@ -2,6 +2,7 @@
 
 /** The browser's own timers, behind the Clock port the logic layer uses. */
 export const browserClock = /** @type {Clock} */ ({
+	now: () => window.performance.now(),
 	setTimeout: (callback, milliseconds) => window.setTimeout(callback, milliseconds),
 	clearTimeout: (id) => window.clearTimeout(id),
 	setInterval: (callback, milliseconds) => window.setInterval(callback, milliseconds),

@@ -34,6 +34,7 @@
 /**
  * Timers, in milliseconds. In the browser this is `window`; in tests a fake clock that only moves when told to.
  * @typedef {object} Clock
+ * @property {() => number} now milliseconds from some fixed starting point; only differences mean anything
  * @property {(callback: () => void, milliseconds: number) => number} setTimeout
  * @property {(id: number) => void} clearTimeout
  * @property {(callback: () => void, milliseconds: number) => number} setInterval
