@@ -325,7 +325,7 @@ UI layer (DOM)  ──commands──▶  Soundboard (logic facade)  ──▶  A
 - `public/app/main.js` is the composition root. It creates the `WebAudioEngine`, the `HttpBackendApi`, the browser clock and the `console` logger, passes them to `Soundboard`, and mounts the UI.
 - `public/app/logic/**` **never touches** `window`, `document`, audio APIs or Node APIs. Everything it needs is injected through ports, whose types live in `public/app/logic/ports.js`:
   - the `AudioEngine` (§6.3);
-  - a `Clock` (`setTimeout`, `clearTimeout`, `setInterval`, `clearInterval`);
+  - a `Clock` (`now`, `setTimeout`, `clearTimeout`, `setInterval`, `clearInterval`); `now()` is a monotonic time in milliseconds, which the voice monitor (§6.5) uses to follow fades;
   - a `BackendApi` (`fetchLibrary()`, `fetchSettings()`, `saveVolumes(volumes, { keepalive })`, `saveSoundOptions(soundId, { title, gain, startAt, endAt, fadeIn, fadeOut }, { keepalive })`, `savePlaylistOptions(playlistId, { title, gain, crossfade, fadeIn, fadeOut, order, trackLooping, stopMode }, { keepalive })`, `saveTrackOptions(trackId, { title }, { keepalive })`);
   - a `Logger` (`warn`, `error`);
   - optionally a `random` function for the random playback orders (§8.1), `Math.random` unless tests pass a seeded one.
@@ -375,6 +375,7 @@ setVolume(bus, value)                     // bus: 'master' | 'music' | 'sfx'
 
 // queries (read-only snapshots)
 getLibrary(), getPlaylistSnapshot(id), getActivePlaylists() /* in start order */, getVolumes(), isSoundActive(id)
+getVoices()                               // every voice the audio engine plays or recently played, oldest first (§6.5)
 
 dispatch(command)                         // the command methods above are thin wrappers around this
 on(type, handler) → unsubscribe, off(type, handler)
@@ -410,6 +411,7 @@ on(type, handler) → unsubscribe, off(type, handler)
 | `playlist.progress` | `{ playlistId, position, duration, crossfadeFrom }`, every 250 ms while playing, right after a seek, and when the rules change |
 | `playlist.error` | `{ playlistId, trackId, message }` |
 | `volume.changed` | `{ bus, value }` |
+| `voices.changed` | `{}`, sent when a voice appears, changes status or is removed from the voice monitor's list (§6.5). Volumes move continuously and are not announced; read them with `getVoices()`. |
 
 ### 6.3 AudioEngine port
 
@@ -419,9 +421,10 @@ engine.unlock()                      // creates (first call) or resumes the Audi
 engine.on('suspended' | 'resumed', handler)
 engine.canPlay(format)               → boolean
 engine.setBusGain(bus, gain)         // 'master' | 'music' | 'sfx'
-engine.createStreamVoice({ url, bus, gain?, startAt?, endAt? }) → Voice      // streamed through a media element
+engine.createStreamVoice({ url, bus, gain?, startAt?, endAt?, label? }) → Voice  // streamed through a media element;
+                                     // label: the sound's or track's title, only for the voice monitor (§6.5), ignored by the engine
 engine.loadBuffer(url)               → Promise<BufferHandle>   // fetch + decodeAudioData; { memoryBytes }
-engine.createBufferVoice({ buffer, bus, gain?, startAt?, endAt? }) → Voice  // gain: the voice's own volume, default 1
+engine.createBufferVoice({ buffer, bus, gain?, startAt?, endAt?, label? }) → Voice  // gain: the voice's own volume, default 1
                                      // startAt/endAt: the part of the file it plays, in seconds (default 0 and null,
                                      // the end of the file); reaching endAt stops it and fires 'ended'
 
@@ -441,7 +444,7 @@ Voice:
 **WebAudioEngine** (`public/app/audio/`):
 - One `AudioContext` (`latencyHint: 'interactive'`), created inside the first `unlock()`, never at page load. The graph is `source → voice gain → voice fade → music or sfx bus gain → master gain → speakers`. Bus gains set before the context exists are applied when it is created.
 - Every voice plays through two gain nodes (`VoiceOutput`): its own volume (`gain`, `setGain`) and its fade (`rampGain`). Keeping them apart means a fade never needs to know the volume, and a volume change never disturbs a fade in progress.
-- `VoiceOutput` remembers the fade it last scheduled (`fade-ramp.js`) and starts every new fade from that fade's level at the current time. It never reads `AudioParam.value`, which only catches up once the audio thread has run. A fade-in scheduled straight after a jump to silence therefore really starts from silence, and an interrupted fade continues from wherever it had got to.
+- `VoiceOutput` remembers the fade it last scheduled (`logic/fade-ramp.js`, shared with the voice monitor, §6.5) and starts every new fade from that fade's level at the current time. It never reads `AudioParam.value`, which only catches up once the audio thread has run. A fade-in scheduled straight after a jump to silence therefore really starts from silence, and an interrupted fade continues from wherever it had got to.
 - **Stream voices** are `Audio` elements (`preload = 'auto'`) feeding `createMediaElementSource`. `loaded` is the element's `loadedmetadata`. `stop()` pauses, disconnects the nodes, removes `src` and calls `load()`, so the browser drops the connection and its buffers. A rejected `play()` becomes an `error` event, except `AbortError`, which only means a pause or stop interrupted the start.
 - **Buffer voices** use an `AudioBufferSourceNode` per play; pausing remembers the offset. `loaded` is announced asynchronously right away. `memoryBytes` is `length × channels × 4`.
 - **Start and end points.** `position` stays in file time.
@@ -475,6 +478,23 @@ Volumes are saved in `.soundboard` (§2.3), so they survive reloads and restarts
 - **Saving.** `OptionsSync` saves per item like the volume save: 500 ms after the last change, one request per item in flight, always the item's full editable options, so a failed save is repaired by the next one. Its queues are keyed by kind (`sound`, `playlist`, `track`) and id, so items of different kinds with the same id never share one. `flushSoundOptions`, `flushPlaylistOptions` and `flushTrackOptions` send one item's pending change now (after any save of it in flight); `flushSettings` sends everything pending with `keepalive`.
 
 **Extension point:** a per-track volume control only needs UI, since the track's `gain` is already applied ([roadmap](ROADMAP.md)).
+
+### 6.5 Voice monitor (`VoiceMonitor`)
+
+The debug view (§9.8) shows what the audio engine was really asked to do. Voices can't be asked about their state, and the players don't expose them, so `VoiceMonitor` (`logic/voice-monitor.js`) wraps the `AudioEngine` port as a decorator. The facade creates it around the real engine and hands it to both players, which never know it is there. It forwards every call, so the monitor sees every voice, including tracks fading out after a crossfade and sounds replaced by the ninth press.
+
+A created voice is wrapped in a `MonitoredVoice` that forwards its calls and records `play`, `pause`, `stop`, `setGain` and `rampGain`. `voices()` returns a snapshot per voice, oldest first:
+
+```js
+{ serial, label, bus, status, volume, finished, message }
+```
+
+- **`serial`** counts voices in creation order. **`label`** is the title the players pass in `VoiceOptions.label` (§6.3). **`message`** is the error text, otherwise `null`.
+- **`status`** is `loading` until the voice reports `loaded`, then `playing`, `paused` after `pause()`, `fading in` or `fading out` while a fade runs (derived at read time from the last fade, so no timers are needed), and finally `ended` (the voice fired `ended`), `stopped` (someone called `stop()`) or `error`.
+- **`volume`** is the voice's own level: its last `setGain` times its fade level now. The fade level is computed from the last `rampGain` and `Clock.now()` with `levelAt`/`rampTo` in `logic/fade-ramp.js`, the same linear formula `WebAudioEngine` uses. Bus and master sliders are not included. A finished voice keeps the volume it had at the end.
+- **Lingering.** The first final status wins, so a later `stop()` on a voice that already ended changes nothing. The voice is marked `finished` and removed 5 s later (`LINGER_MS`), by one clock timeout per voice. The players and the engine release a voice as they always do; only the monitor's record stays.
+- **Limit.** At most 200 entries (`MAX_ENTRIES`). Beyond that the oldest finished entries are dropped first; live voices never are.
+- **Notification.** `onChange` runs when a voice is added, changes status or is removed, and the facade announces it as `voices.changed` (§6.2). The monitor always records, whether or not the panel is open.
 
 ---
 
@@ -655,7 +675,7 @@ Browsers only allow audio to start inside a user gesture, so the app starts behi
 
 ### 9.1 Layout
 
-- The page is a full-height column: header (title and volume controls), a scrolling main area, then the footer.
+- The page is a full-height column: header (title, volume controls and the debug button, §9.8), a scrolling main area, then the footer.
 - The main area has a "Playlists" section above a "Sound Effects" section; empty sections are left out. With neither, it says no playlists or sounds were found.
 - Tiles are `<button>`s in a grid of columns at least 10rem (160 px) wide, with titles clamped to 3 lines. The full title shows as a tooltip.
 - Playlist tiles have a blue accent and sound tiles an amber one.
@@ -717,7 +737,7 @@ One shared `Overlay` shows the context menus and the track list popover; opening
 - `on(target, type, handler)` adds a listener and returns a function that removes it.
 - `qs` / `qsa` look up elements.
 
-UI components extend `Component` (`ui/component.js`): `render()` builds the element once, `mount(parent)` attaches it, and `destroy()` removes it together with every subscription registered through `own()`. `App` switches between the splash and the board; the board mounts the volume controls, the tiles and the player dock, and destroys them with itself.
+UI components extend `Component` (`ui/component.js`): `render()` builds the element once, `mount(parent)` attaches it, and `destroy()` removes it together with every subscription registered through `own()`. `App` switches between the splash and the board; the board mounts the volume controls, the debug view, the tiles and the player dock, and destroys them with itself.
 
 ### 9.5 Browser notes
 
@@ -820,6 +840,16 @@ Below the cards: Play / Stop (`playSound`, or stopping all instances; it follows
 - **Keyboard.** It is a `role="slider"`: the arrow keys step 1 dB on whole decibels, stepping into and out of silence below −59 dB, and Home and End go to silence and to the scale's maximum.
 - **Drawing.** The lit part is a copy of the shapes, clipped with an inline `clip-path`, so updates during a drag never change classes (§9.6). The scales, keyboard steps and dB formatting and parsing are pure functions in `ui/gain-scale.js`, with unit tests.
 
+### 9.8 Debug view
+
+`ui/debug-view.js`. A small bug-icon button (title "Debug view", `aria-expanded`, `aria-controls`) sits at the right end of the header, after the volume controls, and is lit in the music accent while the panel is open. The panel starts closed after every reload.
+
+- **Position.** The panel hangs below the button, right-aligned, absolutely positioned with `z-[60]`: above dialogs, popups and the splash. It is non-modal: no backdrop, no focus taken, and the board keeps working under it.
+- **Closing.** The button toggles it. Esc closes it only when no popup or dialog is open (`[data-overlay-backdrop]`, `[data-dialog-body]`), which take Esc first.
+- **Rows.** One per voice from `getVoices()` (§6.5), oldest first, so the list is static: a badge in the bus color (amber `SFX`, blue `Music`), the label, the status and the volume in dB (`formatDb`, as in the gain widget). A finished voice (`data-finished="true"`) is muted until the monitor removes it. An error status shows its message as a tooltip and is red. With no voices the panel says "No voices." The list scrolls inside 60 % of the window height.
+- **Refreshing.** Rows are created once and updated in place, rewriting text only when it changed. The panel refreshes on `voices.changed` and every 250 ms while open, because volumes move without any event. Nothing runs while it is closed; the monitor keeps recording regardless (§6.5).
+- No position or duration columns.
+
 ---
 
 ## 10. Project structure
@@ -844,13 +874,14 @@ public/
 			ports.js  soundboard.js  commands.js  errors.js  event-emitter.js  library-model.js
 			playlist-player.js  playback-rules.js  transitions.js  order-strategies.js  play-history.js
 			sound-player.js  buffer-cache.js  clip.js  volume.js  settings-sync.js  options-sync.js  sort.js
-		audio/      web-audio-engine.js  fade-ramp.js
+			voice-monitor.js  fade-ramp.js
+		audio/      web-audio-engine.js
 		api/        backend-api.js
 		ui/         app.js  component.js  dom.js  icons.js  format.js  menus.js  position.js
 		            splash.js  overlay.js  context-menu.js  track-list.js  tile-grid.js
 		            playlist-tile.js  sound-tile.js  player-dock.js  player-bar.js  volume-controls.js
 		            dialog.js  customize-parts.js  filled-field.js  sound-editor.js  playlist-editor.js  track-accordion.js
-		            gain-control.js  gain-scale.js
+		            gain-control.js  gain-scale.js  debug-view.js
 		            seconds-control.js  seconds-scale.js  range-control.js  range-scale.js
 test/
 	backend/    cli/  http/  library/  metadata/

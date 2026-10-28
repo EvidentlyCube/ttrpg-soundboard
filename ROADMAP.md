@@ -29,39 +29,7 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## Proposals
 
-### Debug view
-
-**Goal.** A button at the right end of the header, after the volume controls, toggles a debug panel that hangs below it. The panel lists every voice the audio engine is playing, sound effects and music tracks alike, oldest first, with its status and current volume. A voice stays listed for 5 seconds after it finishes. The data comes from the playback layer itself, so the panel shows what the engine was really asked to do, not what the UI believes.
-
-**How the data is collected.** The players don't expose their voices, and a `Voice` can't be asked about its state or volume. Rather than adding state getters to both engines and threading them through two players, a `VoiceMonitor` wraps the `AudioEngine` port as a decorator: it creates the real voice, hands back a wrapper that forwards every call and records it. Nothing in `SoundPlayer`, `PlaylistPlayer` or `WebAudioEngine` has to learn about debugging, and the monitor sees every voice, including music tracks fading out after a crossfade and sounds replaced by the ninth press.
-
-For each voice it keeps:
-- **Identity:** a serial number (the chronological order), a label, the bus (`sfx` or `music`), and when it was created.
-- **Status:** `loading` until the voice reports `loaded`, then `playing`, `paused` (after `pause()`), `fading in` or `fading out` while a fade is running, and the final `ended` (fired `ended`), `stopped` (someone called `stop()`) or `error` (with its message).
-- **Volume:** the voice's own gain (last `setGain`) times its fade level now. The fade level is computed from the last `rampGain(target, seconds)` and the clock with the same linear formula as `levelAt` in `fade-ramp.js`, which is a pure function and moves to `logic/` so both sides can use it. Shown in dB like the gain widget (`−6.0 dB`, `−∞ dB`).
-
-**Design changes.**
-- §6.3: `VoiceOptions` gains an optional `label` (the sound's or track's title), which `WebAudioEngine` ignores. A new subsection describes the `VoiceMonitor` decorator.
-- §6.1 and §6.2: query `getVoices()` returning snapshots `{ serial, label, bus, status, volume, message? }` in start order, and event `voices.changed` (`{}`), sent when a voice is added, changes status or is removed. Volume moves continuously, so it is read with `getVoices()` rather than announced.
-- §7, §8: the players pass `label` when they create voices. No behavior change.
-- §9.1 (header) and a new §9.8 for the panel, §10 (structure), §11 (testing).
-
-**Open questions, answered by the owner.**
-1. **Which voices.** Decided: all of them, sound instances and music tracks, including tracks still fading out. Each row carries a small badge in the bus color (amber `SFX`, blue `Music`).
-2. **Order.** Decided: chronological by start, oldest at the top, so the list is static. It scrolls inside a maximum height (about 60 % of the window) if it grows past it.
-3. **Columns.** Decided: badge and label, status, volume in dB. No position or duration.
-4. **What "volume" means.** Decided: the voice's own level, the sound's or playlist-times-track gain times the current fade. The master and bus sliders are left out, so the panel shows whether the engine treats each item correctly.
-5. **The 5 seconds.** Decided: they start when a voice ends, is stopped or fails, however that came about (Stop All and the ninth press count as `stopped`). The row keeps its place and turns muted. The lingering belongs to the debug tool: the players and the engine release voices as they always do, and the monitor only notices the final event and keeps its own record for 5 s.
-6. **Stacking and behavior.** Decided: the panel is non-modal (no backdrop, no focus taken, the board keeps working under it) and sits above everything: dialogs, context menus and the splash. It closes with the button, or with Esc when no dialog or menu is open. It starts closed after every reload.
-7. **Collecting while closed.** Decided: the monitor always records, so opening the panel shows what is already playing. It keeps at most 200 entries (finished ones are dropped first). The panel itself only refreshes (every 250 ms) while it is open.
-8. **Button.** A small icon button with a bug icon and the title "Debug view", `aria-expanded` and `aria-controls`; lit in the music accent while open. Not asked about, so unchanged from the proposal.
-
-**Plan.**
-1. Port and labels: `label` in `VoiceOptions` and the fake engine, passed by `SoundPlayer` and `PlaylistPlayer`; move `fade-ramp.js` to `logic/`. Tests: the players pass the title.
-2. `VoiceMonitor`: wrapper and records, statuses, fade-aware volume, linger and cap. Tests with the fake engine and fake clock, including the ordering, `ended` once, stop during a fade, error, and the 5 s timer being cleared on teardown.
-3. Facade: `getVoices()` and `voices.changed`, with the monitor wired in front of the engine. Facade tests for both players.
-4. UI: the header button and the panel, refreshed every 250 ms while open; new manual checks in `TESTING.md`.
-5. `DESIGN.md` update.
+None yet.
 
 ---
 
@@ -80,10 +48,6 @@ None yet.
 These are the next features, in roughly the order they will be built. Each will get its own proposal when its turn comes. **Decided** lists the owner's answers already given; the notes list what else is known and the questions still to settle.
 
 **Decided for all of them.** Customization changes apply immediately and are saved with a 500 ms debounce, as the sound Customize dialog does (DESIGN.md §6.4, §9.7). Re-sorting on screen waits until the dialog closes. Playback state is never remembered across a page reload, so F5 always gives a clean start.
-
-#### 10. Debug view
-
-A header button that opens a panel listing the voices playing, with their status and volume. It is next in line; the details are in its proposal under [Proposals](#proposals).
 
 #### 11. Track start and end points
 
