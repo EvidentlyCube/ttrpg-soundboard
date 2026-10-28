@@ -335,6 +335,38 @@ export class PlaylistPlayer {
 	}
 
 	/**
+	 * Takes a copy of the playlist with tracks added (DESIGN.md §8.1). Tracks sort by path, so the ones already there may
+	 * move; whatever refers to them follows, and the current track keeps playing.
+	 * @param {PlaylistJson} playlist holds every track the old one did
+	 */
+	addTracks(playlist) {
+		const oldIds = this.#playlist.tracks.map((track) => track.id);
+		const newIndices = new Map(playlist.tracks.map((track, index) => [track.id, index]));
+		const remap = (/** @type {number} */ index) => {
+			const moved = newIndices.get(oldIds[index]);
+			if (moved === undefined) {
+				throw new Error(`Track "${oldIds[index]}" is missing from the new track list`);
+			}
+			return moved;
+		};
+		this.#playlist = playlist;
+		if (this.#current) {
+			this.#current.trackIndex = remap(this.#current.trackIndex);
+		}
+		for (const retiring of this.#retiring) {
+			retiring.trackIndex = remap(retiring.trackIndex);
+		}
+		if (this.#resumePoint) {
+			this.#resumePoint = { ...this.#resumePoint, trackIndex: remap(this.#resumePoint.trackIndex) };
+		}
+		this.#history.setTracks(playlist.tracks.length, remap);
+		this.#planCrossfade();
+		if (this.#state !== 'idle' || this.#resumePoint) {
+			this.#emitState();
+		}
+	}
+
+	/**
 	 * Replaces the rules, for example after the crossfade was customized. They apply from the next change of track,
 	 * including the end of the track playing now.
 	 * @param {Readonly<PlaybackRules>} rules

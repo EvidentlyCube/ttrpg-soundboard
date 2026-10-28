@@ -100,6 +100,11 @@
  * @property {() => Promise<boolean>} checkExternalChanges asks the server to compare the files' sizes and dates now;
  * 	resolves with whether files changed outside the app
  * @property {() => Promise<RefreshResult>} refresh asks the server to rebuild its library from the files
+ * @property {() => Promise<{ tools: DownloadTools, job: (DownloadJob & { log: string[] }) | null }>} fetchDownload
+ * @property {(url: string, options: { playlist: boolean }) => Promise<LinkProbe>} probeLink rejects with the server's
+ * 	message when the link can't be used
+ * @property {(request: DownloadRequest) => Promise<DownloadJob>} startDownload
+ * @property {() => Promise<void>} dismissDownload cancels the running download, or forgets a finished one
  */
 
 /**
@@ -117,11 +122,12 @@
 
 /**
  * @typedef {{ type: 'externalChanges', pending: boolean }
- * 	| { type: 'download', job: DownloadJob | null }
+ * 	| { type: 'download', job: DownloadJob | null, log?: string[] }
  * 	| { type: 'download.log', lines: string[], replaceLast: boolean }
  * 	| { type: 'library.added', sound: AudioFileJson }
  * 	| { type: 'library.added', playlist: PlaylistJson }} ServerMessage
- * 	`replaceLast`: the first line replaces the last one already received
+ * 	`log` comes with the first `download` message of every connection and replaces the log; `replaceLast`: the first
+ * 	line replaces the last one already received
  */
 
 /** @typedef {{ kind: 'sound' } | { kind: 'newPlaylist', title: string } | { kind: 'playlist', playlistId: string }} DownloadTarget */

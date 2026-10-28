@@ -51,8 +51,22 @@ import { VolumeControl } from './volume.js';
  * 	| { type: 'library.refreshing' }
  * 	| { type: 'library.refreshed' }
  * 	| { type: 'library.refreshFailed', message: string, errors: { path: string, message: string }[], restartNeeded: boolean }} RefreshEvent
- * @typedef {AppEvent | SoundEvent | PlaylistEvent | VolumeChangedEvent | CustomizeEvent | VoicesEvent | WaveformEvent | RefreshEvent} SoundboardEvent
+ * @typedef {AppEvent | SoundEvent | PlaylistEvent | VolumeChangedEvent | CustomizeEvent | VoicesEvent | WaveformEvent
+ * 	| RefreshEvent | DownloadEvent} SoundboardEvent
  */
+
+/** @typedef {import('./ports.js').DownloadJob} DownloadJob */
+/** @typedef {import('./ports.js').DownloadTools} DownloadTools */
+/**
+ * @typedef {{ type: 'download.changed', job: DownloadJob | null, logReset: boolean }
+ * 	| { type: 'download.log', lines: string[], replaceLast: boolean }
+ * 	| { type: 'sound.added', sound: AudioFileJson }
+ * 	| { type: 'playlist.added', playlist: PlaylistJson }} DownloadEvent `logReset`: read the whole log again with
+ * 	`getDownload()`; otherwise `download.log` brings what is new
+ */
+
+/** As many log lines as the server keeps (DESIGN.md §5.4). */
+const MAX_DOWNLOAD_LOG = 1000;
 
 /** @typedef {{ transition?: Transition }} TransitionOptions */
 /** @typedef {import('./options-sync.js').ItemRef['kind']} ItemKind */
@@ -87,6 +101,14 @@ export class Soundboard {
 	#externalChanges = false;
 	#checkingChanges = false;
 	#refreshing = false;
+	/** Media URLs by sound or track id, for the waveforms. @type {Map<string, string>} */
+	#urls = new Map();
+	/** @type {DownloadTools} */
+	#downloadTools = { ytDlp: null, ffmpeg: null };
+	/** @type {DownloadJob | null} */
+	#download = null;
+	/** @type {string[]} */
+	#downloadLog = [];
 
 	/**
 	 * @param {object} ports
@@ -551,6 +573,55 @@ export class Soundboard {
 		}
 	}
 
+	/** @returns {DownloadTools} the versions of yt-dlp and ffmpeg the server found, null for a missing one */
+	getDownloadTools() {
+		return { ...this.#downloadTools };
+	}
+
+	/** @returns {{ job: DownloadJob, log: string[] } | null} the server's download, running or finished, with its log */
+	getDownload() {
+		const job = this.#download;
+		return job && {
+			job: { ...job, target: { ...job.target }, items: job.items.map((item) => ({ ...item })) },
+			log: [...this.#downloadLog],
+		};
+	}
+
+	/**
+	 * Asks the server what a link holds, so the user can choose what to download (DESIGN.md §5.4). Rejects with a
+	 * message for the user when the link can't be used.
+	 * @param {string} url
+	 * @param {{ playlist?: boolean }} [options] look a link that names a video and a playlist up as the playlist
+	 * @returns {Promise<import('./ports.js').LinkProbe>}
+	 */
+	probeLink(url, { playlist = false } = {}) {
+		return this.#api.probeLink(url, { playlist });
+	}
+
+	/**
+	 * Has the server download what a lookup found. Progress arrives as `download.changed` and `download.log`, and every
+	 * file added as `sound.added`, `playlist.added` or `playlist.changed`.
+	 * @param {import('./ports.js').DownloadRequest} request
+	 * @returns {Promise<void>} rejects with a message for the user when the download can't start
+	 */
+	async startDownload(request) {
+		const job = await this.#api.startDownload(request);
+		// The event stream may have announced it first; then the log has already begun.
+		if (job.id !== this.#download?.id) {
+			this.#setDownload(job, null);
+		}
+	}
+
+	/** Stops the running download; files it already added stay. */
+	cancelDownload() {
+		this.dismissDownload();
+	}
+
+	/** Cancels the running download, or forgets a finished one so its dialog closes. */
+	dismissDownload() {
+		this.#api.dismissDownload().catch((error) => this.#logger.error('Could not cancel or close the download', error));
+	}
+
 	/** @param {string} soundId */
 	isSoundActive(soundId) {
 		return this.#loaded?.sounds.isActive(soundId) ?? false;
@@ -558,12 +629,24 @@ export class Soundboard {
 
 	async #load() {
 		try {
-			const [libraryJson, settings] = await Promise.all([this.#api.fetchLibrary(), this.#api.fetchSettings()]);
+			const [libraryJson, settings, download] = await Promise.all([
+				this.#api.fetchLibrary(),
+				this.#api.fetchSettings(),
+				// Downloads are an extra; the board works without knowing about them.
+				this.#api.fetchDownload().catch((error) => {
+					this.#logger.warn('Could not ask the server about downloads.', error);
+					return null;
+				}),
+			]);
 			const library = new LibraryModel(libraryJson, (format) => this.#engine.canPlay(format));
 			const isPlayable = (/** @type {import('./ports.js').AudioFileJson} */ file) => library.isPlayable(file);
 			const emit = (/** @type {SoundboardEvent} */ event) => this.#events.emit(event);
 
 			this.#volume.applyAll(settings.volumes);
+			if (download) {
+				this.#downloadTools = download.tools;
+				this.#setDownload(download.job, download.job?.log ?? []);
+			}
 			const sounds = new SoundPlayer({
 				engine: this.#engine,
 				clock: this.#clock,
@@ -571,17 +654,13 @@ export class Soundboard {
 				emit,
 				isPlayable,
 			});
-			const playlists = new Map(libraryJson.playlists.map((playlist) => [playlist.id, new PlaylistPlayer({
-				playlist,
-				engine: this.#engine,
-				clock: this.#clock,
-				emit: (event) => this.#onPlaylistEvent(event),
-				isPlayable,
-				random: this.#random,
-			})]));
+			const playlists = new Map(libraryJson.playlists.map((playlist) => [playlist.id, this.#createPlayer(playlist, isPlayable)]));
 
 			this.#loaded = { library, sounds, playlists };
-			const urls = new Map([...libraryJson.sounds, ...libraryJson.playlists.flatMap((playlist) => playlist.tracks)].map((file) => [file.id, file.url]));
+			const urls = this.#urls;
+			for (const file of [...libraryJson.sounds, ...libraryJson.playlists.flatMap((playlist) => playlist.tracks)]) {
+				urls.set(file.id, file.url);
+			}
 			this.#waveforms = new WaveformService({
 				api: this.#api,
 				decoder: this.#decoder,
@@ -601,11 +680,116 @@ export class Soundboard {
 		}
 	}
 
+	/**
+	 * @param {PlaylistJson} playlist
+	 * @param {(file: AudioFileJson) => boolean} isPlayable
+	 */
+	#createPlayer(playlist, isPlayable) {
+		return new PlaylistPlayer({
+			playlist,
+			engine: this.#engine,
+			clock: this.#clock,
+			emit: (event) => this.#onPlaylistEvent(event),
+			isPlayable,
+			random: this.#random,
+		});
+	}
+
 	/** @param {import('./ports.js').ServerMessage} message */
 	#onServerMessage(message) {
-		if (message.type === 'externalChanges') {
-			this.#setExternalChanges(message.pending);
+		switch (message.type) {
+			case 'externalChanges':
+				this.#setExternalChanges(message.pending);
+				return;
+			case 'download':
+				this.#setDownload(message.job, message.log ?? null);
+				return;
+			case 'download.log':
+				this.#appendDownloadLog(message.lines, message.replaceLast);
+				return;
+			case 'library.added':
+				this.#onAdded(message);
+				return;
 		}
+	}
+
+	/**
+	 * Follows the server's download. The log starts afresh with every new job; `log` replaces it, as when the stream
+	 * (re)connects.
+	 * @param {DownloadJob | null} job
+	 * @param {string[] | null} log
+	 */
+	#setDownload(job, log) {
+		const isNew = job?.id !== this.#download?.id;
+		if (job) {
+			// The job from `fetchDownload` carries its log, which is kept apart.
+			/** @type {DownloadJob & { log?: string[] }} */
+			const copy = { ...job };
+			delete copy.log;
+			this.#download = copy;
+		} else {
+			this.#download = null;
+		}
+		if (log !== null || isNew) {
+			this.#downloadLog = log ? [...log] : [];
+		}
+		this.#events.emit({ type: 'download.changed', job: this.#download, logReset: log !== null || isNew });
+	}
+
+	/**
+	 * @param {string[]} lines
+	 * @param {boolean} replaceLast the first line replaces the last one
+	 */
+	#appendDownloadLog(lines, replaceLast) {
+		if (replaceLast && this.#downloadLog.length > 0) {
+			this.#downloadLog.pop();
+		}
+		this.#downloadLog.push(...lines);
+		if (this.#downloadLog.length > MAX_DOWNLOAD_LOG) {
+			this.#downloadLog.splice(0, this.#downloadLog.length - MAX_DOWNLOAD_LOG);
+		}
+		this.#events.emit({ type: 'download.log', lines, replaceLast });
+	}
+
+	/**
+	 * A download added a sound, a playlist or tracks to one. Messages repeat in every tab and after reconnecting, so
+	 * whatever is already known is skipped.
+	 * @param {Extract<import('./ports.js').ServerMessage, { type: 'library.added' }>} message
+	 */
+	#onAdded(message) {
+		const loaded = this.#loaded;
+		if (!loaded) {
+			return;
+		}
+		const { library } = loaded;
+		if ('sound' in message) {
+			if (library.hasSound(message.sound.id)) {
+				return;
+			}
+			library.addSound(message.sound);
+			this.#urls.set(message.sound.id, message.sound.url);
+			this.#events.emit({ type: 'sound.added', sound: message.sound });
+		} else {
+			const fromServer = message.playlist;
+			for (const track of fromServer.tracks) {
+				this.#urls.set(track.id, track.url);
+			}
+			if (!library.hasPlaylist(fromServer.id)) {
+				library.addPlaylist(fromServer);
+				loaded.playlists.set(fromServer.id, this.#createPlayer(fromServer, (file) => library.isPlayable(file)));
+				this.#events.emit({ type: 'playlist.added', playlist: fromServer });
+			} else {
+				const before = library.playlist(fromServer.id).tracks.length;
+				const playlist = library.addTracks(fromServer);
+				if (playlist.tracks.length === before) {
+					return;
+				}
+				loaded.playlists.get(playlist.id)?.addTracks(playlist);
+				this.#events.emit({ type: 'playlist.changed', playlist });
+			}
+		}
+		// Asks the server afresh, so the new files get their waveforms too.
+		this.#waveforms?.start();
 	}
 
 	/** @param {boolean} pending */

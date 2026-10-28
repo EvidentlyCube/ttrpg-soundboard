@@ -27,6 +27,16 @@ export function serveEvents(request, response, { watcher, downloads }) {
 	const send = (message) => response.write(`data: ${JSON.stringify(message)}\n\n`);
 	const sendExternalChanges = () => send({ type: 'externalChanges', pending: watcher?.externalChanges ?? false });
 	sendExternalChanges();
+	if (downloads) {
+		// The page may have missed the log while it was disconnected, so every connection starts with all of it.
+		const current = downloads.current();
+		if (current) {
+			const { log, ...job } = current;
+			send({ type: 'download', job, log });
+		} else {
+			send({ type: 'download', job: null, log: [] });
+		}
+	}
 	const unsubscribeWatcher = watcher?.onChange(sendExternalChanges);
 	const unsubscribeDownloads = downloads?.onEvent((event) => send(toMessage(event)));
 	const keepAlive = setInterval(() => response.write(': keep-alive\n\n'), KEEP_ALIVE_MS);

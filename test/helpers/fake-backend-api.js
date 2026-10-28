@@ -80,6 +80,44 @@ export class FakeBackendApi {
 	refreshResult = { status: 'refreshed' };
 	refreshRequests = 0;
 
+	/** @type {Awaited<ReturnType<BackendApi['fetchDownload']>>} */
+	download = { tools: { ytDlp: '2026.08.19', ffmpeg: '7.1' }, job: null };
+	/** What looking a link up gives, or the error it fails with. @type {import('../../public/app/logic/ports.js').LinkProbe | Error} */
+	probe = new Error('No probe set');
+	/** @type {{ url: string, playlist: boolean }[]} */
+	probes = [];
+	/** @type {import('../../public/app/logic/ports.js').DownloadRequest[]} */
+	downloadRequests = [];
+	dismissals = 0;
+
+	async fetchDownload() {
+		return structuredClone(this.download);
+	}
+
+	/**
+	 * @param {string} url
+	 * @param {{ playlist: boolean }} options
+	 */
+	async probeLink(url, { playlist }) {
+		this.probes.push({ url, playlist });
+		if (this.probe instanceof Error) {
+			throw this.probe;
+		}
+		return structuredClone(this.probe);
+	}
+
+	/** @param {import('../../public/app/logic/ports.js').DownloadRequest} request */
+	async startDownload(request) {
+		this.downloadRequests.push(request);
+		/** @type {import('../../public/app/logic/ports.js').DownloadJob} */
+		const job = { id: 'job-1', title: 'Download', target: request.target, targetTitle: 'Sound effects', state: 'running', items: [], current: null, added: 0, failed: 0 };
+		return job;
+	}
+
+	async dismissDownload() {
+		this.dismissals++;
+	}
+
 	async checkExternalChanges() {
 		this.checkRequests++;
 		return this.externalChanges;

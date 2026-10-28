@@ -21,6 +21,7 @@ export class LibraryModel {
 	#sounds;
 	/** @type {Set<string>} */
 	#unplayable;
+	#canPlay;
 
 	/**
 	 * @param {LibraryJson} json
@@ -28,10 +29,65 @@ export class LibraryModel {
 	 */
 	constructor(json, canPlay) {
 		this.#json = json;
+		this.#canPlay = canPlay;
 		this.#playlists = new Map(json.playlists.map((playlist) => [playlist.id, playlist]));
 		this.#sounds = new Map(json.sounds.map((sound) => [sound.id, sound]));
 		const files = [...json.playlists.flatMap((playlist) => playlist.tracks), ...json.sounds];
 		this.#unplayable = new Set(files.filter((file) => !canPlay(file.format)).map((file) => file.id));
+	}
+
+	/** @param {string} id */
+	hasSound(id) {
+		return this.#sounds.has(id);
+	}
+
+	/** @param {string} id */
+	hasPlaylist(id) {
+		return this.#playlists.has(id);
+	}
+
+	/**
+	 * Adds a sound the server just added (a download), in title order.
+	 * @param {AudioFileJson} sound
+	 */
+	addSound(sound) {
+		this.#checkPlayable(sound);
+		this.#sounds.set(sound.id, sound);
+		this.#json = { ...this.#json, sounds: sortBy([...this.#json.sounds, sound], (entry) => entry.title) };
+	}
+
+	/**
+	 * Adds a playlist the server just created, in title order.
+	 * @param {PlaylistJson} playlist
+	 */
+	addPlaylist(playlist) {
+		playlist.tracks.forEach((track) => this.#checkPlayable(track));
+		this.#playlists.set(playlist.id, playlist);
+		this.#json = { ...this.#json, playlists: sortBy([...this.#json.playlists, playlist], (entry) => entry.title) };
+	}
+
+	/**
+	 * Takes the tracks a playlist gained on the server into a copy of the playlist here, in path order. Everything else
+	 * is kept as it is here, so a change not saved yet isn't undone.
+	 * @param {PlaylistJson} fromServer
+	 * @returns {PlaylistJson} the playlist with its new tracks
+	 */
+	addTracks(fromServer) {
+		const current = this.playlist(fromServer.id);
+		const known = new Set(current.tracks.map((track) => track.id));
+		const added = fromServer.tracks.filter((track) => !known.has(track.id));
+		added.forEach((track) => this.#checkPlayable(track));
+		const playlist = { ...current, tracks: sortBy([...current.tracks, ...added], (track) => track.id) };
+		this.#playlists.set(playlist.id, playlist);
+		this.#json = { ...this.#json, playlists: this.#json.playlists.map((entry) => (entry.id === playlist.id ? playlist : entry)) };
+		return playlist;
+	}
+
+	/** @param {AudioFileJson} file */
+	#checkPlayable(file) {
+		if (!this.#canPlay(file.format)) {
+			this.#unplayable.add(file.id);
+		}
 	}
 
 	get json() {

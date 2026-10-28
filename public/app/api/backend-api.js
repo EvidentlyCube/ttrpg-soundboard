@@ -119,13 +119,37 @@ export class HttpBackendApi {
 		throw new Error(`POST /api/refresh failed: ${await errorMessageOf(response)}`);
 	}
 
+	/** @type {BackendApi['fetchDownload']} */
+	async fetchDownload() {
+		return this.#request('GET', '/api/download');
+	}
+
+	/** @type {BackendApi['probeLink']} */
+	async probeLink(url, { playlist }) {
+		return this.#request('POST', '/api/download/probe', { body: { url, playlist }, plainErrors: true });
+	}
+
+	/** @type {BackendApi['startDownload']} */
+	async startDownload(request) {
+		return this.#request('POST', '/api/download', { body: request, plainErrors: true });
+	}
+
+	/** @type {BackendApi['dismissDownload']} */
+	async dismissDownload() {
+		const response = await fetch(`${this.#baseUrl}/api/download`, { method: 'DELETE' });
+		if (!response.ok) {
+			throw new Error(await errorMessageOf(response));
+		}
+	}
+
 	/**
 	 * @param {'GET' | 'PUT' | 'PATCH' | 'POST'} method
 	 * @param {string} path
-	 * @param {{ body?: unknown, keepalive?: boolean }} [options]
+	 * @param {{ body?: unknown, keepalive?: boolean, plainErrors?: boolean }} [options] `plainErrors`: the server's
+	 * 	message alone, for errors the page shows the user
 	 * @returns {Promise<any>}
 	 */
-	async #request(method, path, { body, keepalive = false } = {}) {
+	async #request(method, path, { body, keepalive = false, plainErrors = false } = {}) {
 		const response = await fetch(this.#baseUrl + path, {
 			method,
 			keepalive,
@@ -133,7 +157,8 @@ export class HttpBackendApi {
 			body: body === undefined ? undefined : JSON.stringify(body),
 		});
 		if (!response.ok) {
-			throw new Error(`${method} ${path} failed: ${await errorMessageOf(response)}`);
+			const message = await errorMessageOf(response);
+			throw new Error(plainErrors ? message : `${method} ${path} failed: ${message}`);
 		}
 		return response.json();
 	}
