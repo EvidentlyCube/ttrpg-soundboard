@@ -56,9 +56,9 @@ The buttons are always there. When the tools are missing, clicking one only show
   "source": { "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "extractor": "Youtube", "videoId": "dQw4w9WgXcQ", "playlistId": "PLx0sYbCqOb8TBPRdmBHs5Iftvv9TPboYG", "chapter": 3 }
   ```
   - A **direct link** stores only `url`, the full link as pasted.
-  - A **`yt-dlp` download** stores the video's page `url`, `extractor` (`yt-dlp`'s `extractor_key`, because an id only means something on its own site) and `videoId`. `playlistId` is stored only when a playlist was downloaded, and `chapter` (counting from 1) only for a file cut from one chapter (question A).
+  - A **`yt-dlp` download** always stores the video's full page `url`, plus `extractor` (`yt-dlp`'s `extractor_key`, because an id only means something on its own site) and `videoId`. `playlistId` is stored only when a playlist was downloaded, and `chapter` (counting from 1) only for a file cut from one chapter.
   - **Validation:** `source` must be an object, its known keys strings, and `chapter` a positive integer. Unknown keys inside are kept.
-- **§2.4 Default titles.** Unchanged. A download writes the title its source gives (question B).
+- **§2.4 Default titles.** Unchanged for existing files. A download writes a `title` into the options file, made from the file name without its extension and without the id tag that `yt-dlp` added. `Battle Theme [dQw4w9WgXcQ].ogg` becomes "Battle Theme", and `Title - 003 Chapter [dQw4w9WgXcQ].ogg` becomes "Title - 003 Chapter". Only ` [<videoId>]` with the downloaded video's own id is removed, so brackets that belong to the title, such as `[Live]`, stay. A direct link's title is its file name without the extension.
 - **§3.1, §3.4 Bootstrap.** After the scan, bootstrap looks for the tools (`yt-dlp --version`, `ffmpeg -version`). It prints `Downloads: yt-dlp 2026.08.19, ffmpeg 7.1`, or a warning such as `Downloads are off: ffmpeg was not found`. It also deletes whatever an earlier run left in `.soundboard-downloads/`.
 - **§5.1 Domain model.** `LibraryEditor` gains `addSound(file, options)`, `createPlaylist(title)` and `addTrack(playlistId, file, options)`.
   - Each one moves a finished file into place under its download name. When that name is taken, ` (2)`, ` (3)`… is added before the extension, so nothing is ever overwritten.
@@ -118,7 +118,7 @@ The buttons are always there. When the tools are missing, clicking one only show
      - Downloads for **sounds** offer the same choices: each chosen chapter or entry becomes its own sound.
   3. **Download.** The button shows the size when it is known ("Download 1.4 GB"). A known size over 500 MB, or an unknown size, puts a warning above it ("This is a large file." or "The size of this file is unknown."), so a huge file is never downloaded by accident. Clicking Download replaces this dialog with the download dialog.
 - **§9.10 Download dialog (new)**, `ui/download-dialog.js`. It is shown while a job exists, in every open tab, and again after a reload.
-  - **Locked.** It has no × button, and neither Esc nor the backdrop closes it. It covers the board and the footer the way the Customize dialogs do (§9.7), so the page can't be used until the job ends (question C). Playback that was already running carries on underneath.
+  - **Locked.** It has no × button, and neither Esc nor the backdrop closes it. Its backdrop covers the header and the board but stops above the footer, and the dialog is centered in that area. The board can't be used until the job ends, but the player bars can, so music can still be skipped or stopped. Playback carries on.
   - **Top:** the target ("Adding to Combat"), "Item 3 of 7: <title>" and the step (Downloading, Converting).
   - **Log:** the job's log in a monospace pane, about 20 lines tall, that follows new lines unless the user has scrolled up. Lines are only ever appended as text, or the last one rewritten, never re-rendered (§9.6).
   - **Cancel**, which asks "Cancel the download? Files already added stay." first.
@@ -141,17 +141,9 @@ The buttons are always there. When the tools are missing, clicking one only show
 - **Failed items** don't stop the job, and nothing is retried by itself.
 - **Direct links** are recognized by their content type.
 
-**Open questions.**
-
-- **A. What does `source` hold beyond what you asked for?**
-  - You asked for the URL of a direct link, and the video id and playlist id of a `yt-dlp` download.
-  - *Recommended:* also store the page `url` and the `extractor` for `yt-dlp` downloads, because an id alone doesn't say which site it belongs to. Also store `chapter` for a file cut from a chapter, because otherwise every chapter file of a video would carry the same `source`.
-- **B. What title should the options file get?**
-  - You chose to keep the downloaded name for the file. Without a `title` in the options file, the tile would show that whole name, for example `Battle Theme [dQw4w9WgXcQ].ogg`.
-  - *Recommended:* write the source's title: the video's, the entry's or the chapter's title, and the file name for a direct link. It can be changed later in Customize.
-- **C. Should the footer stay usable while the download dialog is open?**
-  - Downloading a playlist can take many minutes, and with the whole page locked, nobody can skip or stop music during that time.
-  - *Recommended:* lock the board but leave the footer's player bars usable, by placing the dialog above the board and below the footer. If you want everything locked as you described, the dialog simply covers the footer as well.
+- **`source`** always holds the full `url`, and for `yt-dlp` downloads also the `extractor` and, for chapter files, the `chapter`.
+- **Titles** are the downloaded file name without the extension and the ` [<videoId>]` tag (§2.4 above).
+- **The footer stays usable** while the download dialog is open (§9.10 above).
 
 **Out of scope.**
 
@@ -178,7 +170,8 @@ The buttons are always there. When the tools are missing, clicking one only show
    - the extension change to `.ogg`;
    - ` (2)` suffixes;
    - stripping a leading dot, which would hide the file (§2.1);
-   - unsafe characters in direct-link names and playlist directory names.
+   - unsafe characters in direct-link names and playlist directory names;
+   - titles made from file names, with only the downloaded video's own ` [<id>]` removed.
 5. **Library additions** (`LibraryEditor.addSound`, `createPlaylist`, `addTrack`). Tested on a temporary tree:
    - files are moved into place;
    - options files hold the title, the source and the duration;
