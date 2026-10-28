@@ -104,6 +104,7 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] Each audio file gets a `<file>.wf` next to it (2 KB plus a 16-byte header); a second page load, or a restart of the server, makes none again and shows no indicator.
 - [ ] The ■ button stops generation after the current file ("…, stopped"); the ▶ button continues with what is missing.
 - [ ] Opening a track in the playlist dialog, and a sound's dialog, shows its waveform above the Start and end slider in the accent color, filling the height even for a quiet file; the handles stand over the sound they cut at, and the part outside them is dimmed.
+- [ ] A playing playlist's footer bar shows the waveform of the part that plays behind a thin progress bar. It follows track changes and changes to the track's points, the seek click still works, and the crossfade stretch is still visible.
 - [ ] Dragging a handle, resizing the window and a high-density display keep the waveform sharp and aligned. A track still waiting for its waveform shows none, and the waveform appears by itself when it is made.
 - [ ] Replacing an audio file (or touching its content) makes its waveform be made again; deleting a `.wf` file does too, after a reload.
 - [ ] While a track plays its waveform stays still above the seek bar. A file the browser can't decode counts as failed in the indicator and the rest carry on.

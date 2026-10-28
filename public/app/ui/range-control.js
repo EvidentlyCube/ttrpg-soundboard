@@ -2,7 +2,7 @@ import { MIN_CLIP_MS } from '../logic/clip.js';
 import { Component } from './component.js';
 import { h, on } from './dom.js';
 import { filledField } from './filled-field.js';
-import { drawWaveform, waveformColumns } from './waveform-draw.js';
+import { paintWaveform } from './waveform-canvas.js';
 import { clampEnd, clampStart, fadeBands, formatTime, msAt, nearerHandle, parseTime, shareOf, stepFor, toFieldText } from './range-scale.js';
 
 /** @typedef {import('./range-scale.js').Handle} Handle */
@@ -276,18 +276,9 @@ export class RangeControl extends Component {
 		const drawWave = () => {
 			const peaks = this.#peaks;
 			waveBox.hidden = peaks === null;
-			const context = wave.getContext('2d');
-			const ratio = window.devicePixelRatio || 1;
-			const width = Math.round(wave.clientWidth * ratio);
-			const height = Math.round(wave.clientHeight * ratio);
-			if (!peaks || !context || width === 0 || height === 0) {
-				return;
+			if (peaks) {
+				paintWaveform(wave, peaks);
 			}
-			wave.width = width;
-			wave.height = height;
-			const pitch = Math.max(2, Math.round(2 * ratio));
-			context.fillStyle = getComputedStyle(wave).color;
-			drawWaveform(context, waveformColumns(peaks, Math.floor(width / pitch)), width, height, pitch, pitch - Math.max(1, Math.round(ratio / 2)));
 		};
 		this.#drawWaveform = drawWave;
 		// The canvas has no size until the control is in the page, and it changes with the dialog.

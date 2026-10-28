@@ -3,6 +3,7 @@ import { h } from './dom.js';
 import { formatTime } from './format.js';
 import { icon } from './icons.js';
 import { openTrackList } from './track-list.js';
+import { paintWaveform } from './waveform-canvas.js';
 
 /** @typedef {import('../logic/ports.js').AudioFileJson} AudioFileJson */
 /** @typedef {import('../logic/ports.js').PlaylistJson} PlaylistJson */
@@ -85,8 +86,9 @@ export class PlayerBar extends Component {
 			'hidden': true,
 			'data-crossfade-band': true,
 		});
+		const wave = h('canvas', { class: 'pointer-events-none absolute inset-0 size-full text-music/35' });
 		const progress = h('div', {
-			'class': 'flex flex-1 cursor-pointer items-center py-2',
+			'class': 'relative flex h-8 flex-1 cursor-pointer items-center',
 			'title': 'Seek',
 			'data-progress': true,
 			'onPointerdown': (/** @type {PointerEvent} */ event) => {
@@ -95,7 +97,52 @@ export class PlayerBar extends Component {
 					soundboard.seek(id, ((event.clientX - rect.left) / rect.width) * this.#duration);
 				}
 			},
-		}, h('div', { class: 'relative h-1.5 w-full rounded-full bg-line' }, crossfadeBand, fill));
+		}, wave, h('div', { class: 'relative h-0.5 w-full rounded-full bg-line/70' }, crossfadeBand, fill));
+
+		// The waveform of the part of the file that plays, behind the progress bar. It is the whole file's waveform cut at
+		// the track's points, so the bar's width means the same thing as before.
+		/** @type {AudioFileJson | null} */
+		let waveTrack = null;
+		/** @type {Int8Array | null} */
+		let wavePeaks = null;
+		const drawWave = () => {
+			const track = waveTrack;
+			if (!track || !wavePeaks) {
+				wave.getContext('2d')?.clearRect(0, 0, wave.width, wave.height);
+				return;
+			}
+			const buckets = wavePeaks.length / 2;
+			const total = track.duration ?? 0;
+			const from = total > 0 ? Math.floor((track.startAt / total) * buckets) : 0;
+			const to = total > 0 && track.endAt !== null ? Math.ceil((track.endAt / total) * buckets) : buckets;
+			paintWaveform(wave, wavePeaks.subarray(from * 2, Math.max(from + 1, to) * 2));
+		};
+		const loadWave = (/** @type {AudioFileJson | null} */ track) => {
+			if (track?.id === waveTrack?.id && track?.startAt === waveTrack?.startAt && track?.endAt === waveTrack?.endAt) {
+				return;
+			}
+			waveTrack = track;
+			wavePeaks = null;
+			drawWave();
+			if (track) {
+				void soundboard.getWaveform(track.id).then((peaks) => {
+					if (waveTrack === track) {
+						wavePeaks = peaks;
+						drawWave();
+					}
+				});
+			}
+		};
+		const resizes = new ResizeObserver(drawWave);
+		resizes.observe(wave);
+		this.own(() => resizes.disconnect());
+		this.own(soundboard.on('waveform.ready', ({ id }) => {
+			if (waveTrack?.id === id) {
+				const track = waveTrack;
+				waveTrack = null;
+				loadWave(track);
+			}
+		}));
 
 		const playlistTitle = h('span', { class: 'truncate text-xs font-semibold uppercase tracking-wide text-music' }, title);
 		this.own(soundboard.on('playlist.changed', ({ playlist }) => {
@@ -141,6 +188,7 @@ export class PlayerBar extends Component {
 			this.#trackIndex = trackIndex;
 			this.#duration = duration;
 			trackTitle.textContent = track?.title ?? '';
+			loadWave(track);
 			const paused = state === 'paused';
 			playIcon.style.display = paused ? '' : 'none';
 			pauseIcon.style.display = paused ? 'none' : '';
