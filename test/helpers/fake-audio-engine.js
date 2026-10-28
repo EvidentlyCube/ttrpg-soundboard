@@ -97,8 +97,8 @@ export class FakeAudioEngine {
 	}
 
 	/** @param {import('../../public/app/logic/ports.js').VoiceOptions & { url: string }} options */
-	createStreamVoice({ url, bus, gain = 1, startAt = 0, endAt = null }) {
-		return this.#addVoice(new FakeVoice(this.#clock, url, bus, 'stream', this.#scriptFor(url), gain, { startAt, endAt }));
+	createStreamVoice({ url, bus, label = '', gain = 1, startAt = 0, endAt = null }) {
+		return this.#addVoice(new FakeVoice(this.#clock, url, bus, 'stream', this.#scriptFor(url), gain, { startAt, endAt }, label));
 	}
 
 	/** @param {string} url */
@@ -117,9 +117,9 @@ export class FakeAudioEngine {
 	}
 
 	/** @param {import('../../public/app/logic/ports.js').VoiceOptions & { buffer: import('../../public/app/logic/ports.js').BufferHandle }} options */
-	createBufferVoice({ buffer, bus, gain = 1, startAt = 0, endAt = null }) {
+	createBufferVoice({ buffer, bus, label = '', gain = 1, startAt = 0, endAt = null }) {
 		const { url } = /** @type {{ url: string }} */ (/** @type {unknown} */ (buffer));
-		return this.#addVoice(new FakeVoice(this.#clock, url, bus, 'buffer', { ...this.#scriptFor(url), loadDelay: 0 }, gain, { startAt, endAt }));
+		return this.#addVoice(new FakeVoice(this.#clock, url, bus, 'buffer', { ...this.#scriptFor(url), loadDelay: 0 }, gain, { startAt, endAt }, label));
 	}
 
 	/** @param {FakeVoice} voice */
@@ -165,10 +165,12 @@ export class FakeVoice {
 	 * @param {VoiceScript} script
 	 * @param {number} gain
 	 * @param {{ startAt: number, endAt: number | null }} [clip]
+	 * @param {string} [label]
 	 */
-	constructor(clock, url, bus, kind, script, gain, clip = { startAt: 0, endAt: null }) {
+	constructor(clock, url, bus, kind, script, gain, clip = { startAt: 0, endAt: null }, label = '') {
 		this.#clock = clock;
 		this.url = url;
+		this.label = label;
 		this.bus = bus;
 		this.kind = kind;
 		/** The voice's own volume, as last set. */

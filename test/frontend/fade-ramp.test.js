@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { FULL, levelAt, rampTo } from '../../public/app/audio/fade-ramp.js';
+import { FULL, levelAt, rampTo } from '../../public/app/logic/fade-ramp.js';
 
 describe('fade ramps', () => {
 	it('start at full level', () => {

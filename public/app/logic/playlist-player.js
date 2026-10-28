@@ -484,7 +484,7 @@ export class PlaylistPlayer {
 			return;
 		}
 
-		const voice = this.#engine.createStreamVoice({ url: track.url, bus: 'music', gain: this.#voiceGain(index) });
+		const voice = this.#engine.createStreamVoice({ url: track.url, bus: 'music', label: track.title, gain: this.#voiceGain(index) });
 		const { startAt } = planTrack(track, this.#rules);
 		const seekTo = at ?? startAt;
 		/** @type {CurrentVoice} */

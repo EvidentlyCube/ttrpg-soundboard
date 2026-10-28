@@ -53,6 +53,13 @@ describe('SoundPlayer', () => {
 			assert.deepEqual(activity(), [{ type: 'sound.activeChanged', soundId: 'Boom.mp3', active: true }]);
 		});
 
+		it('labels the voice with the sound\'s title', async () => {
+			const { player, engine, advance } = setup();
+			player.play({ ...SMALL, title: 'Big Boom' });
+			await advance(0.05);
+			assert.equal(engine.voices[0].label, 'Big Boom');
+		});
+
 		it('shares a decode in progress and reuses the cached buffer later', async () => {
 			const { player, engine, advance } = setup();
 			player.play(SMALL);
@@ -95,6 +102,12 @@ describe('SoundPlayer', () => {
 	});
 
 	describe('large sounds', () => {
+		it('labels the voice with the sound\'s title', () => {
+			const { player, engine } = setup();
+			player.play({ ...LARGE, title: 'Heavy Rain' });
+			assert.equal(engine.voices[0].label, 'Heavy Rain');
+		});
+
 		it('streams and calls play() synchronously, inside the user gesture', () => {
 			const { player, engine, activity } = setup();
 			player.play(LARGE);

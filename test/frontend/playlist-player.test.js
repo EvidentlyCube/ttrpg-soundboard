@@ -76,6 +76,12 @@ describe('PlaylistPlayer', () => {
 			assert.equal(engine.voices[0].playCalls, 1);
 		});
 
+		it('labels each voice with the track\'s title', () => {
+			const { player, engine } = setup();
+			player.play();
+			assert.equal(engine.voices[0].label, 'Track 0');
+		});
+
 		it('goes from loading to playing once the track has loaded', () => {
 			const { player, advance, states } = setup();
 			player.play();

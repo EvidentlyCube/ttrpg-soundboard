@@ -78,6 +78,7 @@
 /**
  * @typedef {object} VoiceOptions
  * @property {Bus} bus
+ * @property {string} [label] what the voice plays, as a person would name it; only the debug view reads it
  * @property {number} [gain] the voice's own volume; defaults to 1
  * @property {number} [startAt] seconds into the file where playback starts; defaults to 0
  * @property {number | null} [endAt] seconds into the file where the voice stops and fires `ended`; null or left out is

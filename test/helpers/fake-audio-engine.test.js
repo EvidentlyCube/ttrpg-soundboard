@@ -16,6 +16,14 @@ function setup(clip = {}) {
 	return { clock, voice, endedCount: () => ended };
 }
 
+describe('FakeAudioEngine labels', () => {
+	it('keeps the label a voice was created with', () => {
+		const engine = new FakeAudioEngine(new FakeClock());
+		assert.equal(engine.createStreamVoice({ url: '/a', bus: 'sfx', label: 'Boom' }).label, 'Boom');
+		assert.equal(engine.createStreamVoice({ url: '/a', bus: 'sfx' }).label, '');
+	});
+});
+
 describe('FakeAudioEngine start and end points', () => {
 	it('starts playback at the start point', () => {
 		const { clock, voice } = setup({ startAt: 2 });

@@ -1,4 +1,4 @@
-import { FULL, rampTo } from './fade-ramp.js';
+import { FULL, rampTo } from '../logic/fade-ramp.js';
 
 /** @typedef {import('../logic/ports.js').AudioEngine} AudioEngine */
 /** @typedef {import('../logic/ports.js').AudioFormat} AudioFormat */
@@ -7,7 +7,7 @@ import { FULL, rampTo } from './fade-ramp.js';
 /** @typedef {import('../logic/ports.js').Voice} Voice */
 /** @typedef {import('../logic/ports.js').VoiceError} VoiceError */
 /** @typedef {import('../logic/ports.js').VoiceOptions} VoiceOptions */
-/** @typedef {import('./fade-ramp.js').FadeRamp} FadeRamp */
+/** @typedef {import('../logic/fade-ramp.js').FadeRamp} FadeRamp */
 
 /** @type {Record<AudioFormat, string>} */
 const MIME_TYPES = { mp3: 'audio/mpeg', ogg: 'audio/ogg' };
