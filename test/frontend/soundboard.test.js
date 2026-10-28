@@ -534,7 +534,7 @@ describe('Soundboard', () => {
 			const { soundboard, api, clock, settle, eventsOf } = await started();
 			soundboard.customizeTrack('Combat/2.ogg', { title: 'Final' });
 			clock.advance(500);
-			assert.deepEqual(api.trackSaves, [{ trackId: 'Combat/2.ogg', options: { title: 'Final' }, keepalive: false }]);
+			assert.deepEqual(api.trackSaves, [{ trackId: 'Combat/2.ogg', options: { title: 'Final', startAt: 0, endAt: null }, keepalive: false }]);
 			await settle();
 			assert.deepEqual(eventsOf('track.saved'), [{ type: 'track.saved', trackId: 'Combat/2.ogg' }]);
 
@@ -543,6 +543,25 @@ describe('Soundboard', () => {
 			soundboard.flushTrackOptions('Combat/2.ogg');
 			await settle();
 			assert.deepEqual(eventsOf('track.saveFailed'), [{ type: 'track.saveFailed', trackId: 'Combat/2.ogg', message: 'read-only' }]);
+		});
+
+		it('announces new points with the playlist and saves them with the title', async () => {
+			const { soundboard, api, clock, eventsOf } = await started();
+			soundboard.customizeTrack('Combat/1.mp3', { startAt: 1.5, endAt: 20 });
+			const [changed] = eventsOf('playlist.changed');
+			const track = changed.type === 'playlist.changed' ? changed.playlist.tracks[0] : null;
+			assert.deepEqual([track?.startAt, track?.endAt], [1.5, 20]);
+			clock.advance(500);
+			assert.deepEqual(api.trackSaves.map((save) => save.options), [{ title: 'Battle', startAt: 1.5, endAt: 20 }]);
+		});
+
+		it('rejects points that do not fit together, announcing and saving nothing', async () => {
+			const { soundboard, api, clock, events } = await started();
+			assert.throws(() => soundboard.customizeTrack('Combat/1.mp3', { startAt: 5, endAt: 5 }), InvalidCommandError);
+			assert.throws(() => soundboard.dispatch({ type: 'track.customize', trackId: 'Combat/1.mp3', startAt: 'x' }), InvalidCommandError);
+			clock.advance(500);
+			assert.deepEqual(events, []);
+			assert.deepEqual(api.trackSaves, []);
 		});
 
 		it('rejects empty titles and unknown tracks', async () => {

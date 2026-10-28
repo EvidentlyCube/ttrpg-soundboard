@@ -78,6 +78,25 @@ describe('LibraryModel', () => {
 			assert.equal(model.json.playlists.find((entry) => entry.id === 'Combat'), playlist);
 		});
 
+		it('changes the points rounded to milliseconds, and an end of null', () => {
+			const model = fresh();
+			const { track } = model.updateTrack('Combat/1.mp3', { startAt: 1.00049, endAt: 5 });
+			assert.equal(track.startAt, 1);
+			assert.equal(track.endAt, 5);
+			assert.equal(track.title, 'Battle');
+			assert.equal(model.updateTrack('Combat/1.mp3', { endAt: null }).track.endAt, null);
+		});
+
+		it('checks a changed point against the stored one, changing nothing when it does not fit', () => {
+			const model = fresh();
+			model.updateTrack('Combat/1.mp3', { startAt: 2, endAt: 4 });
+			const before = model.json;
+			assert.throws(() => model.updateTrack('Combat/1.mp3', { startAt: 4 }), InvalidCommandError);
+			assert.throws(() => model.updateTrack('Combat/1.mp3', { endAt: 1 }), InvalidCommandError);
+			assert.throws(() => model.updateTrack('Combat/1.mp3', { startAt: -1 }), InvalidCommandError);
+			assert.equal(model.json, before);
+		});
+
 		it('leaves earlier snapshots untouched and rejects empty titles and unknown tracks', () => {
 			const model = fresh();
 			const before = model.json;

@@ -76,14 +76,7 @@ export class LibraryModel {
 	updateSound(id, changes) {
 		const sound = applyChanges(this.sound(id), changes);
 		applyTimings(sound, changes, { fadeIn: 'Fade-in', fadeOut: 'Fade-out' });
-		if (changes.startAt !== undefined) {
-			sound.startAt = roundToMilliseconds(changes.startAt);
-		}
-		if (changes.endAt !== undefined) {
-			sound.endAt = changes.endAt === null ? null : roundToMilliseconds(changes.endAt);
-		}
-		// Checked after merging, so a change to one point must still fit the other.
-		checkClip(sound.startAt, sound.endAt);
+		applyPoints(sound, changes);
 		this.#sounds.set(id, sound);
 		this.#json = {
 			...this.#json,
@@ -93,19 +86,20 @@ export class LibraryModel {
 	}
 
 	/**
-	 * Renames a track. Its playlist is replaced by a copy holding the changed track, in the same order, so everything
-	 * that shows the playlist can take the new copy.
+	 * Renames a track or changes its points. Its playlist is replaced by a copy holding the changed track, in the same
+	 * order, so everything that shows the playlist can take the new copy.
 	 * @param {string} trackId
-	 * @param {ItemOptions} changes only `title` is used
+	 * @param {ItemOptions} changes only `title`, `startAt` and `endAt` are used
 	 * @returns {{ playlist: PlaylistJson, track: AudioFileJson }}
 	 */
-	updateTrack(trackId, { title }) {
+	updateTrack(trackId, { title, startAt, endAt }) {
 		const current = this.#json.playlists.find((entry) => entry.tracks.some((track) => track.id === trackId));
 		if (!current) {
 			throw new InvalidCommandError(`Unknown track "${trackId}"`);
 		}
 		const index = current.tracks.findIndex((track) => track.id === trackId);
 		const track = applyChanges(current.tracks[index], { title });
+		applyPoints(track, { startAt, endAt });
 		const playlist = { ...current, tracks: current.tracks.with(index, track) };
 		this.#playlists.set(playlist.id, playlist);
 		this.#json = { ...this.#json, playlists: this.#json.playlists.map((entry) => (entry.id === playlist.id ? playlist : entry)) };
@@ -161,6 +155,23 @@ function applyChanges(item, { title, gain }) {
 		throw new InvalidCommandError(`Gain must be a number from 0 to ${MAX_GAIN}, got ${gain}`);
 	}
 	return { ...item, title: trimmed ?? item.title, gain: gain ?? item.gain };
+}
+
+/**
+ * Sets the start and end points given in `changes`, rounded to milliseconds. They are checked after merging, so a
+ * change to one point must still fit the other.
+ * @param {{ startAt: number, endAt: number | null }} item changed in place
+ * @param {ItemOptions} changes
+ */
+function applyPoints(item, changes) {
+	const startAt = changes.startAt === undefined ? item.startAt : roundToMilliseconds(changes.startAt);
+	let { endAt } = item;
+	if (changes.endAt !== undefined) {
+		endAt = changes.endAt === null ? null : roundToMilliseconds(changes.endAt);
+	}
+	checkClip(startAt, endAt);
+	item.startAt = startAt;
+	item.endAt = endAt;
 }
 
 /**

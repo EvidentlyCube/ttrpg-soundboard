@@ -18,7 +18,7 @@ import { isTransition } from './transitions.js';
  * 	| { type: 'playlist.customize', playlistId: string, title?: string, gain?: number, crossfade?: number, fadeIn?: number,
  * 		fadeOut?: number, order?: import('./order-strategies.js').PlaybackOrder, trackLooping?: boolean,
  * 		stopMode?: import('./playback-rules.js').StopMode }
- * 	| { type: 'track.customize', trackId: string, title?: string }} Command
+ * 	| { type: 'track.customize', trackId: string, title?: string, startAt?: number, endAt?: number | null }} Command
  */
 
 /** @typedef {'string' | 'number' | 'boolean' | 'number or null'} FieldType */
@@ -52,7 +52,7 @@ const SHAPES = {
 			stopMode: 'string',
 		},
 	},
-	'track.customize': { strings: ['trackId'], optional: { title: 'string' } },
+	'track.customize': { strings: ['trackId'], optional: { title: 'string', startAt: 'number', endAt: 'number or null' } },
 };
 
 /**
