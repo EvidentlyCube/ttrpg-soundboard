@@ -31,7 +31,7 @@ export const QUIET_MS = 1000;
 export const POLL_MS = 30_000;
 
 /**
- * Notices files added, removed or changed outside the app (ROADMAP: rescanning while running). It keeps a baseline of
+ * Notices files added, removed or changed outside the app (DESIGN.md §5.3). It keeps a baseline of
  * the files the app read, and compares the directory with it after file system events, when asked, and every 30 s if
  * watching is impossible. Once a change is found it says so and stops checking until the next refresh.
  *

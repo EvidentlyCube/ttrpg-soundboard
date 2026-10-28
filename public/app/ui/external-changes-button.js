@@ -4,7 +4,7 @@ import { h, on } from './dom.js';
 /** @typedef {import('../logic/soundboard.js').Soundboard} Soundboard */
 
 /**
- * The header's yellow button that appears when files changed outside the app (ROADMAP: rescanning while running).
+ * The header's yellow button that appears when files changed outside the app (DESIGN.md §9.1).
  * Clicking it has the server rebuild its library; the page then reloads, which App takes care of.
  */
 export class ExternalChangesButton extends Component {
