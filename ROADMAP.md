@@ -46,15 +46,15 @@ For each voice it keeps:
 - §7, §8: the players pass `label` when they create voices. No behavior change.
 - §9.1 (header) and a new §9.8 for the panel, §10 (structure), §11 (testing).
 
-**Open questions.**
-1. **Which voices.** All of them: sound instances and music tracks, including tracks still fading out. Each row carries a small badge in the bus color (amber `SFX`, blue `Music`). *Recommended: yes.*
-2. **Order.** Chronological by start, oldest at the top, as you described. Since finished voices disappear after 5 s the list stays short; it scrolls inside a maximum height (about 60 % of the window) if it doesn't. *Recommended: oldest first. The alternative, newest first, keeps new voices visible without scrolling.*
-3. **Columns.** Badge and label, status, volume in dB. *Recommended: exactly that. Optionally also the position and length (`0:03 / 0:10`), which is cheap but changes as often as the volume.*
-4. **What "volume" means.** The voice's own level: the sound's or playlist-times-track gain, times the current fade. The master and bus sliders are left out, so a quiet row means the item itself is quiet. *Recommended: yes. Say so if you'd rather see the final level including the sliders.*
-5. **The 5 seconds.** They start when a voice ends, is stopped or fails. A voice cut off by Stop All or by the ninth press counts as `stopped` and also lingers for 5 s. The row keeps its place and turns muted. *Recommended: yes.*
-6. **Stacking and behavior.** The panel is non-modal: no backdrop, it doesn't take focus, and the board keeps working under it. It sits above dialogs, so you can watch voices while testing a track in the playlist dialog, but below the context menus and the splash. It closes with the button, or with Esc when no menu is open. It starts closed after every reload (nothing is remembered, as for the rest of the playback state). *Recommended: yes.*
-7. **Collecting while closed.** The monitor always records, so opening the panel shows what is already playing, and it keeps at most 200 entries (finished ones are dropped first). The panel itself only refreshes (every 250 ms) while it is open. *Recommended: yes.*
-8. **Button.** A small icon button with a bug icon and the title "Debug view", `aria-expanded` and `aria-controls`; lit in the music accent while open. *Recommended: yes.*
+**Open questions, answered by the owner.**
+1. **Which voices.** Decided: all of them, sound instances and music tracks, including tracks still fading out. Each row carries a small badge in the bus color (amber `SFX`, blue `Music`).
+2. **Order.** Decided: chronological by start, oldest at the top, so the list is static. It scrolls inside a maximum height (about 60 % of the window) if it grows past it.
+3. **Columns.** Decided: badge and label, status, volume in dB. No position or duration.
+4. **What "volume" means.** Decided: the voice's own level, the sound's or playlist-times-track gain times the current fade. The master and bus sliders are left out, so the panel shows whether the engine treats each item correctly.
+5. **The 5 seconds.** Decided: they start when a voice ends, is stopped or fails, however that came about (Stop All and the ninth press count as `stopped`). The row keeps its place and turns muted. The lingering belongs to the debug tool: the players and the engine release voices as they always do, and the monitor only notices the final event and keeps its own record for 5 s.
+6. **Stacking and behavior.** Decided: the panel is non-modal (no backdrop, no focus taken, the board keeps working under it) and sits above everything: dialogs, context menus and the splash. It closes with the button, or with Esc when no dialog or menu is open. It starts closed after every reload.
+7. **Collecting while closed.** Decided: the monitor always records, so opening the panel shows what is already playing. It keeps at most 200 entries (finished ones are dropped first). The panel itself only refreshes (every 250 ms) while it is open.
+8. **Button.** A small icon button with a bug icon and the title "Debug view", `aria-expanded` and `aria-controls`; lit in the music accent while open. Not asked about, so unchanged from the proposal.
 
 **Plan.**
 1. Port and labels: `label` in `VoiceOptions` and the fake engine, passed by `SoundPlayer` and `PlaylistPlayer`; move `fade-ramp.js` to `logic/`. Tests: the players pass the title.
