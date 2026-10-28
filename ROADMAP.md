@@ -29,7 +29,39 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## Proposals
 
-None yet.
+### Debug view
+
+**Goal.** A button at the right end of the header, after the volume controls, toggles a debug panel that hangs below it. The panel lists every voice the audio engine is playing, sound effects and music tracks alike, oldest first, with its status and current volume. A voice stays listed for 5 seconds after it finishes. The data comes from the playback layer itself, so the panel shows what the engine was really asked to do, not what the UI believes.
+
+**How the data is collected.** The players don't expose their voices, and a `Voice` can't be asked about its state or volume. Rather than adding state getters to both engines and threading them through two players, a `VoiceMonitor` wraps the `AudioEngine` port as a decorator: it creates the real voice, hands back a wrapper that forwards every call and records it. Nothing in `SoundPlayer`, `PlaylistPlayer` or `WebAudioEngine` has to learn about debugging, and the monitor sees every voice, including music tracks fading out after a crossfade and sounds replaced by the ninth press.
+
+For each voice it keeps:
+- **Identity:** a serial number (the chronological order), a label, the bus (`sfx` or `music`), and when it was created.
+- **Status:** `loading` until the voice reports `loaded`, then `playing`, `paused` (after `pause()`), `fading in` or `fading out` while a fade is running, and the final `ended` (fired `ended`), `stopped` (someone called `stop()`) or `error` (with its message).
+- **Volume:** the voice's own gain (last `setGain`) times its fade level now. The fade level is computed from the last `rampGain(target, seconds)` and the clock with the same linear formula as `levelAt` in `fade-ramp.js`, which is a pure function and moves to `logic/` so both sides can use it. Shown in dB like the gain widget (`−6.0 dB`, `−∞ dB`).
+
+**Design changes.**
+- §6.3: `VoiceOptions` gains an optional `label` (the sound's or track's title), which `WebAudioEngine` ignores. A new subsection describes the `VoiceMonitor` decorator.
+- §6.1 and §6.2: query `getVoices()` returning snapshots `{ serial, label, bus, status, volume, message? }` in start order, and event `voices.changed` (`{}`), sent when a voice is added, changes status or is removed. Volume moves continuously, so it is read with `getVoices()` rather than announced.
+- §7, §8: the players pass `label` when they create voices. No behavior change.
+- §9.1 (header) and a new §9.8 for the panel, §10 (structure), §11 (testing).
+
+**Open questions.**
+1. **Which voices.** All of them: sound instances and music tracks, including tracks still fading out. Each row carries a small badge in the bus color (amber `SFX`, blue `Music`). *Recommended: yes.*
+2. **Order.** Chronological by start, oldest at the top, as you described. Since finished voices disappear after 5 s the list stays short; it scrolls inside a maximum height (about 60 % of the window) if it doesn't. *Recommended: oldest first. The alternative, newest first, keeps new voices visible without scrolling.*
+3. **Columns.** Badge and label, status, volume in dB. *Recommended: exactly that. Optionally also the position and length (`0:03 / 0:10`), which is cheap but changes as often as the volume.*
+4. **What "volume" means.** The voice's own level: the sound's or playlist-times-track gain, times the current fade. The master and bus sliders are left out, so a quiet row means the item itself is quiet. *Recommended: yes. Say so if you'd rather see the final level including the sliders.*
+5. **The 5 seconds.** They start when a voice ends, is stopped or fails. A voice cut off by Stop All or by the ninth press counts as `stopped` and also lingers for 5 s. The row keeps its place and turns muted. *Recommended: yes.*
+6. **Stacking and behavior.** The panel is non-modal: no backdrop, it doesn't take focus, and the board keeps working under it. It sits above dialogs, so you can watch voices while testing a track in the playlist dialog, but below the context menus and the splash. It closes with the button, or with Esc when no menu is open. It starts closed after every reload (nothing is remembered, as for the rest of the playback state). *Recommended: yes.*
+7. **Collecting while closed.** The monitor always records, so opening the panel shows what is already playing, and it keeps at most 200 entries (finished ones are dropped first). The panel itself only refreshes (every 250 ms) while it is open. *Recommended: yes.*
+8. **Button.** A small icon button with a bug icon and the title "Debug view", `aria-expanded` and `aria-controls`; lit in the music accent while open. *Recommended: yes.*
+
+**Plan.**
+1. Port and labels: `label` in `VoiceOptions` and the fake engine, passed by `SoundPlayer` and `PlaylistPlayer`; move `fade-ramp.js` to `logic/`. Tests: the players pass the title.
+2. `VoiceMonitor`: wrapper and records, statuses, fade-aware volume, linger and cap. Tests with the fake engine and fake clock, including the ordering, `ended` once, stop during a fade, error, and the 5 s timer being cleared on teardown.
+3. Facade: `getVoices()` and `voices.changed`, with the monitor wired in front of the engine. Facade tests for both players.
+4. UI: the header button and the panel, refreshed every 250 ms while open; new manual checks in `TESTING.md`.
+5. `DESIGN.md` update.
 
 ---
 
@@ -48,6 +80,10 @@ None yet.
 These are the next features, in roughly the order they will be built. Each will get its own proposal when its turn comes. **Decided** lists the owner's answers already given; the notes list what else is known and the questions still to settle.
 
 **Decided for all of them.** Customization changes apply immediately and are saved with a 500 ms debounce, as the sound Customize dialog does (DESIGN.md §6.4, §9.7). Re-sorting on screen waits until the dialog closes. Playback state is never remembered across a page reload, so F5 always gives a clean start.
+
+#### 10. Debug view
+
+A header button that opens a panel listing the voices playing, with their status and volume. It is next in line; the details are in its proposal under [Proposals](#proposals).
 
 #### 11. Track start and end points
 
