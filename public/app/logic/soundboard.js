@@ -8,6 +8,7 @@ import { resolvePlaybackRules } from './playback-rules.js';
 import { PlaylistPlayer } from './playlist-player.js';
 import { SettingsSync } from './settings-sync.js';
 import { SoundPlayer } from './sound-player.js';
+import { VoiceMonitor } from './voice-monitor.js';
 import { VolumeControl } from './volume.js';
 
 /** @typedef {import('./ports.js').AudioEngine} AudioEngine */
@@ -40,7 +41,8 @@ import { VolumeControl } from './volume.js';
  * 	| { type: 'playlist.saveFailed', playlistId: string, message: string }
  * 	| { type: 'track.saved', trackId: string }
  * 	| { type: 'track.saveFailed', trackId: string, message: string }} CustomizeEvent
- * @typedef {AppEvent | SoundEvent | PlaylistEvent | VolumeChangedEvent | CustomizeEvent} SoundboardEvent
+ * @typedef {{ type: 'voices.changed' }} VoicesEvent
+ * @typedef {AppEvent | SoundEvent | PlaylistEvent | VolumeChangedEvent | CustomizeEvent | VoicesEvent} SoundboardEvent
  */
 
 /** @typedef {{ transition?: Transition }} TransitionOptions */
@@ -52,6 +54,7 @@ import { VolumeControl } from './volume.js';
  */
 export class Soundboard {
 	#engine;
+	#monitor;
 	#clock;
 	#api;
 	#logger;
@@ -77,13 +80,15 @@ export class Soundboard {
 	 * @param {() => number} [ports.random] for the random playback orders; tests pass a seeded generator
 	 */
 	constructor({ engine, clock, api, logger, random = Math.random }) {
-		this.#engine = engine;
 		this.#clock = clock;
 		this.#random = random;
 		this.#api = api;
 		this.#logger = logger;
 		this.#events = new EventEmitter((error, event) => logger.error(`A handler for ${event.type} failed`, error));
 		const emit = (/** @type {SoundboardEvent} */ event) => this.#events.emit(event);
+		// Every voice the players make goes through the monitor, which records what the debug view shows (§6.5).
+		this.#monitor = new VoiceMonitor({ engine, clock, onChange: () => emit({ type: 'voices.changed' }) });
+		this.#engine = this.#monitor;
 		this.#volume = new VolumeControl({ setBusGain: (bus, gain) => engine.setBusGain(bus, gain), emit });
 		this.#settingsSync = new SettingsSync({ saveVolumes: (volumes, options) => api.saveVolumes(volumes, options), clock, logger });
 		/** @type {Record<ItemKind, (id: string, options: ItemOptions, request: { keepalive: boolean }) => Promise<void>>} */
@@ -433,6 +438,16 @@ export class Soundboard {
 
 	getVolumes() {
 		return this.#volume.volumes;
+	}
+
+	/**
+	 * Every voice the audio engine has been given and that is still playing or finished less than 5 seconds ago, oldest
+	 * first, as it is right now (DESIGN.md §6.5). Read it again to see volumes move; `voices.changed` says when the
+	 * list itself or a status changed.
+	 * @returns {import('./voice-monitor.js').VoiceInfo[]}
+	 */
+	getVoices() {
+		return this.#monitor.voices();
 	}
 
 	/** @param {string} soundId */

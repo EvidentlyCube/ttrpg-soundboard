@@ -19,6 +19,7 @@ const EVENT_TYPES = /** @type {const} */ ([
 	'sound.changed', 'sound.saved', 'sound.saveFailed',
 	'playlist.changed', 'playlist.saved', 'playlist.saveFailed',
 	'track.saved', 'track.saveFailed',
+	'voices.changed',
 ]);
 
 /** @param {{ canPlay?: (format: 'mp3' | 'ogg') => boolean }} [options] */
@@ -184,6 +185,56 @@ describe('Soundboard', () => {
 			context.soundboard.jumpToTrack('Combat', 1);
 			assert.equal(context.soundboard.getPlaylistSnapshot('Combat').trackIndex, 0);
 			assert.equal(context.eventsOf('playlist.error').length, 1);
+		});
+	});
+
+	describe('voices', () => {
+		it('lists the voices of sounds and tracks, oldest first, with their titles', async () => {
+			const { soundboard, advance } = await started();
+			soundboard.playSound('Rain.ogg');
+			soundboard.playPlaylist('Combat');
+			await advance(0.1);
+			const voices = soundboard.getVoices();
+			assert.deepEqual(voices.map((voice) => [voice.bus, voice.status]), [['sfx', 'playing'], ['music', 'playing']]);
+			assert.equal(voices[0].label, soundboard.getLibrary()?.sounds.find((sound) => sound.id === 'Rain.ogg')?.title);
+		});
+
+		it('is empty before anything has played', async () => {
+			const { soundboard } = await started();
+			assert.deepEqual(soundboard.getVoices(), []);
+		});
+
+		it('keeps a stopped voice listed for 5 seconds, while the player has long released it', async () => {
+			const { soundboard, engine, advance } = await started();
+			soundboard.playSound('Rain.ogg');
+			soundboard.stopSound('Rain.ogg');
+			assert.equal(engine.liveVoices.length, 0);
+			assert.equal(soundboard.getVoices()[0].status, 'stopped');
+			await advance(4.9);
+			assert.equal(soundboard.getVoices().length, 1);
+			await advance(0.1);
+			assert.deepEqual(soundboard.getVoices(), []);
+		});
+
+		it('announces when the list changes', async () => {
+			const { soundboard, eventsOf, advance } = await started();
+			soundboard.playSound('Rain.ogg');
+			assert.equal(eventsOf('voices.changed').length, 1);
+			soundboard.stopSound('Rain.ogg');
+			assert.equal(eventsOf('voices.changed').length, 2);
+			await advance(5);
+			assert.equal(eventsOf('voices.changed').length, 3);
+		});
+
+		it('shows a playlist\'s fade-out while the old track is still sounding', async () => {
+			const { soundboard, advance } = await started();
+			soundboard.customizePlaylist('Combat', { fadeOut: 2 });
+			soundboard.playPlaylist('Combat', { transition: 'instant' });
+			await advance(0.1);
+			soundboard.stopPlaylist('Combat');
+			assert.equal(soundboard.getVoices()[0].status, 'fading out');
+			await advance(1);
+			assert.ok(soundboard.getVoices()[0].volume < 1);
 		});
 	});
 
