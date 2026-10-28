@@ -6,7 +6,11 @@
 /** @typedef {{ size: number, modified: string, sha1: string }} MeasuredFrom what a stored duration was measured from */
 /**
  * @typedef {{ title?: string, gain?: number, duration?: number | null, measuredFrom?: MeasuredFrom, startAt?: number,
- * 	endAt?: number | null, fadeIn?: number, fadeOut?: number }} AudioOptions
+ * 	endAt?: number | null, fadeIn?: number, fadeOut?: number, source?: Source }} AudioOptions
+ */
+/**
+ * @typedef {{ url: string, extractor?: string, videoId?: string, playlistId?: string, chapter?: number }} Source
+ * 	where a downloaded file came from
  */
 /**
  * @typedef {{ title?: string, gain?: number, crossfade?: number, fadeIn?: number, fadeOut?: number,
@@ -39,6 +43,8 @@ export const MIN_CLIP_MS = 10;
 
 const NOT_AN_OBJECT = 'must be a JSON object';
 
+const SOURCE_TEXT_KEYS = ['url', 'extractor', 'videoId', 'playlistId'];
+
 /**
  * @param {unknown} value
  * @returns {string[]}
@@ -53,7 +59,30 @@ export function validateAudioOptions(value) {
 		...checkDuration(value),
 		...checkClip(value),
 		...checkSeconds(value, ['fadeIn', 'fadeOut']),
+		...checkSource(value),
 	];
+}
+
+/**
+ * Where a downloaded file came from (DESIGN.md §2.3). Unknown keys inside are allowed, as everywhere else.
+ * @param {Record<string, unknown>} value
+ * @returns {string[]}
+ */
+function checkSource(value) {
+	if (!('source' in value)) {
+		return [];
+	}
+	const { source } = value;
+	if (!isPlainObject(source)) {
+		return ['"source" must be a JSON object'];
+	}
+	const problems = SOURCE_TEXT_KEYS
+		.filter((key) => key in source && typeof source[key] !== 'string')
+		.map((key) => `"source.${key}" must be a string`);
+	if ('chapter' in source && !(typeof source.chapter === 'number' && Number.isInteger(source.chapter) && source.chapter >= 1)) {
+		problems.push('"source.chapter" must be a positive integer');
+	}
+	return problems;
 }
 
 /**
