@@ -18,6 +18,7 @@ node index.js <path-to-audio-directory> [--port <number>] [--verbose]
 - Output is quiet by default: the startup summary, warnings and errors. `--verbose` also logs every HTTP request (§5.2).
 - After startup it prints `Soundboard running at http://127.0.0.1:3000` and `Press Ctrl+C to stop.` The user opens that URL themselves.
 - While it runs, it watches the directory. Files added, removed or changed from outside the app are not loaded by themselves: the page offers a refresh, which rebuilds the library as a restart would (§3.6, §5.3).
+- It can add sounds, playlists and tracks from a pasted link. The server downloads it with `yt-dlp`, or fetches a direct link to a file itself, converts it to `.ogg` with `ffmpeg`, and the page shows each new file at once (§5.4, §9.9).
 - It is always started by hand from a terminal. There is no unattended mode.
 
 ### 1.1 Constraints
@@ -25,7 +26,8 @@ node index.js <path-to-audio-directory> [--port <number>] [--verbose]
 | Area | Decision |
 |---|---|
 | Runtime | Node **24.14.0** (`"engines": { "node": ">=24.14.0" }`) |
-| Runtime dependencies | **None on the server.** The browser loads exactly one third-party file: Tailwind CSS's browser build, vendored in `public/vendor/` (§9.6). Nothing is ever fetched from the internet. |
+| Runtime dependencies | **None on the server.** The browser loads exactly one third-party file: Tailwind CSS's browser build, vendored in `public/vendor/` (§9.6). The browser never fetches anything from the internet; only the server does, and only the links the user pastes (§5.4). |
+| External programs | `yt-dlp` and `ffmpeg`, for downloads only (§5.4). They are found on `PATH` and run as child processes; the app never bundles or installs them. Without them, everything except downloads works as usual. |
 | UI styling | Tailwind CSS v4 browser build (`@tailwindcss/browser`). It turns class names into CSS at runtime, so there is no CLI and no build step. |
 | Dev dependencies | Tooling only, never imported by app code: `typescript` and `@types/node` (type-checking JSDoc), `eslint`, `@eslint/js`, `@stylistic/eslint-plugin` and `globals` (linting and formatting) |
 | Language | Plain `.js` with JSDoc types. No build or compile step. The browser loads the source files directly as ES modules. |
@@ -45,6 +47,7 @@ node index.js <path-to-audio-directory> [--port <number>] [--verbose]
 ```
 <root>/
 ├── .soundboard                 ← marker and app settings (version, volumes)
+├── .soundboard-downloads/      ← where downloads work (§5.4); emptied at every start
 ├── Explosion.mp3               ← sound effect
 ├── Explosion.mp3.json          ← its options
 ├── Explosion.mp3.wf            ← its waveform, made by the browser (§6.6); disposable
@@ -64,7 +67,7 @@ node index.js <path-to-audio-directory> [--port <number>] [--verbose]
 
 The scanner applies these rules in order:
 
-1. Names starting with `.` (files or directories, at any depth) are **ignored**. This includes `.soundboard`, `.DS_Store` and macOS `._*` files.
+1. Names starting with `.` (files or directories, at any depth) are **ignored**. This includes `.soundboard`, `.soundboard-downloads/`, `.DS_Store` and macOS `._*` files.
 2. **Symlinks are ignored**, with a warning, to avoid loops and files outside the root.
 3. In the root:
    - Each directory is a **playlist**. Its ID is the directory name.
@@ -120,6 +123,11 @@ Sound or track options (`Explosion.mp3.json`)
 - `fadeIn` and `fadeOut` fade a sound in from its start point and out to its end point (§7), in seconds, `0` (the default, off) to `30`, rounded to 3 decimals.
 - Track files accept `startAt` and `endAt` and play only that part (§8.1). They accept `fadeIn` and `fadeOut` too, but tracks ignore those.
 - `duration` (seconds, 2 decimals, or `null` when it can't be read) and `measuredFrom` (the file's size, modification time and SHA-1 at that moment) are written by bootstrap (§3.5), never by hand. They always come together.
+- `source` says where a downloaded file came from (§5.4). Only downloads write it; it can't be changed through the API and isn't sent to the browser yet ([roadmap](ROADMAP.md)).
+  ```json
+  "source": { "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "extractor": "Youtube", "videoId": "dQw4w9WgXcQ", "playlistId": "PL…", "chapter": 3 }
+  ```
+  `url` is always there: the link as pasted for a direct file, the video's own page for `yt-dlp`. `extractor` (yt-dlp's `extractor_key`, since an id only means something on its own site) and `videoId` come with every `yt-dlp` download, `playlistId` only when a playlist was downloaded, and `chapter` (counting from 1) only for a file cut from one chapter.
 - `gain` is optional and defaults to `1`. It is the item's own volume as the linear multiplier a Web Audio `GainNode` takes: `1` plays the file as recorded, `2` doubles the amplitude (about +6 dB), `0` is silent. The UI shows it in decibels (§6.4). It is deliberately not called `volume`, because the volumes in `.soundboard` are slider positions, a different thing. A track's `gain` is applied together with its playlist's (§6.4); the track accordion sets it (§9.7).
 - The app writes `gain` rounded to 4 decimal places.
 
@@ -145,7 +153,7 @@ Playlist options (`Combat.json`)
 - `includedSubdirectories` lists paths relative to the playlist directory, using `/`. Every depth is listed explicitly.
 - Listed directories that no longer exist are ignored. They are not removed.
 
-**Validation (fatal).** Any options file or `.soundboard` that fails `JSON.parse`, is not an object, or has the wrong type for a known key (`title` must be a non-empty string, `gain` must be a number from `0` to `4`, `crossfade`, `fadeIn` and `fadeOut` numbers from `0` to `30`, `order` one of `"ordered"`, `"random"` and `"shuffle"`, `trackLooping` `true` or `false`, `stopMode` one of `"pause"`, `"resetTrack"` and `"resetPlaylist"`, `startAt` a non-negative number, `endAt` a non-negative number or `null` and, when both points are numbers, at least 10 ms (`MIN_CLIP_MS`) after `startAt`, `duration` a non-negative number or `null` and present together with a well-formed `measuredFrom`, `includedSubdirectories` must be an array of strings, `version` must be a positive integer, `volumes.*` must be numbers in `0..1`) is an error. Bootstrap gathers **all** such errors, prints them in red with their paths, and exits with code `1` **before asking any questions or writing anything**. The user must fix or delete those files. Options files of empty playlists are validated too.
+**Validation (fatal).** Any options file or `.soundboard` that fails `JSON.parse`, is not an object, or has the wrong type for a known key (`title` must be a non-empty string, `gain` must be a number from `0` to `4`, `crossfade`, `fadeIn` and `fadeOut` numbers from `0` to `30`, `order` one of `"ordered"`, `"random"` and `"shuffle"`, `trackLooping` `true` or `false`, `stopMode` one of `"pause"`, `"resetTrack"` and `"resetPlaylist"`, `startAt` a non-negative number, `endAt` a non-negative number or `null` and, when both points are numbers, at least 10 ms (`MIN_CLIP_MS`) after `startAt`, `duration` a non-negative number or `null` and present together with a well-formed `measuredFrom`, `includedSubdirectories` must be an array of strings, `source` an object whose `url`, `extractor`, `videoId` and `playlistId` are strings and whose `chapter` is a positive integer (other keys inside it are kept), `version` must be a positive integer, `volumes.*` must be numbers in `0..1`) is an error. Bootstrap gathers **all** such errors, prints them in red with their paths, and exits with code `1` **before asking any questions or writing anything**. The user must fix or delete those files. Options files of empty playlists are validated too.
 
 **Unknown keys are preserved.** Whenever the app rewrites a file, it reads it again, merges, and writes back the whole object, so keys from future versions survive.
 
@@ -155,6 +163,7 @@ Playlist options (`Combat.json`)
 
 - A sound or track uses its metadata title if one was found and accepted (§3). Otherwise it uses the **filename exactly as it is, extension included** (`01_battle-theme.mp3`).
 - A playlist uses the directory name.
+- A download writes its title into the options file: the file name without its extension and without the ` [<videoId>]` tag `yt-dlp` added (§5.4). `Battle Theme [dQw4w9WgXcQ].ogg` becomes "Battle Theme". Only the downloaded video's own id is removed, so brackets that belong to the title, such as `[Live]`, stay. A new playlist takes the title typed in the add dialog (§9.9).
 
 ---
 
@@ -198,6 +207,8 @@ Playlists without tracks take no further part: no question is asked about their 
 ### 3.4 Result
 
 Bootstrap reports how many options files it created or updated and how many playlists and sounds were loaded. It returns an in-memory `Library` (§5.1), a `SettingsStore` loaded from `.soundboard`, and the scan it built them from, which the change watcher compares against (§5.3). The server keeps only these, never file contents. A refresh builds them again (§3.6).
+
+Then `src/cli/main.js` empties `.soundboard-downloads/`, since jobs never outlive the server (§5.4), and looks for the download tools (`findTools`: `yt-dlp --version`, `ffmpeg -version`). It prints `Downloads: yt-dlp 2026.08.19, ffmpeg 7.1.1`, or in yellow `Downloads are off: ffmpeg was not found.` A missing tool never stops the app.
 
 ### 3.5 Durations
 
@@ -268,6 +279,11 @@ Settings  { volumes: { master, music, sfx } }   // held by SettingsStore, saved 
 - `LibraryEditor` changes the library while the app runs. `updateSound(id, { title?, gain?, startAt?, endAt?, fadeIn?, fadeOut? })` validates the change with the options file rules (§2.3), rejects unknown keys, trims the title, and rounds the numbers. The points are checked again after merging with the sound's current ones, so a change to one point must still fit the other. It then merges the change into the sound's options file (read, merge, atomic write, unknown keys kept), and only once that succeeded updates the `AudioFile` in place and sorts `sounds` again. Writes to one options file run one after another in the order they were requested, so the file always ends with the newest values; a failed write doesn't block later ones. An id that isn't a sound (including a track id) is an `UnknownSoundError`.
 - `updatePlaylist(id, { title?, gain?, crossfade?, fadeIn?, fadeOut?, order?, trackLooping?, stopMode? })` does the same for a playlist's options file (`<directory>.json` in the root), leaving its `includedSubdirectories` alone, and sorts `playlists` again after a rename. The crossfade, the order, track looping and the stop mode are accepted only here, and the points only for sounds. An unknown id is an `UnknownPlaylistError`.
 - `updateTrack(id, { title?, gain?, startAt?, endAt? })` does the same for a track's options file (`<file>.json` next to it), with the same checks and rounding as for sounds. Only those four are accepted. Tracks keep their path order (§2.2), so nothing is sorted again. An id that isn't a track (including a sound id) is an `UnknownTrackError`.
+- **Additions** (§5.4). `addSound(from, name, { title, source })`, `addTrack(playlistId, from, name, options)` and `createPlaylist(title, from, name, options)` take a finished download, which sits on the same file system as the root.
+  - Each one moves the file into place, in the root or the playlist's directory, under `name`. When that name, or its options file's name, is taken, ` (2)`, ` (3)`… is added before the extension, so nothing is overwritten and no old options file is taken over.
+  - It measures the duration (§3.5) and writes the options file with `title`, `source`, `duration` and `measuredFrom`. Then it adds the file to `Library.files` and to `sounds` or the playlist's `tracks`, sorted as at startup (§2.2): sounds by title, tracks by path, so an added track takes its place by name.
+  - `createPlaylist` names the directory after the title (unsafe characters removed, ` (2)` when the directory or `<name>.json` exists), writes `<directory>.json` with the title and an empty `includedSubdirectories`, and adds the first track, so an empty playlist never exists.
+  - Each returns the item plus `written`, every file it created, for the change watcher (§5.3). `playlist(id)` looks a playlist up.
 - `WaveformStore` (`waveform-store.js`) keeps one waveform file, `<audio file>.wf`, next to each sound and track, beside its `.json` options file. The browser makes the waveforms (§6.6); the store only holds them. A file is a 16-byte header, then 2048 signed bytes:
   - The header is the magic `SBW1`, the bucket count (u16, always 1024), two reserved bytes, the audio file's size (u32) and its modified time in whole seconds (u32). The server fills the last two in from the audio file when it stores a waveform.
   - The bytes are 1024 pairs: the lowest and the highest sample of each of 1024 equal slices of the audio, across all channels, scaled to −127..127.
@@ -291,7 +307,11 @@ The server knows nothing about playback state.
 | GET | `/api/waveforms` | `{ "missing": ["Boom.mp3", "Combat/1.mp3", …] }`: the ids with no current waveform, sounds first (`WaveformStore.missing`) |
 | GET | `/api/waveforms/<encoded id>` | The 2048 peak bytes as `application/octet-stream` (the header stays on the server). `404` when there is no current waveform or the id is not a sound or track. |
 | PUT | `/api/waveforms/<encoded id>` | Body: exactly 2048 bytes of peaks. Stored next to the audio file; `204`. `400` for another length, `404` for an unknown id, `413` for bodies over 4 KB. Ids are decoded as for tracks. |
-| GET | `/api/events` | Server-sent events (`text/event-stream`, `Cache-Control: no-store`): `data: {"externalChanges":false}` (or `true`) at once, then again whenever the value changes (§5.3). A `: keep-alive` comment every 30 s keeps the connection open. The stream stays open until the page goes away or the server stops. |
+| GET | `/api/events` | Server-sent events (`text/event-stream`, `Cache-Control: no-store`), each a JSON object with a `type` (below). A `: keep-alive` comment every 30 s keeps the connection open. The stream stays open until the page goes away or the server stops. |
+| GET | `/api/download` | `{ "tools": { "ytDlp": "2026.08.19", "ffmpeg": "7.1.1" }, "job": null }`: the tools found at startup (`null` for a missing one) and the current download (§5.4) with its whole `log`, or `null`. Without downloads at all (tests), both tools are `null`. |
+| POST | `/api/download/probe` | Body `{ url, playlist? }`. Looks the link up and returns it with a `probeId` (§5.4). `400` without a `url`, `422 { error }` for a link that can't be used (the message is meant for the user), `503` when the tools are missing. |
+| POST | `/api/download` | Body `{ probeId, target, chapters?, entries? }`: `target` is `{ kind: "sound" }`, `{ kind: "newPlaylist", title }` or `{ kind: "playlist", playlistId }`; `chapters` lists chapter indices to cut (null or missing keeps the video whole); `entries` lists the playlist entry ids to download. Starts the job and answers `202` with it. `400` for a request that doesn't fit the lookup (an unknown or forgotten `probeId`, no chapter or entry chosen, an empty title, a playlist that is gone), `409` while another job runs, `503` without the tools. |
+| DELETE | `/api/download` | Cancels the running job, or dismisses a finished one; `204`. |
 | POST | `/api/changes/check` | A quick check of the directory, by size and modified time only (§5.3). Returns `{ "externalChanges": true }` or `false`. |
 | POST | `/api/refresh` | Rebuilds the library from the files (§3.6) and answers once it has finished: `200 {}`. `422 { "error": "Some options files are invalid", "errors": [{ "path": "Combat/1.mp3.json", "message": "…" }] }` with one entry per problem, the path relative to the root using `/`; the old library stays. `503` when `.soundboard` is gone ("Restart the app"), or when the server was started without a refresh (tests). |
 | GET, HEAD | `/media/<encoded id>` | The audio file, streamed |
@@ -315,7 +335,16 @@ The server knows nothing about playback state.
 	]
 }
 ```
-Each path segment of a media URL is percent-encoded separately. The library reflects changes made through `PATCH`, so a reload shows them.
+Each path segment of a media URL is percent-encoded separately. The library reflects changes made through `PATCH` and downloads, so a reload shows them.
+
+**Event stream messages** (`src/http/events.js`). Every connection starts with `externalChanges` and, when downloads are available, a `download` message carrying the whole log, so a page that was away misses nothing.
+
+| `type` | Payload | Sent |
+|---|---|---|
+| `externalChanges` | `{ pending }` | on connect, then whenever the value changes (§5.3) |
+| `download` | `{ job }`, with `log` (every line) on connect | whenever the job starts, moves to another item or step, or ends; `job` is `null` once dismissed |
+| `download.log` | `{ lines, replaceLast }` | new log lines, batched at most every 250 ms; with `replaceLast`, the first line replaces the last one already sent (§5.4) |
+| `library.added` | `{ sound }` or `{ playlist }`, in the `/api/library` format, a playlist with all its tracks | once a download has added a file |
 
 **Static files.** The path guard works on the raw request path, before any URL normalization: the path is percent-decoded, resolved against `public/`, and rejected unless it is still inside. Null bytes and malformed encoding are rejected too.
 
@@ -346,9 +375,52 @@ Each path segment of a media URL is percent-encoded separately. The library refl
   - otherwise the file is hashed. A different SHA-1, or one the baseline doesn't know, is a **change**; the same one only updates the baseline's size and time, because the file was merely touched or copied.
 - **Quick checks** compare sizes and modified times only and never hash, so there a touched file counts as a change. The page asks for one whenever it gets the focus back (`POST /api/changes/check`). If `fs.watch` throws or reports an error (for example when Linux runs out of inotify watches), the watcher prints `Can't watch the audio directory (…); checking it every 30 seconds instead.` and runs a quick check every 30 s (`POLL_MS`).
 - **Once a change is found**, `externalChanges` becomes `true`, every listener hears about it (the event streams, §5.2), and no more comparisons run until the next refresh. A directory that can no longer be read also counts as changed, with the reason printed; the refresh then says what is wrong.
-- **Own writes.** `LibraryEditor` and `SettingsStore` save through `watcher.updateFile`, which writes the file as `updateJsonFile` does (§2.3) and then records its new size, time and SHA-1 in the baseline. Bootstrap writes before the baseline is taken. The app's own saves therefore never count as external changes.
-- **Taking turns.** Comparisons, own writes and refreshes run one at a time, in the order they were asked for. A comparison never sees a file the app is halfway through saving, and none runs while a refresh rewrites files. `watcher.refresh(rebuild)` runs the rebuild that way and, when it succeeded, takes a new baseline and sets `externalChanges` back to `false`.
+- **Own writes.** `LibraryEditor` and `SettingsStore` save through `watcher.updateFile`, which writes the file as `updateJsonFile` does (§2.3) and then records its new size, time and SHA-1 in the baseline. Downloads add their files through `watcher.writeFiles(task)`, which runs the task in turn and then records every file in the `written` list it returns (§5.1). Bootstrap writes before the baseline is taken. The app's own saves and additions therefore never count as external changes.
+- **Taking turns.** Comparisons, own writes, additions and refreshes run one at a time, in the order they were asked for. A comparison never sees a file the app is halfway through saving, none runs while a refresh rewrites files, and an addition never lands in a library a refresh is replacing. `watcher.refresh(rebuild)` runs the rebuild that way and, when it succeeded, takes a new baseline and sets `externalChanges` back to `false`.
 - The timers (`setTimeout`, `setInterval`) and `fs.watch` are injected, so tests run the delays on a fake clock.
+
+### 5.4 Downloads (`src/downloads/`)
+
+`DownloadService` looks links up and downloads them into the library. `startServer` creates it when it is given the tools found at startup (§3.4).
+
+**Ports**, each with a test fake:
+- `ProcessRunner` (`process-runner.js`) starts a program with an argument list, never through a shell, in a process group of its own, so killing it also stops the `ffmpeg` that `yt-dlp` starts. It passes stdout (unless captured whole) and stderr on as lines. `LineSplitter` cuts them the way a terminal shows them: a line ended by a carriage return alone is *transient* progress that the next line replaces. A program that isn't installed is a `ToolMissingError`.
+- `YtDlp` (`yt-dlp.js`) and `Ffmpeg` (`ffmpeg.js`) build their command lines on it. Every link follows `--`, so it can never be read as an option.
+- `LinkFetcher` (`link-fetcher.js`) fetches direct links with Node's `fetch`.
+- The service gets the current `LibraryEditor` from the router's context each time it adds a file, so an addition after a refresh lands in the new library, and adds through `watcher.writeFiles` (§5.3).
+
+**Lookup** (`probe(text, { playlist })`). Only `http:` and `https:` links are accepted.
+1. Unless `playlist` is set, the server sends a `GET` and drops it once the headers arrive. A successful `audio/*` or `video/*` response is a **direct file**: `{ kind: 'file', url, name, size, contentType }`.
+   - The name comes from `Content-Disposition` (the encoded `filename*` first), else the last part of the final URL's path, else `download`. `audio/mpeg` and `audio/ogg` add `.mp3` or `.ogg` to a name without an extension.
+   - The size is `Content-Length`, or `null` when it is missing or the response is compressed, since then it counts the compressed bytes.
+2. Anything else goes to `yt-dlp -J --flat-playlist --playlist-end 500 -f bestaudio/best --no-playlist -- <url>` (`--yes-playlist` when `playlist` is set). `toProbe` reduces its JSON:
+   - A video becomes `{ kind: 'video', url, id, title, duration, size, extractor, chapters: [{ title, start, end }], playlistAvailable }`. The page URL is yt-dlp's `webpage_url`, and the size is the chosen format's `filesize` or `filesize_approx`. A chapter without an end ends at the video's end. `playlistAvailable` is set when the link has both `v` and `list` in its query, as YouTube's `watch?v=…&list=…` does.
+   - A playlist, album or channel becomes `{ kind: 'playlist', url, id, title, entries: [{ id, title, duration, url, extractor }], truncated }`, with at most 500 entries (`MAX_ENTRIES`). Entries that are lists themselves, such as a channel's tabs, are left out. `truncated` comes from `playlist_count`, or from hitting the limit when it is missing.
+   - Live and upcoming streams are refused.
+   - A failed run reports yt-dlp's last `ERROR:` line without its prefix.
+3. The result is remembered under a random `probeId`, the newest 10 only, and the download refers to it.
+
+**Jobs.** At most one runs; starting another meanwhile is a `DownloadBusyError`. A job is JSON-safe: `{ id, title, target, targetTitle, state, items, current, added, failed }`.
+- `targetTitle` is "Sound effects" or the playlist's title.
+- `state` is `running`, then `done`, `failed` (when any item failed) or `cancelled`.
+- `items` has one entry per file it adds, `{ title, state, error }`. An item's state is `waiting`, `downloading`, `converting`, `done`, `failed` or `cancelled`. `current` is the index of the item being worked on.
+- What it downloads:
+  - a direct file or a whole video: one download, one item;
+  - chosen chapters: one download, then one item per chapter, in chapter order;
+  - chosen playlist entries: one download and one item each.
+- An item that fails is logged with its error and the rest carry on. Nothing is retried.
+- A finished job stays until it is dismissed, so its summary survives a page reload. Jobs live only in memory.
+
+**Each download** works in a folder of its own, `.soundboard-downloads/<job id>/<n>/`, on the same file system as the root, so the finished file can be renamed into place.
+- `yt-dlp -f bestaudio/best --no-playlist --newline --no-mtime -P <folder> -o '%(title)s [%(id)s].%(ext)s' -- <url>` saves it under yt-dlp's default name; the one file left in the folder, without `.part` and the like, is the result. A direct link is streamed there under its safe name (below), with a progress line per percent, or per megabyte without a size. It stops with an error when more bytes arrive than the lookup announced.
+- **Conversion.** An `.mp3` or `.ogg` file that isn't cut is kept as it is. Anything else goes through `ffmpeg -hide_banner -nostdin -y [-ss <start>] -i <file> [-t <length>] -map 0:a:0 -c:a libvorbis -q:a 5 <out>.ogg`: the first audio stream as Ogg Vorbis at about 160 kbps, and for a chapter only that part. Seeking before the input is fast, and re-encoding keeps the cut exact.
+- **Names** (`file-names.js`). A converted file keeps its name with `.ogg` instead of its extension. A chapter is named as `yt-dlp --split-chapters` would: `<title> - 003 <chapter title> [<id>].ogg`. A direct file's name has the characters `/ \ : * ? " < > |` and control characters removed and its leading dots and spaces stripped, since a leading dot would hide it (§2.1), and its stem is cut to 120 characters. `LibraryEditor` adds ` (2)` when a name is taken (§5.1).
+- **Adding.** The title is the name without extension and id tag (§2.4), and `source` is set as in §2.3. A `newPlaylist` job creates its playlist with the first file that finishes and adds the rest to it. Every addition is announced as `library.added`.
+- The job's folder is deleted when it ends, however it ends.
+
+**The log.** Each step starts with its command line, quoted as a shell would need it (`$ yt-dlp -f bestaudio/best …`), followed by everything the program prints. Then come lines of the service's own: `Added "Battle Theme" to Combat (Combat/Battle Theme [id].ogg)`, `Failed: …`, and finally `Finished: 6 added, 1 failed.` or `Cancelled.`. A transient line is replaced by the next one, as a terminal shows progress, so yt-dlp's and ffmpeg's progress updates in place. The job keeps the last 1000 lines (`MAX_LOG_LINES`). Lines are sent in batches at most every 250 ms (`download.log`), and the batch waiting is always sent before the next `download` message, so the page sees them in order.
+
+**Cancelling** aborts the running step: the program is killed, or the fetch is aborted. The items not finished are marked `cancelled`, and files already added stay. **Dismissing** a running job cancels it; dismissing a finished one forgets it (`download` with `job: null`).
 
 ---
 
@@ -368,7 +440,8 @@ UI layer (DOM)  ──commands──▶  Soundboard (logic facade)  ──▶  A
   - a `Clock` (`now`, `setTimeout`, `clearTimeout`, `setInterval`, `clearInterval`); `now()` is a monotonic time in milliseconds, which the voice monitor (§6.5) uses to follow fades;
   - a `BackendApi` (`fetchLibrary()`, `fetchSettings()`, `saveVolumes(volumes, { keepalive })`, `saveSoundOptions(soundId, { title, gain, startAt, endAt, fadeIn, fadeOut }, { keepalive })`, `savePlaylistOptions(playlistId, { title, gain, crossfade, fadeIn, fadeOut, order, trackLooping, stopMode }, { keepalive })`, `saveTrackOptions(trackId, { title, gain, startAt, endAt }, { keepalive })`);
   - a `WaveformDecoder` (§6.6), and the `BackendApi` methods `fetchMissingWaveforms()`, `fetchWaveform(id)` and `saveWaveform(id, peaks)`;
-  - for external changes (§6.7), the `BackendApi` methods `checkExternalChanges() → Promise<boolean>` and `refresh() → Promise<RefreshResult>`, and optionally `ServerEvents` (`connect(onMessage) → disconnect`), the server's pushed `{ externalChanges }` messages. `api/server-events.js` implements it with `EventSource` on `/api/events`, which reconnects by itself; the server sends its current state on every connection;
+  - for external changes (§6.7), the `BackendApi` methods `checkExternalChanges() → Promise<boolean>` and `refresh() → Promise<RefreshResult>`, and optionally `ServerEvents` (`connect(onMessage) → disconnect`), the server's pushed messages (§5.2). `api/server-events.js` implements it with `EventSource` on `/api/events`, which reconnects by itself; the server sends its current state on every connection;
+  - for downloads (§6.8), the `BackendApi` methods `fetchDownload()` (the tools and the job with its log), `probeLink(url, { playlist })`, `startDownload(request) → Promise<DownloadJob>` and `dismissDownload()`. The two that can fail because of the user's link reject with the server's message alone, ready to show;
   - a `Logger` (`warn`, `error`);
   - optionally a `random` function for the random playback orders (§8.1), `Math.random` unless tests pass a seeded one.
 
@@ -423,6 +496,12 @@ stopWaveforms()                           // stop after the file being decoded; 
 checkExternalChanges()                    // ask the server for a quick check; the UI calls it when the window gets the focus back
 refreshLibrary() → Promise<void>          // save everything pending, then have the server rebuild its library
 
+// downloads (§6.8): not commands, because they are not playback
+probeLink(url, { playlist? }) → Promise<LinkProbe>  // rejects with a message for the user
+startDownload({ probeId, target, chapters?, entries? }) → Promise<void>  // rejects with a message for the user
+cancelDownload()                          // stop the running download; what it added stays
+dismissDownload()                         // cancel the running download, or forget a finished one
+
 // volume (value is the slider position, 0..1, clamped)
 setVolume(bus, value)                     // bus: 'master' | 'music' | 'sfx'
 
@@ -430,6 +509,8 @@ setVolume(bus, value)                     // bus: 'master' | 'music' | 'sfx'
 getLibrary(), getPlaylistSnapshot(id), getActivePlaylists() /* in start order */, getVolumes(), isSoundActive(id)
 getWaveformStatus()                       // { running, done, total, failed }
 hasExternalChanges()                      // whether the server reported files changed outside the app
+getDownloadTools()                        // { ytDlp, ffmpeg }: versions found by the server, null when missing
+getDownload()                             // { job, log } of the server's download, or null
 getWaveform(id) → Promise<Int8Array | null>  // min/max byte pairs of a sound or track, cached; null while there is none
 getVoices()                               // every voice the audio engine plays or recently played, oldest first (§6.5)
 
@@ -474,6 +555,10 @@ on(type, handler) → unsubscribe, off(type, handler)
 | `library.refreshing` | `{}`, when `refreshLibrary` starts |
 | `library.refreshed` | `{}`, once the server has rebuilt its library; the page should reload |
 | `library.refreshFailed` | `{ message, errors, restartNeeded }`: `errors` lists `{ path, message }` for invalid options files; `restartNeeded` is `true` when `.soundboard` is gone |
+| `download.changed` | `{ job, logReset }`: the server's download changed (§6.8); `job` is `null` once dismissed. With `logReset`, read the whole log again with `getDownload()`; otherwise `download.log` brings what is new. |
+| `download.log` | `{ lines, replaceLast }`: new log lines; with `replaceLast`, the first replaces the last line |
+| `sound.added` | `{ sound }`, a sound a download added |
+| `playlist.added` | `{ playlist }`, a playlist a download created. Tracks added to an existing playlist are announced as `playlist.changed`, as renames are. |
 
 ### 6.3 AudioEngine port
 
@@ -569,11 +654,23 @@ A created voice is wrapped in a `MonitoredVoice` that forwards its calls and rec
 
 ### 6.7 External changes
 
-The page never changes its library while it runs. When files change outside the app, it only learns that they did, and the user decides when to load them, by a full reload.
+The page changes its library while it runs only for the app's own downloads, which only ever add (§6.8). When files change outside the app, it only learns that they did, and the user decides when to load them, by a full reload.
 
 - **Learning about changes.** Once the library has loaded, the facade connects to `ServerEvents` and keeps `hasExternalChanges()` in step with the server's messages, announcing every change of it as `library.externalChanges`. `checkExternalChanges()` asks the server for a quick check (§5.3) and announces its answer the same way. It does nothing before the library has loaded, or while a check is still running; a failed check is logged as a warning.
 - **Refreshing.** `refreshLibrary()` emits `library.refreshing`, then waits for `SettingsSync.settle()` and `OptionsSync.settleAll()` (§6.4), so the rebuild reads the user's latest edits, and calls `BackendApi.refresh()`. It ends with `library.refreshed`, or with `library.refreshFailed` for invalid options files (with their problems), a missing `.soundboard` (`restartNeeded`) or a request that failed (logged as an error). A call while one runs is ignored.
 - **Reloading.** Logic never touches `window`, so the UI reloads the page on `library.refreshed` (§9.1). The new page starts from the splash like any other (§9.0) and loads the new library; nothing about playback survives, which is how every reload already behaves.
+
+### 6.8 Downloads
+
+The facade follows the server's download (§5.4) and takes in what it adds, so playback goes on undisturbed.
+
+- **Loading.** `start()` fetches the download state together with the library and settings. If that request fails, it logs a warning and carries on without it: both tools count as missing.
+- **The job.** `download` messages from `ServerEvents` replace the job. The log starts afresh whenever the job's id changes, and is replaced when a message brings `log`, as on every new connection. Both are announced as `download.changed` with `logReset`. `download.log` messages append lines, replacing the last one first with `replaceLast`, and keep the last 1000. `startDownload` takes the job the server answers with, unless the event stream announced it first, in which case its log has already begun.
+- **Additions.** Every tab hears every `library.added`, and again after reconnecting, so anything already known is skipped.
+  - A new sound goes into `LibraryModel` (sorted by title, checked with `canPlay`) and is announced as `sound.added`.
+  - A new playlist gets its own `PlaylistPlayer` and is announced as `playlist.added`.
+  - For a playlist the page has, `LibraryModel.addTracks` takes only the tracks it doesn't know, in path order, and keeps everything else as it is here, so a change not saved yet isn't undone. Then `PlaylistPlayer.addTracks` takes the new list (§8.1) and `playlist.changed` follows.
+  - Waveform generation is started again, so the new files get theirs (§6.6).
 
 ---
 
@@ -646,6 +743,7 @@ This is where the race-condition risk sits. The design rules:
   - **Forgetting.** Everything is forgotten when a track is chosen with `jumpTo` (which starts a fresh history), when the playlist stops by itself (no more tracks without playlist looping, or every track failing), and on `forget()` while idle. `forget()` only clears the resume point; the history stays, so the next play starts a fresh one anyway.
   - `setRules` with a different `stopMode` trims the resume point at once (`resetTrack` drops the position, `resetPlaylist` drops everything), so what the tile shows always matches the dialog. It never brings back what was dropped. A different order refills the history around the remembered track, as while playing.
   - Snapshots and `playlist.stateChanged` carry `resume` (§6.2) while idle.
+- **Added tracks.** `addTracks(playlist)` takes a copy with tracks added by a download (§6.8), in path order, so tracks already there may move. The current voice, the retiring ones and the resume point are given their tracks' new indices. The play history is refilled around the current track, as for a new order, so Shuffle and Random reach the new tracks too. The crossfade is planned again, since the next track may have changed. The current track keeps playing, and while active, or remembering a resume point, `playlist.stateChanged` is sent again with the new index.
 - `setPlaylist(playlist)` takes a changed copy of the playlist with the same tracks in the same order (after a rename, new points or a new track gain), applies the tracks' gains to the current voice and the retiring ones at once, and, while active, sends `playlist.stateChanged` again so the current track's new title shows.
 - Volume: each voice starts at `playlist gain × track gain`. `setGain(gain)` applies a new playlist gain to the current voice and to the retiring ones, each with its own track's gain. Fades use a separate gain stage (§6.3), so this never disturbs one.
 
@@ -654,6 +752,7 @@ This is where the race-condition risk sits. The design rules:
 - `next()` moves the cursor forward. Past the last entry it first extends the history by the order, unless `playlistLooping` is off; then there is nothing more and the playlist stops. `upcoming()` returns the entry `next()` would move to, extending in the same way, so it can be asked for any number of times without picking again.
 - `previous()` moves the cursor back, but never before the first entry (`canGoBack`). Going back and then forward replays the same tracks.
 - `setOrder(order)` switches the order and, once started, refills the history as `start(current)` would; the current track keeps playing. While idle, the new order is simply used at the next start.
+- `setTracks(trackCount, remap)` follows tracks being added: entries move to their tracks' new indices, and once started the history is refilled as `start(current)` would.
 - It keeps at most `MAX_HISTORY` = 2¹⁶ entries. Beyond that it drops the oldest entries, but only ones before the cursor, so the current track and the round ahead are never cut.
 
 **Orders** (`logic/order-strategies.js`). Each fills the history with `start(trackCount, random, at)` → `{ entries, cursor }` and `extend(trackCount, random, last)` → entries to append. They are pure apart from the injected `random`, so tests use a seeded generator.
@@ -759,10 +858,11 @@ Browsers only allow audio to start inside a user gesture, so the app starts behi
 ### 9.1 Layout
 
 - The page is a full-height column: header (title, the external changes button while there are any, the waveform progress while there is any, volume controls and the debug button, §9.8), a scrolling main area, then the footer.
-- The main area has a "Playlists" section above a "Sound Effects" section; empty sections are left out. With neither, it says no playlists or sounds were found.
+- The main area has a "Playlists" section above a "Sound Effects" section. Both are always shown, even empty, because their titles carry the add buttons: **+ Add playlist** in blue and **+ Add sound** in amber (`tileGrid`, §9.9). With no playlists and no sounds, a line above them says none were found in this folder, until a download adds one.
+- Tiles for sounds and playlists added by a download (`sound.added`, `playlist.added`) appear at once in their sorted place.
 - Tiles are `<button>`s in a grid of columns at least 10rem (160 px) wide, with titles clamped to 3 lines. The full title shows as a tooltip.
 - Playlist tiles have a blue accent and sound tiles an amber one.
-- A playlist tile shows its track count when idle and "Loading…", "Playing" or "Paused" when active, and is highlighted while active.
+- A playlist tile shows its track count when idle, following tracks added by a download, and "Loading…", "Playing" or "Paused" when active, and is highlighted while active.
 - A stopped playlist that remembers where it will resume (§8.1) keeps its normal idle look, except that its left border is dashed and its status, in the playlist accent, reads "Resumes at 1:23" (`pause`) or "Resumes track 3" (`resetTrack`). The tooltip names the track ("Combat: resumes "Boss Theme" at 1:23" or "… from its start").
 - A **sound with live instances** is highlighted and shows a small ■ stop button in its top-right corner. That button is a sibling of the tile, not inside it, so pressing it calls `stopSound` and never also plays the sound.
 - Tiles that can't play (an unsupported format, or a playlist with no playable track) are disabled, with a tooltip explaining why.
@@ -811,6 +911,7 @@ One shared `Overlay` shows the context menus and the track list popover; opening
 | Stop | `stopPlaylist('default')`; enabled only while active |
 | Stop (Instant) | `stopPlaylist('instant')`; enabled only while active |
 | Reset | `forgetPlaylist`; enabled only while the playlist is idle and remembers where it will resume (§8.1) |
+| Add tracks… | opens the add dialog for this playlist (§9.9) |
 | Customize | opens the playlist's Customize dialog (§9.7) |
 
 "Active" means `loading`, `playing` or `paused`. The plain items follow the playlist's fades and crossfade; with those off, each behaves like its "(Instant)" twin, except for cutting voices already fading out. Separators divide the groups.
@@ -897,7 +998,7 @@ Below the cards: Play / Stop (`playSound`, or stopping all instances; it follows
   - **Playback order** is a radio group, sent with `customizePlaylist({ order })` and following `playlist.changed`: **Ordered** "First to last, as listed.", **Random** "Any track next, never the same one twice in a row." and **Shuffle** "Every track once in a shuffled order, then shuffled again." Below the radio buttons, after a divider, the checkbox **Repeat the current track** "It plays again until you move to another track." is sent with `customizePlaylist({ trackLooping })`.
   - **When stopped** is a radio group, sent with `customizePlaylist({ stopMode })` and following `playlist.changed`: **Pause** "Playing again continues where it stopped.", **Reset track** "Playing again starts the same track from its beginning." and **Reset playlist** "Playing again starts afresh, as if for the first time."
 - **"Tracks (N)" tab:** the track accordion (`ui/track-accordion.js`).
-  - The list runs edge to edge between the tab bar and the Play row, with lines between the rows and no outer border.
+  - The list runs edge to edge between the tab bar and the Play row, with lines between the rows and no outer border. Below it, a blue **+ Add tracks** button opens the add dialog for this playlist (§9.9), in place of this dialog.
   - One row per track: a play / stop button, then a button with `aria-expanded` showing number and title, and a small blue "Cropped" bubble when the track's points differ from the whole file (no duration is shown). Clicking the button area opens the row and closes any other; clicking the open one closes it. Hovering anywhere on the header tints the whole row blue (`bg-music/15`), and the open row's header has a stronger tint (`bg-music/20`) and a blue title.
   - **Test playback** (`ui/track-playback.js` holds the pure rules, with unit tests). Only the playlist's current track is playing or paused (`trackPlayback`), and a loading track counts as playing. The row's button is a sibling of the toggle, so pressing it doesn't open or close the row. It does what `trackAction` says: on a track that isn't current, `jumpToTrack(…, { transition: 'instant' })`; on the playing track, `stopPlaylist(…, { transition: 'instant' })`, which follows the stop mode (§8.1); on a paused track, `resumePlaylist`. Buttons follow `playlist.stateChanged`, so a track started from the footer shows as playing here too. All tracks are assumed playable.
   - A track whose gain differs from 0.0 dB (as `formatDb` rounds it) shows a small bubble in its header with the change: `+3.5 dB` in orange (`bg-boost/20`) when louder, `−6.0 dB` in cyan when quieter. It follows `playlist.changed` and is hidden at 0.0 dB.
@@ -942,6 +1043,32 @@ Below the cards: Play / Stop (`playSound`, or stopping all instances; it follows
 - **Refreshing.** Rows are created once and updated in place, rewriting text only when it changed. The panel refreshes on `voices.changed` and every 250 ms while open, because volumes move without any event. Nothing runs while it is closed; the monitor keeps recording regardless (§6.5).
 - No position or duration columns.
 
+### 9.9 Add dialog
+
+`ui/add-dialog.js`, opened in the shared `Dialog` (§9.7) by **+ Add sound** ("Add sounds", amber), **+ Add playlist** ("Add a playlist", blue) and **Add tracks** from the playlist menu or the Tracks tab ("Add tracks to Combat", blue).
+
+- **Tools missing.** When `getDownloadTools()` reports a missing tool, every Add button opens a small "Downloads are not available" dialog instead: "Downloads need yt-dlp and ffmpeg. ffmpeg was not found when the app started. Install it, then restart the app."
+- **Link.** A filled field "Link", focused on open, and a **Look up** button; Enter looks up too. A hint below says what can be pasted. While the lookup runs, the button is disabled and reads "Looking up…". A failed lookup shows the server's message in red under the field.
+- **Choices**, in cards below, depending on what was found:
+  - **File:** its name, type and size, or "Size unknown".
+  - **Video:** its title, duration and size, or "Size unknown". When the link also names a playlist, a "Show the whole playlist instead" link looks it up again as the playlist.
+  - **Chapters**, for a video that has them: a radio group, **One file** "The whole video as one file." or **Split into chapters** "One file per chapter (N).". Splitting shows a checklist of the chapters, with their durations.
+  - **Playlist:** its title and number of entries, and a checklist of the entries, with "Only the first 500 entries are listed." when it was cut short.
+  - Checklists start with everything ticked and have **Select all**, **Select none** and "5 of 12 chosen". They scroll within 16 rem.
+  - **New playlist**, for **+ Add playlist**: a "Playlist title" field filled in with the file's name (without extension), the video's or the playlist's title.
+  - For sounds, each chosen chapter or entry becomes its own sound.
+- **Download.** The button in the dialog's accent reads "Download 1.4 GB" when the size is known, and is disabled while no chapter or entry is chosen or the new playlist's title is empty. A file or video over 500 MB (`LARGE_DOWNLOAD_BYTES`) gets the yellow warning "This is a large file." beside it, and one of unknown size "The size of this file is unknown.", so a huge file is never fetched by accident. Playlists show no size. Clicking it calls `startDownload`, and the dialog closes once the server has started; an error shows under the link field.
+
+### 9.10 Download dialog
+
+`ui/download-dialog.js` shows the server's download while one exists, in every open tab and again after a reload, since it follows `getDownload()` and `download.changed`.
+
+- **Locked, but not the footer.** The board's header and main area sit in a `relative` box, and the dialog is an `absolute inset-0 z-20` layer over that box only, with a dark backdrop. The board can't be used until the download ends, while the player bars below stay usable, so music can still be paused, skipped or stopped. It has no × button, and neither Esc nor the backdrop closes it.
+- **Top:** "Downloading <title>" and "Adding sound effects" or "Adding to <playlist>", then the current item: "Downloading · Item 3 of 7: <title>".
+- **Log:** a monospace pane, 20 rem tall, of one row per line, so a progress line is rewritten in place. New lines are only ever appended (§9.6), keeping the last 1000. It follows new lines while scrolled to the bottom, and stays put once the user scrolls up. `logReset` rebuilds it from `getDownload()`.
+- **Cancel** asks "Cancel the download? Files already added stay." with the browser's confirm box, then calls `cancelDownload()`.
+- **When it ends,** the heading says "Download finished", "Download finished with errors" or "Download cancelled". A summary above the log says "6 added, 1 failed." (", the rest cancelled" when cancelled) and lists each failed item with its error in red. Cancel gives way to **Close**, which calls `dismissDownload()` and closes it in every tab.
+
 ---
 
 ## 10. Project structure
@@ -956,8 +1083,11 @@ src/
 	library/    bootstrap-service.js  scanner.js  classify.js  sort.js  validate.js  errors.js
 	            options-store.js  settings-store.js  library.js  library-editor.js  durations.js  waveform-store.js
 	            change-watcher.js  tree-snapshot.js
+	downloads/  download-service.js  probe.js  yt-dlp.js  ffmpeg.js  link-fetcher.js  process-runner.js  line-splitter.js
+	            tools.js  file-names.js  workspace.js  errors.js
 	metadata/   index.js  id3.js  ogg.js  mpeg.js  binary-reader.js
 	http/       server.js  router.js  responses.js  static-files.js  media.js  range.js  mime.js  request-log.js  events.js
+	            library-json.js
 public/
 	index.html  favicon.svg
 	vendor/     tailwindcss-browser-<version>.js  tailwindcss-browser.LICENSE   (excluded from lint and type-checking)
@@ -975,11 +1105,11 @@ public/
 		            playlist-tile.js  sound-tile.js  player-dock.js  player-bar.js  volume-controls.js
 		            dialog.js  customize-parts.js  filled-field.js  sound-editor.js  playlist-editor.js  track-accordion.js
 		            gain-control.js  gain-scale.js  debug-view.js  waveform-indicator.js  waveform-draw.js  waveform-canvas.js
-		            seconds-control.js  seconds-scale.js  range-control.js  range-scale.js
+		            seconds-control.js  seconds-scale.js  range-control.js  range-scale.js  add-dialog.js  download-dialog.js
 test/
-	backend/    cli/  http/  library/  metadata/
+	backend/    cli/  downloads/  http/  library/  metadata/
 	frontend/   logic tests, backend-api.test.js, ui/ (pure UI helpers)
-	helpers/    fake-audio-engine.js  fake-clock.js  fake-backend-api.js  fake-prompter.js  fake-reporter.js
+	helpers/    fake-audio-engine.js  fake-clock.js  fake-backend-api.js  fake-prompter.js  fake-reporter.js  fake-process-runner.js
 	            tmp-tree.js  tag-builders.js  http-client.js  seeded-random.js
 test_fixtures/
 	example_soundboard/             real MP3/OGG library: 4 playlists, 4 sounds, with and without title tags; "Music Order"
@@ -1024,6 +1154,7 @@ The streaming design keeps resource use well within what this machine can handle
 
 **Memory (expected total under about 200 MB for the browser tab, a few tens of MB for Node):**
 - Node holds only the file index and settings. Files are streamed from disk in chunks.
+- A download needs disk space in the root: the downloaded file, plus its converted copy while `ffmpeg` runs. Both go to disk, never into memory, and the work folder is emptied after each job (§5.4).
 - Each streamed track (a media element) buffers only a few MB ahead. With, say, 6 playlists, the 24 streamed-sound cap and a few retiring voices, that is well under 200 MB in the worst case.
 - Decoded sound effects are capped at 64 MB (§7).
 - Waveform generation decodes one file at a time at 8 kHz (about 10 MB for a 5-minute stereo track) and drops it before the next (§6.6). Stored waveforms are 2 KB each.
