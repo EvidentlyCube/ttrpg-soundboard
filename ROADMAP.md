@@ -31,58 +31,72 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ### Where files came from
 
-**Goal.** Files that `yt-dlp` named (`Title [dQw4w9WgXcQ].mp3`) get a YouTube `source` recorded, as downloads already do. A new **Metadata** item in the sound and playlist context menus opens a read-only dialog. For a sound, it shows everything known about its file. For a playlist, it shows the same for every track.
+**Goal.** Every sound and track records where it came from. Downloads already do. Files named by `yt-dlp` (`Title [dQw4w9WgXcQ].mp3`) get their YouTube source from the file name, files with a link in their tags get it from there, and everything else is marked as having no known origin. A new **Metadata** item in the sound and playlist context menus opens a read-only dialog that shows the source of a sound, or of every track in a playlist, with clickable links. Editing the source comes later, so its shape and the dialog are kept ready for that.
 
 **Design changes.**
 
-- **§2.3 Sound or track options.** `source` can also come from the file name:
+- **§2.3 Sound or track options.** `source` gets an `origin`, saying how it was learned:
   ```json
-  "source": { "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "extractor": "Youtube", "videoId": "dQw4w9WgXcQ", "fromFileName": true }
+  "source": { "origin": "fileName", "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "extractor": "Youtube", "videoId": "dQw4w9WgXcQ" }
   ```
-  `fromFileName` marks it as a guess, so the dialog can say so. It passes validation already, since unknown keys inside `source` are kept, but it gets documented and checked as `true` or missing.
-- **§3.1–3.3 Bootstrap**, a new step after the options files are written. Every sound and track whose options file has no `source` is checked for an id in its file name (A, B). When one is found, `source` is merged into the options file, so it is written once and never guessed again. The reporter counts these writes with the other generated options. Refreshes (§3.6) run bootstrap, so they do the same.
-- **§4 Metadata extraction.** A new `readTags(filePath) → Promise<{ title, artist, album, year }>` (each `string | null`) reads more than the title (E):
-  - ID3v2 `TIT2`/`TPE1`/`TALB`/`TDRC` (`TYER` in v2.3; `TT2`/`TP1`/`TAL`/`TYE` in v2.2), with ID3v1 as the fallback for each.
-  - Vorbis `TITLE`/`ARTIST`/`ALBUM`/`DATE`.
-  - The same bounded reads and limits as today. `readTitle` becomes `readTags(...).title`.
-- **§5.2 HTTP API.** `GET /api/metadata?sound=<id>` and `GET /api/metadata?playlist=<id>` answer `{ files: [FileMetadata] }`, with one file for a sound and every track in path order for a playlist. `404` for an unknown id, `400` without exactly one of the two. They are read when asked: the tags from the file, the size and date from the disk. `FileMetadata` is:
-  ```json
-  { "id": "Combat/Battle [dQw4w9WgXcQ].ogg", "title": "Battle", "format": "ogg", "size": 4194304, "modified": "2026-10-24T16:41:00.000Z",
-    "duration": 213.47, "sha1": "3f78…", "tags": { "title": "Battle Theme", "artist": "…", "album": null, "year": "2019" },
-    "source": { "url": "…", "extractor": "Youtube", "videoId": "dQw4w9WgXcQ", "playlistId": "PL…", "chapter": 3, "fromFileName": false } }
-  ```
-  `sha1` comes from `measuredFrom` (null when there is none). `source` is `null` when there is none.
-- **§6.1 facade.** A new `loadMetadata({ kind: 'sound' | 'playlist', id }) → Promise<FileMetadata[]>`, plus the `BackendApi` method `fetchMetadata`. Not a command.
+  - `"download"` is written by downloads from now on. A `source` without `origin`, as older downloads have, counts as `"download"` too.
+  - `"fileName"` marks an id found in the file name, and `"tags"` a link found in the file's tags.
+  - `"unknown"` marks a file whose origin couldn't be found (G). A source like that is just `{ "origin": "unknown" }`. Every file then has a `source` after its first start, so none is examined twice.
+  - `"edited"` is reserved for the future editor.
+  - Validation: `origin` must be one of these five strings. All the other keys stay optional (`url` included), as today.
+  - New downloads of a chapter also store `chapterStart` (seconds, 3 decimals), so the chapter can be linked (H).
+- **§3.1–3.3 Bootstrap**, a new step after the options files are written. Every sound and track whose options file has no `source` gets one (A), merged into the file:
+  1. **The file name** (B). The last `[…]` right before the extension, if it holds exactly 11 characters of `A–Z a–z 0–9 _ -`, is a YouTube video id. The source becomes `{ origin: "fileName", url: "https://www.youtube.com/watch?v=<id>", extractor: "Youtube", videoId }`. Nothing is checked online (C).
+  2. **Otherwise, the tags** (I). The first `http:` or `https:` link in the tags where `yt-dlp --embed-metadata` puts the page link becomes `{ origin: "tags", url }`, with `extractor` and `videoId` added when it is a YouTube link. Those tags are ID3v2 `WXXX`, `TXXX` "purl", `WOAS` and `COMM`, and Vorbis `PURL`, `COMMENT` and `DESCRIPTION`.
+  3. **Otherwise** it is `{ origin: "unknown" }`.
+  - **The title loses the id** (D). When the id came from the file name, ` [<id>]` is removed from the title. A title that is still exactly the file name also loses its extension, as downloads name their files (§2.4). So `Battle [dQw4w9WgXcQ].ogg` becomes "Battle". A title the user changed keeps everything except the ` [<id>]` part.
+  - The reporter counts these writes with the other generated options. Refreshes (§3.6) run bootstrap, so they do the same for files that arrived since.
+- **§4 Metadata extraction.** A new `readSourceLink(filePath) → Promise<string | null>` reads the tags above with the same bounded reads and limits as the title.
+- **§5.1, §5.2 library.** `AudioFile` and the `/api/library` format gain `source`, the stored object with `origin` filled in, or `null` (only possible before bootstrap has written it). The library being the single place is what a later editor needs.
+- **§6.1 facade.** Nothing new: the dialog reads `source` from `getLibrary()`. `LibraryModel` keeps it with the rest of each file, and additions bring it along.
 - **§9.3 context menus.** **Metadata** comes after Customize in both menus.
-- **New §9.13 Metadata dialog** (`ui/metadata-dialog.js`), read-only, titled `Metadata: "<title>"`.
-  - **A sound** shows one card of label/value rows:
-    - File (the path), Format, Size, Duration, Modified and SHA-1;
-    - then **Tags** (Title, Artist, Album, Year), each left out when missing;
-    - then **Source**: Link, Site (the extractor), Video ID, Playlist (linked as `https://www.youtube.com/playlist?list=<id>` for YouTube), and Chapter. When the source came from the file name, a muted note says "Found in the file name".
-  - A sound without a source says "No source recorded".
-  - Links open in a new tab (`target="_blank"`, `rel="noopener noreferrer"`). Long values end in "…", with the full value as a tooltip. All text can be selected and copied.
-  - **A playlist** starts with a summary line: folder, track count, total size and total duration. Then comes one card per track in playlist order, numbered as in the Tracks tab, with the same rows (F).
-  - "Loading…" shows while the request runs. A failure shows in red.
-- **TESTING.md.** Manual checks for both dialogs, the links, and a file whose `source` was guessed.
+- **New §9.13 Metadata dialog** (`ui/metadata-dialog.js`), read-only, titled `Metadata: "<title>"` (E).
+  - **A sound** shows one raised card (`card`, §9.7) with label/value rows:
+    - **File:** the path inside the root.
+    - **Origin:** "Downloaded", "Found in the file name", "Found in the file's tags" or "Unknown".
+    - **Link:** the `url`.
+    - **Site:** the `extractor`.
+    - **Video:** the `videoId`.
+    - **Playlist:** the `playlistId`.
+    - **Chapter:** the `chapter` number.
+  - **No value** shows an italic "n/a" at lower opacity (`italic text-muted/70`).
+  - **Links** open in a new tab (`target="_blank"`, `rel="noopener noreferrer"`):
+    - **Link** links to its `url`.
+    - **For YouTube only**, links are rebuilt from the ids:
+      - **Video:** `https://www.youtube.com/watch?v=<videoId>`.
+      - **Playlist:** `https://www.youtube.com/playlist?list=<playlistId>`, with a second link, "in playlist", to `watch?v=<videoId>&list=<playlistId>`.
+      - **Chapter:** `watch?v=<videoId>&t=<whole seconds>s` when `chapterStart` is known. Without it, the chapter number is plain text (H).
+  - Long values end in "…", with the full value as a tooltip. Everything can be selected and copied.
+  - The rows are built from a list of field descriptions (label, key, how to link), so an editor can later turn each into a field.
+  - **A playlist** shows one card per track in playlist order, in one scrolling list (F). Each card's title is the track number and title, and its rows are as above.
+- **TESTING.md.** Manual checks for both dialogs, each origin, the rebuilt links and "n/a".
+
+**Answers so far.**
+
+- **A. Every file without a `source` gets one at start or refresh**, so the check runs once per file: found in the file name, found in the tags, or `"unknown"`.
+- **B. The `yt-dlp` convention.** Only the last `[…]` before the extension, 11 characters. False positives are accepted.
+- **C. Nothing is checked online.**
+- **D. Titles drop the id.**
+- **E. The dialog shows the source and its fields**: link, site, video, playlist and chapter, plus the origin and the file's path.
+- **F. One scrolling list**, a raised card per track.
 
 **Open questions.**
 
-- **A. When is the file name checked?** *Recommended:* at every start and refresh, but only for files whose options file has no `source` yet. Your libraries were already bootstrapped, so every file has an options file. Checking only when an options file is first created would never reach them. Once found, the `source` is stored, so each file is checked until it has one and never again.
-- **B. Which brackets count as an id?** *Recommended:* only the last `[…]` right before the extension, holding exactly 11 characters of `A–Z a–z 0–9 _ -`, as `yt-dlp` names files. This covers chapter files too (`Title - 003 Intro [id].ogg`). It keeps a `[Remastered]` elsewhere in the name from counting. An 11-character word in that last spot, such as `[Instrumentl]`, would still be taken for an id; `fromFileName` lets the dialog flag it as a guess.
-- **C. Is the id only stored, or checked too?** *Recommended:* only stored, with the watch link built from it. Checking it would mean going online at every start for every such file.
-- **D. Does the title change?** Files that took their file name as their title still show `Battle [dQw4w9WgXcQ].ogg` on the tile. *Recommended:* no. Titles stay as the user left them, and the Customize dialog can rename them. The other option is to clean titles that still equal the file name exactly, as downloads do (§2.4). That would quietly rename many tiles at the next start.
-- **E. Which metadata does the dialog list?** *Recommended:*
-  - the file facts the app already knows: path, format, size, duration, modified time and SHA-1;
-  - the source;
-  - four embedded tags read when the dialog opens: title, artist, album and year.
-  Reading more tags, such as comments or cover art, could come later. Gain, points and fades stay in the Customize dialog.
-- **F. A playlist with many tracks.** *Recommended:* every track's card is shown, open, in one scrolling list, so the dialog can be skimmed and searched with the browser's find. The other option is an accordion like the Tracks tab, with one track open at a time.
+- **G. The name for "no known origin".** *Recommended:* `"unknown"`, which says what we know without guessing how the file arrived. `"manual"` would also fit the files added by hand, but the future editor needs a word for "typed in by the user" (`"edited"`), and the two would read alike.
+- **H. Chapter links.** A chapter can only be linked with its start time, and the options files store just its number. *Recommended:* downloads store `chapterStart` from now on, and older chapter files show the number unlinked. The other option is to look the start up online when the dialog opens, which C rules out.
+- **I. Reading links from tags.** *Recommended:* only the tags named above, where `yt-dlp --embed-metadata` writes the page link, taking the first `http(s)` link. A YouTube link also fills in `extractor` and `videoId`. Any other site keeps only the `url`.
+- **J. Downloaded files without `origin`.** *Recommended:* treat them as `"download"` when read, without rewriting them, so no file changes just for that.
 
 **Plan.** In the lean flow: code first, with the owner checking the UI, then tests and DESIGN.md in one sweep.
-1. **Finding ids in file names**: the pure matcher and link builder, and bootstrap storing `source` (with `fromFileName` validated).
-2. **`readTags`** for ID3v2, ID3v1 and Vorbis comments, with `readTitle` built on it.
-3. **`GET /api/metadata`** for a sound or a playlist.
-4. **Facade**: `loadMetadata` and `BackendApi.fetchMetadata`.
+1. **Source rules** (pure): finding the id in a file name, cleaning the title, building YouTube links, and validating `origin`. Downloads write `origin` and `chapterStart`.
+2. **`readSourceLink`** for ID3v2 and Vorbis comments.
+3. **Bootstrap** gives every file without a `source` one, and renames as in D.
+4. **Library and API**: `source` on `AudioFile`, in `/api/library` and in `LibraryModel`.
 5. **UI**: the two menu items and the metadata dialog for a sound and for a playlist.
 6. **Tests** for steps 1–4, **TESTING.md** checks, then **DESIGN.md** (its own commit), and removing this proposal and the backlog entry "Where files came from".
 
