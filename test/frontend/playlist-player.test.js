@@ -962,6 +962,36 @@ describe('PlaylistPlayer', () => {
 		});
 	});
 
+	describe('live level', () => {
+		it('plays each track at the playlist gain times the track gain times the squared level', () => {
+			const { player, engine } = setup({ gains: { gain: 0.5, trackGains: [2, 1] } });
+			player.setLevel(0.5);
+			player.play();
+			assert.equal(engine.voices[0].gain, 0.25);
+		});
+
+		it('reaches the current voice and voices fading out without touching their fades', () => {
+			const { player, engine, advance } = setup({ rules: { crossfade: 2 }, gains: { trackGains: [1, 3] } });
+			player.play();
+			advance(1);
+			player.next();
+			player.setLevel(0.5);
+			const [old, fresh] = engine.voices;
+			assert.deepEqual([old.gain, fresh.gain], [0.25, 0.75]);
+			assert.deepEqual(old.gainRamps, [[0, 2]]);
+		});
+
+		it('stays across stops and track changes, and is kept when the gain changes', () => {
+			const { player, engine } = setup();
+			player.setLevel(0.5);
+			player.play();
+			player.next('instant');
+			player.setGain(2);
+			assert.equal(player.level, 0.5);
+			assert.equal(engine.voices.at(-1)?.gain, 0.5);
+		});
+	});
+
 	describe('crossfade', () => {
 		/**
 		 * Plays the first track until it has loaded, at clock time 0.1 s.

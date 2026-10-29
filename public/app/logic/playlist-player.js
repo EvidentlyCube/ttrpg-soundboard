@@ -2,6 +2,7 @@ import { InvalidCommandError } from './errors.js';
 import { PlayHistory } from './play-history.js';
 import { planTrack, resolvePlaybackRules } from './playback-rules.js';
 import { resolveTransition } from './transitions.js';
+import { sliderToGain } from './volume.js';
 
 /** @typedef {import('./ports.js').AudioEngine} AudioEngine */
 /** @typedef {import('./ports.js').AudioFileJson} AudioFileJson */
@@ -74,6 +75,8 @@ export class PlaylistPlayer {
 	#isPlayable;
 	/** The playlist's own volume; each voice plays at this times its track's gain (DESIGN.md §6.4). */
 	#gain;
+	/** The temporary live level as a slider position; never saved, and it outlives stops (DESIGN.md §6.4). */
+	#level = 1;
 	/** @type {PlaylistState} */
 	#state = 'idle';
 	#generation = 0;
@@ -307,6 +310,20 @@ export class PlaylistPlayer {
 	setGain(gain) {
 		this.#gain = gain;
 		this.#applyGains();
+	}
+
+	/**
+	 * Sets the temporary live level for every voice the playlist owns, like `setGain`.
+	 * @param {number} level slider position, 0..1
+	 */
+	setLevel(level) {
+		this.#level = level;
+		this.#applyGains();
+	}
+
+	/** @returns {number} slider position, 0..1 */
+	get level() {
+		return this.#level;
 	}
 
 	#applyGains() {
@@ -706,7 +723,7 @@ export class PlaylistPlayer {
 
 	/** @param {number} trackIndex */
 	#voiceGain(trackIndex) {
-		return this.#gain * this.#playlist.tracks[trackIndex].gain;
+		return this.#gain * this.#playlist.tracks[trackIndex].gain * sliderToGain(this.#level);
 	}
 
 	/** @param {CurrentVoice} current */

@@ -15,7 +15,7 @@ const NO_CLIP = { startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0 };
 const EVENT_TYPES = /** @type {const} */ ([
 	'app.ready', 'app.startFailed', 'audio.suspended', 'audio.resumed', 'panic.changed',
 	'sound.activeChanged', 'sound.error',
-	'playlist.stateChanged', 'playlist.progress', 'playlist.error',
+	'playlist.stateChanged', 'playlist.progress', 'playlist.error', 'playlist.levelChanged',
 	'volume.changed',
 	'sound.changed', 'sound.saved', 'sound.saveFailed',
 	'playlist.changed', 'playlist.saved', 'playlist.saveFailed',
@@ -192,6 +192,60 @@ describe('Soundboard', () => {
 			assert.equal(soundboard.getPlaylistSnapshot('Combat').trackIndex, 1);
 			soundboard.stopPlaylist('Combat', { transition: 'instant' });
 			assert.equal(soundboard.getPlaylistSnapshot('Combat').state, 'idle');
+		});
+
+		describe('live level', () => {
+			it('starts at full, scales the playing voice and announces the change', async () => {
+				const { soundboard, engine, eventsOf } = await started();
+				assert.equal(soundboard.getPlaylistLevel('Combat'), 1);
+				soundboard.playPlaylist('Combat');
+				soundboard.setPlaylistLevel('Combat', 0.5);
+				assert.equal(engine.voices[0].gain, 0.25, 'the level is squared, like a header volume');
+				assert.equal(soundboard.getPlaylistLevel('Combat'), 0.5);
+				assert.deepEqual(eventsOf('playlist.levelChanged'), [{ type: 'playlist.levelChanged', playlistId: 'Combat', level: 0.5 }]);
+			});
+
+			it('multiplies with the saved gain', async () => {
+				const { soundboard, engine } = await started();
+				soundboard.playPlaylist('Combat');
+				soundboard.setPlaylistLevel('Combat', 0.5);
+				soundboard.customizePlaylist('Combat', { gain: 2 });
+				assert.equal(engine.voices[0].gain, 0.5);
+			});
+
+			it('is never saved', async () => {
+				const { soundboard, api, clock } = await started();
+				soundboard.setPlaylistLevel('Combat', 0.5);
+				soundboard.flushSettings();
+				clock.advance(1000);
+				assert.deepEqual([api.saves, api.soundSaves, api.playlistSaves, api.trackSaves], [[], [], [], []]);
+			});
+
+			it('survives a stop and applies to the next play', async () => {
+				const { soundboard, engine } = await started();
+				soundboard.setPlaylistLevel('Combat', 0.5);
+				soundboard.playPlaylist('Combat');
+				soundboard.stopPlaylist('Combat', { transition: 'instant' });
+				soundboard.playPlaylist('Combat');
+				assert.equal(engine.voices.at(-1)?.gain, 0.25);
+			});
+
+			it('clamps the level and says nothing when it does not change', async () => {
+				const { soundboard, eventsOf } = await started();
+				soundboard.setPlaylistLevel('Combat', 3);
+				assert.equal(soundboard.getPlaylistLevel('Combat'), 1);
+				assert.deepEqual(eventsOf('playlist.levelChanged'), []);
+				soundboard.setPlaylistLevel('Combat', -1);
+				assert.equal(soundboard.getPlaylistLevel('Combat'), 0);
+				assert.equal(eventsOf('playlist.levelChanged').length, 1);
+			});
+
+			it('rejects an unknown playlist and a level that is not a number', async () => {
+				const { soundboard } = await started();
+				assert.throws(() => soundboard.setPlaylistLevel('Nope', 0.5), InvalidCommandError);
+				assert.throws(() => soundboard.setPlaylistLevel('Combat', Number.NaN), InvalidCommandError);
+				assert.throws(() => soundboard.dispatch({ type: 'playlist.setLevel', playlistId: 'Combat', level: '1' }), InvalidCommandError);
+			});
 		});
 
 		it('lists active playlists in the order they were started', async () => {

@@ -14,6 +14,7 @@ import { isTransition } from './transitions.js';
  * 	| { type: 'playlist.jump', playlistId: string, trackIndex: number, transition?: Transition }
  * 	| { type: 'playlist.seek', playlistId: string, seconds: number }
  * 	| { type: 'volume.set', bus: Bus, value: number }
+ * 	| { type: 'playlist.setLevel', playlistId: string, level: number }
  * 	| { type: 'sound.customize', soundId: string, title?: string, gain?: number, startAt?: number, endAt?: number | null,
  * 		fadeIn?: number, fadeOut?: number }
  * 	| { type: 'playlist.customize', playlistId: string, title?: string, gain?: number, crossfade?: number, fadeIn?: number,
@@ -43,6 +44,7 @@ const SHAPES = {
 	'playlist.jump': { strings: ['playlistId'], numbers: ['trackIndex'], transition: true },
 	'playlist.seek': { strings: ['playlistId'], numbers: ['seconds'] },
 	'volume.set': { strings: ['bus'], numbers: ['value'] },
+	'playlist.setLevel': { strings: ['playlistId'], numbers: ['level'] },
 	'sound.customize': {
 		strings: ['soundId'],
 		optional: { title: 'string', gain: 'number', startAt: 'number', endAt: 'number or null', fadeIn: 'number', fadeOut: 'number' },

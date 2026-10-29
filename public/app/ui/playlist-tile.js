@@ -2,6 +2,7 @@ import { Component } from './component.js';
 import { openContextMenu } from './context-menu.js';
 import { h } from './dom.js';
 import { formatTime } from './format.js';
+import { icon } from './icons.js';
 import { playlistMenuItems } from './menus.js';
 import { flashError, TILE_CLASS } from './tile-grid.js';
 
@@ -48,7 +49,7 @@ export class PlaylistTile extends Component {
 		const trackCount = (/** @type {number} */ count) => `${count} ${count === 1 ? 'track' : 'tracks'}`;
 		let idleStatus = trackCount(tracks.length);
 		let state = this.#soundboard.getPlaylistSnapshot(id).state;
-		const status = h('span', { class: 'text-xs text-muted group-data-[resume=true]:text-music' }, idleStatus);
+		const status = h('span', { class: 'max-w-full truncate pr-7 text-xs text-muted group-data-[resume=true]:text-music' }, idleStatus);
 		let currentTitle = title;
 		/** @type {ResumePoint | null} */
 		let resume = this.#soundboard.getPlaylistSnapshot(id).resume;
@@ -106,7 +107,24 @@ export class PlaylistTile extends Component {
 				flashError(button);
 			}
 		}));
-		return button;
+		// Shown while the live volume (DESIGN.md §6.4) is turned down, which is set from the player bar. A sibling of the
+		// button, so double-clicking it never also toggles the playlist.
+		const levelIcon = h('span', {
+			'class': 'absolute right-3 bottom-2.5 grid size-5 place-items-center rounded-full bg-boost text-gray-700',
+			'data-level-icon': true,
+			'onDblclick': () => this.#soundboard.setPlaylistLevel(id, 1),
+		}, icon('volume', 'size-4'));
+		const showLevel = (/** @type {number} */ value) => {
+			levelIcon.hidden = value >= 1;
+			levelIcon.title = `Volume turned down to ${Math.round(value * 100)}%. Double-click to reset`;
+		};
+		showLevel(this.#soundboard.getPlaylistLevel(id));
+		this.own(this.#soundboard.on('playlist.levelChanged', (event) => {
+			if (event.playlistId === id) {
+				showLevel(event.level);
+			}
+		}));
+		return h('div', { class: 'relative' }, button, levelIcon);
 	}
 
 	/** @param {string} item */

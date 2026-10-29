@@ -94,6 +94,20 @@ export class PlayerBarPage {
 		await this.#page.mouse.click(box.x + box.width * fraction, box.y + box.height / 2);
 	}
 
+	/** Presses the live volume bar. @param {number} fraction where on the bar, from 0 (silent) to 1 (full) */
+	async setLevel(fraction) {
+		const bar = this.#bar.locator('[data-level-bar] [role=slider]');
+		const box = await bar.boundingBox();
+		if (!box) {
+			throw new Error('The live volume bar is not on screen');
+		}
+		await this.#page.mouse.click(box.x + box.width * fraction, box.y + box.height / 2);
+	}
+
+	async resetLevel() {
+		await this.#bar.locator('[data-level-bar] [role=slider]').dblclick();
+	}
+
 	async openTrackList() {
 		await this.#bar.getByTitle('Choose a track').click();
 	}

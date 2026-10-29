@@ -1,4 +1,4 @@
-/** Control and status icons only (DESIGN.md §9): tiles never get icons. Drawn on a 24×24 grid in the current text color. */
+/** Control and status icons only (DESIGN.md §9): tiles get none, except the playlist tile's turned-down volume bubble. Drawn on a 24×24 grid in the current text color. */
 const SHAPES = {
 	play: '<path fill="currentColor" d="M8 5.5v13l10.5-6.5z"/>',
 	pause: '<path fill="currentColor" d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/>',

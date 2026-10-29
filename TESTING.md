@@ -137,6 +137,12 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] After the fades finish by themselves the button is yellow and reads "Stop (Fade)" again. So it does if you start a sound or playlist while it reads "Stop (NOW!)".
 - [ ] The button stays in the same place at the footer's right while player bars come and go.
 
+**Live volume**
+- [ ] While a playlist plays, dragging the thin bar in its player bar (left of the time) makes it quieter at once, without clicks, and a crossfade or fade in progress does not jump.
+- [ ] The playlist's tile then shows an orange bubble with a gray speaker at the bottom right, level with its status text. Hovering shows the percentage; double-clicking the bubble or the bar brings the volume back to full, and the bubble disappears. Double-clicking the bubble does not start or stop the playlist.
+- [ ] Stop the playlist and play it again: it is still quiet, and the bubble stayed. After F5 it is at full.
+- [ ] A long status text on a tile is cut with an ellipsis before it reaches the bubble.
+
 **Customize a sound**
 - [ ] Right-click a sound → Customize: the dialog opens with the title field focused; the menu is gone.
 - [ ] While a sound plays (use the dialog's Play button on a long sound), moving the volume changes its loudness at once, without clicks; new presses play at the new volume.

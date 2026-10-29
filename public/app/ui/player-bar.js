@@ -2,6 +2,7 @@ import { Component } from './component.js';
 import { h } from './dom.js';
 import { formatTime } from './format.js';
 import { icon } from './icons.js';
+import { LevelBar } from './level-bar.js';
 import { openTrackList } from './track-list.js';
 import { paintWaveform } from './waveform-canvas.js';
 
@@ -153,8 +154,13 @@ export class PlayerBar extends Component {
 			}
 		}));
 
+		// Pushed to the right by the title, which takes the free space; the same value as the playlist tile's bar.
+		const levelHolder = h('div', { class: 'ml-auto shrink-0' });
+		const levelBar = new LevelBar({ soundboard, playlistId: id }).mount(levelHolder);
+		this.own(() => levelBar.destroy());
+
 		const root = h('div', { 'class': 'flex h-28 flex-col justify-between rounded-lg border border-line bg-raised p-3', 'data-player-bar': id },
-			h('div', { class: 'flex items-baseline justify-between gap-2' }, playlistTitle, time),
+			h('div', { class: 'flex items-center justify-between gap-2' }, playlistTitle, levelHolder, time),
 			trackButton,
 			h('div', { class: 'flex items-center gap-1' },
 				this.#control('Previous', [icon('previous')], () => soundboard.previousTrack(id)),

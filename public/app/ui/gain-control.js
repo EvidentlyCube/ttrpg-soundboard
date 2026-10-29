@@ -19,6 +19,7 @@ export class GainControl extends Component {
 	#scale;
 	#label;
 	#compact;
+	#mini;
 	#accent;
 	#onChange;
 	#dragging = false;
@@ -31,15 +32,17 @@ export class GainControl extends Component {
 	 * @param {GainScale} [options.scale] defaults to an item's gain
 	 * @param {string} options.label names the control for screen readers
 	 * @param {boolean} [options.compact] narrower, for the header
+	 * @param {boolean} [options.mini] only a small slider, without the dB readout, for the live volume (DESIGN.md §6.4)
 	 * @param {'music' | 'sfx'} [options.accent] the color of the focused text field
 	 * @param {(value: number) => void} options.onChange called for every change the user makes
 	 */
-	constructor({ value, scale = ITEM_SCALE, label, compact = false, accent = 'music', onChange }) {
+	constructor({ value, scale = ITEM_SCALE, label, compact = false, mini = false, accent = 'music', onChange }) {
 		super();
 		this.#value = value;
 		this.#scale = scale;
 		this.#label = label;
 		this.#compact = compact;
+		this.#mini = mini;
 		this.#accent = accent;
 		this.#onChange = onChange;
 	}
@@ -58,8 +61,11 @@ export class GainControl extends Component {
 	/** @override */
 	render() {
 		const scale = this.#scale;
-		const lit = h('div', { class: 'absolute inset-0', style: { clipPath: 'inset(0 100% 0 0)' } },
-			shapes('bg-text', 'bg-boost', scale.boost));
+		// The mini bar is only the line, without the bars above it.
+		const parts = (/** @type {string} */ bar, /** @type {string} */ boost) => (this.#mini
+			? [h('div', { class: `absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full ${bar}` })]
+			: shapes(bar, boost, scale.boost));
+		const lit = h('div', { class: 'absolute inset-0', style: { clipPath: 'inset(0 100% 0 0)' } }, parts('bg-text', 'bg-boost'));
 		const track = h('div', {
 			'role': 'slider',
 			'tabindex': '0',
@@ -68,9 +74,9 @@ export class GainControl extends Component {
 			'aria-valuemax': String(scale.max),
 			'title': 'Click or drag to set the volume; double-click for 0 dB',
 			'data-gain-track': true,
-			'class': `relative h-8 ${this.#compact ? 'w-32' : 'w-60'} shrink-0 cursor-pointer touch-none select-none rounded-sm outline-none `
+			'class': `relative ${this.#mini ? 'h-4 w-20' : `h-8 ${this.#compact ? 'w-32' : 'w-60'}`} shrink-0 cursor-pointer touch-none select-none rounded-sm outline-none `
 				+ 'focus-visible:ring-2 focus-visible:ring-music focus-visible:ring-offset-4 focus-visible:ring-offset-panel',
-		}, h('div', { class: 'absolute inset-0' }, shapes('bg-line', 'bg-line', scale.boost)), lit);
+		}, h('div', { class: 'absolute inset-0' }, parts('bg-line', 'bg-line')), lit);
 
 		const width = this.#compact ? 'w-20 text-sm' : 'w-24';
 		const readout = h('button', {
@@ -94,6 +100,9 @@ export class GainControl extends Component {
 			readout.dataset.boost = String(gain > 1);
 			track.setAttribute('aria-valuenow', String(value));
 			track.setAttribute('aria-valuetext', formatDb(gain));
+			if (this.#mini) {
+				track.title = `${this.#label}: ${Math.round(value * 100)}%. Double-click for full`;
+			}
 		};
 		const change = (/** @type {number} */ value) => {
 			if (value !== this.#value) {
@@ -194,6 +203,9 @@ export class GainControl extends Component {
 			}
 		}));
 
+		if (this.#mini) {
+			return h('div', { 'class': 'flex items-center', 'data-gain-control': true }, track);
+		}
 		return h('div', { 'class': 'flex items-center gap-2', 'data-gain-control': true }, track, readout, fieldBox);
 	}
 }

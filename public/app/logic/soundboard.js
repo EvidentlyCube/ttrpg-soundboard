@@ -40,6 +40,8 @@ import { VolumeControl } from './volume.js';
  * 	| { type: 'audio.resumed' }
  * 	| { type: 'panic.changed', state: PanicState }} AppEvent
  * `panic.changed`: Panic Stop moved between its two states (`panicState()`).
+ * @typedef {{ type: 'playlist.levelChanged', playlistId: string, level: number }} LevelEvent
+ * `playlist.levelChanged`: a playlist's live level (DESIGN.md §6.4) changed; `level` is a slider position, 0..1.
  * @typedef {{ type: 'sound.changed', sound: AudioFileJson }
  * 	| { type: 'sound.saved', soundId: string }
  * 	| { type: 'sound.saveFailed', soundId: string, message: string }
@@ -54,7 +56,7 @@ import { VolumeControl } from './volume.js';
  * 	| { type: 'library.refreshed' }
  * 	| { type: 'library.refreshFailed', message: string, errors: { path: string, message: string }[], restartNeeded: boolean }
  * 	| { type: 'trash.changed', size: number, count: number }} RefreshEvent
- * @typedef {AppEvent | SoundEvent | PlaylistEvent | VolumeChangedEvent | CustomizeEvent | VoicesEvent | WaveformEvent
+ * @typedef {AppEvent | LevelEvent | SoundEvent | PlaylistEvent | VolumeChangedEvent | CustomizeEvent | VoicesEvent | WaveformEvent
  * 	| RefreshEvent | DownloadEvent} SoundboardEvent
  */
 
@@ -341,6 +343,14 @@ export class Soundboard {
 			case 'playlist.forget':
 				player.forget();
 				return;
+			case 'playlist.setLevel': {
+				const level = clampLevel(command.level);
+				if (level !== player.level) {
+					player.setLevel(level);
+					this.#events.emit({ type: 'playlist.levelChanged', playlistId: player.id, level });
+				}
+				return;
+			}
 			case 'playlist.customize': {
 				const { title, gain, crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode } = command;
 				const playlist = loaded.library.updatePlaylist(player.id, { title, gain, crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode });
@@ -517,6 +527,23 @@ export class Soundboard {
 	 */
 	setVolume(bus, value) {
 		this.dispatch({ type: 'volume.set', bus, value });
+	}
+
+	/**
+	 * Sets a playlist's temporary live level (DESIGN.md §6.4). It is not saved and outlives stops and track changes.
+	 * @param {string} playlistId
+	 * @param {number} level slider position, 0..1
+	 */
+	setPlaylistLevel(playlistId, level) {
+		this.dispatch({ type: 'playlist.setLevel', playlistId, level });
+	}
+
+	/**
+	 * @param {string} playlistId
+	 * @returns {number} slider position, 0..1
+	 */
+	getPlaylistLevel(playlistId) {
+		return this.#player(playlistId).level;
 	}
 
 	/**
@@ -1083,4 +1110,15 @@ export class Soundboard {
 		}
 		return player;
 	}
+}
+
+/**
+ * @param {number} level
+ * @returns {number} the level inside 0..1
+ */
+function clampLevel(level) {
+	if (Number.isNaN(level)) {
+		throw new InvalidCommandError('A level must be a number');
+	}
+	return Math.min(1, Math.max(0, level));
 }

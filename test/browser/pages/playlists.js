@@ -55,6 +55,24 @@ export class PlaylistsPage {
 		await expect(this.#tile(title)).toContainText(status);
 	}
 
+	/** The orange speaker for a turned-down live volume sits next to the tile button (DESIGN.md §9.1). @param {string} title */
+	#levelIcon(title) {
+		return this.#tile(title).locator('xpath=..').locator('[data-level-icon]');
+	}
+
+	/**
+	 * @param {string} title
+	 * @param {boolean} shown
+	 */
+	async expectLevelIcon(title, shown) {
+		await expect(this.#levelIcon(title)).toBeVisible({ visible: shown });
+	}
+
+	/** @param {string} title */
+	async resetLevel(title) {
+		await this.#levelIcon(title).dblclick();
+	}
+
 	/** @param {string} title */
 	async expectError(title) {
 		await expect(this.#tile(title)).toHaveAttribute('data-error', 'true');
