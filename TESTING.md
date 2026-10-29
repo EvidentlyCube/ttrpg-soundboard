@@ -127,6 +127,7 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] Close the lid for a minute and reopen: the "resume" splash appears and audio continues after a click.
 - [ ] Switching the audio output (speakers, headphones, Bluetooth) while playing.
 - [ ] Ogg tiles play, or are disabled with an explanation where the browser can't play Ogg.
+- [ ] An `.opus` file (`ffmpeg -i x.ogg -c:a libopus test.opus`) shows its title and duration, plays and gets a waveform; in Safari too.
 
 **Other web pages**
 - [ ] Open the board as `http://127.0.0.1:3000` and as `http://localhost:3000`: both load and work. Opening it by the machine's LAN address or any other name shows an error page (`403`).
@@ -211,7 +212,8 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] Cancel asks first; cancelling stops the tool, keeps what was added, and the summary says the rest was cancelled. Close dismisses the finished dialog.
 - [ ] A second tab shows the same dialog and the same additions; reloading during a download brings the dialog back with its log.
 - [ ] The External Changes button never appears because of a download.
-- [ ] Safari: the downloaded `.ogg` files play.
+- [ ] Safari: the downloaded `.ogg` and `.opus` files play.
+- [ ] A YouTube video downloads as `.opus`, and the log shows the `-c:a copy` command; a chapter download still gives `.ogg`.
 
 **Deleting and moving**
 - [ ] The sound dialog and an open track row end with a "Move or delete" card; the playlist dialog's first tab ends with a "Delete" card without Move.

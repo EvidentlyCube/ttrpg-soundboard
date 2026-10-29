@@ -29,32 +29,7 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## Proposals
 
-### Ogg Opus files
-
-**Goal.** A `.opus` file in the folder shows up as a sound or track, plays, and gets its title and duration like an `.ogg` file. A YouTube download that already holds Opus audio is kept as Opus instead of being re-encoded to Vorbis, which is faster and loses no quality.
-
-**Design changes.**
-- §2.1 Directory scan: `.opus` moves from the unsupported list to the supported extensions (rule 5 and rule 6).
-- §4.1 Readers: the extension table gains `.opus`, handled by `ogg.js`. §4.2 and §4.3 already describe Opus, and only gain a note that `.opus` files go through them.
-- §5.2 HTTP API: `/media/` serves `.opus` as `audio/ogg; codecs=opus`.
-- §5.4 Downloads: the kept extensions (conversion paragraph) become `.mp3`, `.ogg` and `.opus`, and the link fetcher maps `audio/opus` to `.opus`. The yt-dlp command changes as decided in question 2.
-- §6.3 and §7 (`canPlay`) and §9.5: `opus` becomes a third format. §12: the Safari line says that Ogg Opus is assumed to play as well.
-- §1 overview line about converting to `.ogg`, and the examples that name `.ogg` only where they say "converted".
-
-**Open questions.**
-1. **How is `.opus` told apart from `.ogg`?** Recommended: by extension, as everything else is (`AudioFormat` gains `'opus'`). The container is the same Ogg, so `ogg.js` serves both. An existing `.ogg` that holds Opus keeps working exactly as today, because Chromium and Safari sniff the content; nothing is renamed or reported.
-2. **How do downloads end up with Opus?** `bestaudio` from YouTube is usually WebM with Opus, which today is re-encoded to Vorbis. Recommended: when the downloaded file is `.webm` or `.weba`, try `ffmpeg -i <file> -map 0:a:0 -c:a copy <out>.opus` first; if the copy fails (the audio is not Opus), fall back to the Vorbis conversion. No second tool, no probing. A chapter still goes through the encoder, because a cut must be exact; it is re-encoded to Vorbis as today (re-encoding to `libopus` is possible later and not worth a new setting).
-3. **Does the browser's `canPlayType` need a different MIME for Opus?** Recommended: use `audio/ogg; codecs=opus`, because plain `audio/ogg` can be answered "maybe" for Vorbis alone in Safari. If a browser says no, tiles are disabled as for any unsupported format (§9.5).
-4. **Waveforms and the duration reader.** Recommended: no change. Waveforms are decoded in the browser from the stream (§10), and `ogg.js` already reads Opus durations (§4.3). The plan only adds a test with a real `.opus` fixture.
-5. **Should `.webm` be accepted too?** Recommended: no. It stays unsupported. Its audio is Opus in a different container, and Safari's WebM support is the shakier one; a `.webm` the user copies in can be remuxed to `.opus` outside the app.
-
-**Plan.**
-1. **Scan and format** — tests first: `classifyDirectory` lists `.opus` (any case) as audio with format `opus` and no longer as unsupported; `audioFormatOf`.
-2. **Metadata** — tests with a small Opus fixture (`test_fixtures/`): `readTitle`, `readSourceLink` and `readDuration` dispatch `.opus` to `ogg.js`.
-3. **Streaming** — server tests: `/media/x.opus` has the right content type and answers ranges.
-4. **Frontend format** — `canPlay('opus')` in `WebAudioEngine` and its fake, `LibraryModel` disabling an `.opus` tile when the engine says no; a Playwright check that an `.opus` sound plays with the fake engine.
-5. **Downloads** — tests with the fake process runner: a `.webm` is remuxed to `.opus` with `-c:a copy`; a failing copy falls back to Vorbis; a chapter is still cut to Vorbis; a direct `audio/opus` link keeps its bytes as `.opus`.
-6. **Design update** — `DESIGN.md` as listed above, a line in `TESTING.md`'s manual checklist (play an `.opus` file in Safari), then remove this proposal and its backlog entry (separate commit).
+None yet.
 
 ---
 
@@ -71,12 +46,6 @@ None yet.
 In the owner's order: work from the top. Each entry becomes a proposal (above) before any code is written.
 
 **Decided for all of them.** Customization changes apply immediately and are saved with a 500 ms debounce, as the sound Customize dialog does (DESIGN.md §6.4, §9.7). Re-sorting on screen waits until the dialog closes. Playback state is never remembered across a page reload, so F5 always gives a clean start.
-
-### Ogg Opus files
-
-`.opus` is listed among the unsupported extensions (DESIGN.md §2.1), though `ogg.js` already reads Opus titles and durations (§4.2, §4.3). Safari on the target MacBook plays Ogg Opus (§12).
-
-- **Notes:** accept `.opus` as a supported extension and format, with a content type for streaming (§5.2), and let downloads keep an Opus stream instead of re-encoding it to Vorbis (§5.4, which today keeps only `.mp3` and `.ogg`). `canPlay` still checks the format (§6.3). Open for the proposal: what a download of a YouTube video produces (`.opus` or `.webm`), and existing `.ogg` files that hold Opus.
 
 ### Error handling
 

@@ -18,7 +18,7 @@ node index.js <path-to-audio-directory> [--port <number>] [--verbose]
 - Output is quiet by default: the startup summary, warnings and errors. `--verbose` also logs every HTTP request (§5.2).
 - After startup it prints `Soundboard running at http://127.0.0.1:3000` and `Press Ctrl+C to stop.` The user opens that URL themselves.
 - While it runs, it watches the directory. Files added, removed or changed from outside the app are not loaded by themselves: the page offers a refresh, which rebuilds the library as a restart would (§3.6, §5.3).
-- It can add sounds, playlists and tracks from a pasted link. The server downloads it with `yt-dlp`, or fetches a direct link to a file itself, converts it to `.ogg` with `ffmpeg`, and the page shows each new file at once (§5.4, §9.9).
+- It can add sounds, playlists and tracks from a pasted link. The server downloads it with `yt-dlp`, or fetches a direct link to a file itself, keeps its Opus audio as `.opus` or converts it to `.ogg` with `ffmpeg`, and the page shows each new file at once (§5.4, §9.9).
 - It is always started by hand from a terminal. There is no unattended mode.
 
 ### 1.1 Constraints
@@ -81,8 +81,8 @@ The scanner applies these rules in order:
    - A supported audio file is a **track**. Its ID is its path relative to the root, using `/`.
    - `<file>.json` next to a track is that **track's options file**. Other `.json` files are orphans.
    - A subdirectory is a **nested subdirectory** (§3.3). Its tracks belong to the top-level playlist.
-5. Supported extensions, matched case-insensitively: `.mp3` and `.ogg`.
-6. Known but unsupported audio extensions (`.wav .flac .m4a .aac .opus .wma .aif .aiff .webm .mp4`) are **reported as warnings** and skipped. All other files are ignored silently, which includes the waveform files (`<file>.wf`, §5.1) next to the audio files.
+5. Supported extensions, matched case-insensitively: `.mp3`, `.ogg` and `.opus` (Ogg Opus). The format comes from the extension alone; an `.ogg` that holds Opus is still `ogg` and plays as it always did.
+6. Known but unsupported audio extensions (`.wav .flac .m4a .aac .wma .aif .aiff .webm .mp4`) are **reported as warnings** and skipped. All other files are ignored silently, which includes the waveform files (`<file>.wf`, §5.1) next to the audio files.
 7. A playlist with no tracks gets a warning and is **hidden** from the UI.
 
 File names are used exactly as the file system returns them, including Unicode normalization, so IDs always match what the server looks up later.
@@ -270,7 +270,7 @@ On success the server replaces its library and settings store with the new ones 
 
 ## 4. Metadata extraction
 
-`readTitle(filePath) → Promise<string | null>`, `readSourceLink(filePath) → Promise<string | null>` and `readDuration(filePath) → Promise<number | null>` in `src/metadata/` pick the parser by extension (`.mp3`, `.ogg`, case-insensitive). They return `null` for missing or malformed data and only throw for file system errors. They read through a file handle with bounded reads and never load the whole file. No third-party code is involved.
+`readTitle(filePath) → Promise<string | null>`, `readSourceLink(filePath) → Promise<string | null>` and `readDuration(filePath) → Promise<number | null>` in `src/metadata/` pick the parser by extension (`.mp3`, `.ogg`, `.opus`, case-insensitive; the last two both go to `ogg.js`). They return `null` for missing or malformed data and only throw for file system errors. They read through a file handle with bounded reads and never load the whole file. No third-party code is involved.
 
 ### 4.1 MP3: ID3v2, falling back to ID3v1
 
@@ -306,7 +306,7 @@ On success the server replaces its library and settings store with the new ones 
 ```js
 Library   { root, playlists: Playlist[], sounds: AudioFile[], files: Map<id, AudioFile> }
 Playlist  { id, title, gain, crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode, tracks: AudioFile[], includedSubdirectories: string[] }
-AudioFile { id /* root-relative POSIX path */, title, format: 'mp3'|'ogg', size, gain, duration /* seconds or null */,
+AudioFile { id /* root-relative POSIX path */, title, format: 'mp3'|'ogg'|'opus', size, gain, duration /* seconds or null */,
             startAt, endAt /* seconds or null */, fadeIn, fadeOut, source /* §2.3, origin filled in, or null */, absolutePath }
 Settings  { volumes: { master, music, sfx } }   // held by SettingsStore, saved to .soundboard
 ```
@@ -412,7 +412,7 @@ Each path segment of a media URL is percent-encoded separately. `source` is the 
 
 **Media streaming.** Safari refuses to play media unless the server answers Range requests correctly, so this is exact.
 - Each path segment is percent-decoded and the result is looked up in `Library.files`. Only indexed files can be served; anything else is a 404. The file system is never accessed with a path from the URL.
-- Headers: `Accept-Ranges: bytes`, `Content-Type` (`audio/mpeg` or `audio/ogg`), `Content-Length`, `Last-Modified`, `ETag` (built from size and mtime).
+- Headers: `Accept-Ranges: bytes`, `Content-Type` (`audio/mpeg`, `audio/ogg` or `audio/ogg; codecs=opus`), `Content-Length`, `Last-Modified`, `ETag` (built from size and mtime).
 - `Range: bytes=a-b`, `a-` or `-n` gets a `206` with `Content-Range`. A range starting past the end gets a `416` with `Content-Range: bytes */size`. A malformed `Range` header is ignored and the whole file is sent. Only the first of several ranges is served.
 - The body is a file read stream piped with `stream.pipeline`. A client disconnecting mid-stream (seeking, skipping tracks) is normal: the stream is closed and nothing is logged as an error.
 - `HEAD` returns the same headers with no body.
@@ -453,7 +453,7 @@ Each path segment of a media URL is percent-encoded separately. `source` is the 
 
 **Lookup** (`probe(text, { playlist })`). Only `http:` and `https:` links are accepted.
 1. Unless `playlist` is set, the server sends a `GET` and drops it once the headers arrive. A successful `audio/*` or `video/*` response is a **direct file**: `{ kind: 'file', url, name, size, contentType }`.
-   - The name comes from `Content-Disposition` (the encoded `filename*` first), else the last part of the final URL's path, else `download`. `audio/mpeg` and `audio/ogg` add `.mp3` or `.ogg` to a name without an extension.
+   - The name comes from `Content-Disposition` (the encoded `filename*` first), else the last part of the final URL's path, else `download`. `audio/mpeg`, `audio/ogg` and `audio/opus` add `.mp3`, `.ogg` or `.opus` to a name without an extension.
    - The size is `Content-Length`, or `null` when it is missing or the response is compressed, since then it counts the compressed bytes.
 2. Anything else goes to `yt-dlp -J --flat-playlist --playlist-end 500 -f bestaudio/best --no-playlist -- <url>` (`--yes-playlist` when `playlist` is set). `toProbe` reduces its JSON:
    - A video becomes `{ kind: 'video', url, id, title, duration, size, extractor, chapters: [{ title, start, end }], playlistAvailable }`. The page URL is yt-dlp's `webpage_url`, and the size is the chosen format's `filesize` or `filesize_approx`. A chapter without an end ends at the video's end. `playlistAvailable` is set when the link has both `v` and `list` in its query, as YouTube's `watch?v=…&list=…` does.
@@ -475,7 +475,7 @@ Each path segment of a media URL is percent-encoded separately. `source` is the 
 
 **Each download** works in a folder of its own, `.soundboard-downloads/<job id>/<n>/`, on the same file system as the root, so the finished file can be renamed into place.
 - `yt-dlp -f bestaudio/best --no-playlist --newline --no-mtime -P <folder> -o '%(title)s [%(id)s].%(ext)s' -- <url>` saves it under yt-dlp's default name; the one file left in the folder, without `.part` and the like, is the result. A direct link is streamed there under its safe name (below), with a progress line per percent, or per megabyte without a size. It stops with an error when more bytes arrive than the lookup announced.
-- **Conversion.** An `.mp3` or `.ogg` file that isn't cut is kept as it is. Anything else goes through `ffmpeg -hide_banner -nostdin -y [-ss <start>] -i <file> [-t <length>] -map 0:a:0 -c:a libvorbis -q:a 5 <out>.ogg`: the first audio stream as Ogg Vorbis at about 160 kbps, and for a chapter only that part. Seeking before the input is fast, and re-encoding keeps the cut exact.
+- **Conversion.** An `.mp3`, `.ogg` or `.opus` file that isn't cut is kept as it is. A whole `.webm` or `.weba` (what `bestaudio` usually gives on YouTube) is first copied with `ffmpeg -hide_banner -nostdin -y -i <file> -map 0:a:0 -c:a copy <out>.opus`: no re-encoding, so it is fast and loses nothing. If the copy fails because the audio is not Opus, the log says so and the file is converted as below. Anything else, and every chapter, goes through `ffmpeg -hide_banner -nostdin -y [-ss <start>] -i <file> [-t <length>] -map 0:a:0 -c:a libvorbis -q:a 5 <out>.ogg`: the first audio stream as Ogg Vorbis at about 160 kbps, and for a chapter only that part. Seeking before the input is fast, and re-encoding keeps the cut exact.
 - **Names** (`file-names.js`). A converted file keeps its name with `.ogg` instead of its extension. A chapter is named as `yt-dlp --split-chapters` would: `<title> - 003 <chapter title> [<id>].ogg`. A direct file's name has the characters `/ \ : * ? " < > |` and control characters removed and its leading dots and spaces stripped, since a leading dot would hide it (§2.1), and its stem is cut to 120 characters. `LibraryEditor` adds ` (2)` when a name is taken (§5.1).
 - **Adding.** The title is the name without extension and id tag (§2.4), and `source` is set as in §2.3. A `newPlaylist` job creates its playlist with the first file that finishes and adds the rest to it. Every addition is announced as `library.added`.
 - The job's folder is deleted when it ends, however it ends.
@@ -696,7 +696,7 @@ Voice:
   - A stream voice sets the element's `loop`, which covers the whole file and never fires `ended`. With an end point, the end-point timer seeks back to `startAt` instead of ending.
   - A buffer voice plays with `loop`, `loopStart = startAt` and `loopEnd` at its end, and no length, since a length would cap the loops too. A playing source can't change how it was started, so `setLooping` restarts it from its current position. While looping, `position` wraps within the loop.
   - How seamless an MP3 loop sounds depends on the browser, since MP3 files carry encoder padding.
-- `canPlay` uses `canPlayType` and caches the answer per format.
+- `canPlay` uses `canPlayType` and caches the answer per format (`audio/mpeg`, `audio/ogg`, `audio/ogg; codecs=opus`).
 - Bus gains and voice volumes change with `setTargetAtTime` (15 ms), so moving a slider never clicks; fades use ramps. No per-frame JavaScript loops.
 - `suspended` is only reported for a context that was running, so the short suspended state right after creation is not mistaken for an interruption. Safari's `interrupted` state counts as suspended.
 
@@ -1347,7 +1347,7 @@ The streaming design keeps resource use well within what this machine can handle
 
 **Safari specifics:**
 - Range requests (§5.2), the splash unlock (§9.0) and same-origin media are covered above.
-- **Safari is assumed to play Ogg.** The Safari version that matters (on the MacBook) supports it, so `.ogg` is a first-class format, and downloads are stored as `.ogg`. An older Safari without Ogg support still gets disabled tiles rather than silent failures (§9.5).
+- **Safari is assumed to play Ogg and Ogg Opus.** The Safari version that matters (on the MacBook) supports both, so `.ogg` and `.opus` are first-class formats, and downloads are stored as `.opus` (copied) or `.ogg` (converted). An older Safari without Ogg support still gets disabled tiles rather than silent failures (§9.5).
 - Safari slows down timers in background tabs. Track changes are driven by the media `ended` event, which still fires in the background, so playlists keep advancing even when the window isn't in front.
 - New media elements created after the audio context has been unlocked are assumed to play without a fresh gesture, as in browser games and web music players.
 
