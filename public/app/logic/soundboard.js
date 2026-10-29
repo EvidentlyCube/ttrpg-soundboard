@@ -507,6 +507,18 @@ export class Soundboard {
 		this.#waveforms?.start();
 	}
 
+	/**
+	 * Makes every sound's and track's waveform again, replacing the stored ones (DESIGN.md §6.6): sounds first, then
+	 * tracks in playlist order, as missing ones are made. Progress arrives as `waveforms.progress`.
+	 */
+	regenerateWaveforms() {
+		const library = this.#loaded?.library.json;
+		if (!library || !this.#waveforms) {
+			return;
+		}
+		this.#waveforms.regenerate([...library.sounds, ...library.playlists.flatMap((playlist) => playlist.tracks)].map((file) => file.id));
+	}
+
 	/** Stops generating after the file being decoded; playback is never affected either way. */
 	stopWaveforms() {
 		this.#waveforms?.stop();

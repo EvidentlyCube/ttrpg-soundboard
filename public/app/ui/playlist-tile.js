@@ -21,7 +21,7 @@ export class PlaylistTile extends Component {
 	#playlist;
 	#playable;
 	#onCustomize;
-	#onAddTracks;
+	#onMetadata;
 
 	/**
 	 * @param {object} options
@@ -30,16 +30,16 @@ export class PlaylistTile extends Component {
 	 * @param {PlaylistJson} options.playlist
 	 * @param {boolean} options.playable false when this browser can play none of its tracks
 	 * @param {(playlistId: string) => void} options.onCustomize
-	 * @param {(playlistId: string) => void} options.onAddTracks
+	 * @param {(playlistId: string) => void} options.onMetadata
 	 */
-	constructor({ soundboard, overlay, playlist, playable, onCustomize, onAddTracks }) {
+	constructor({ soundboard, overlay, playlist, playable, onCustomize, onMetadata }) {
 		super();
 		this.#soundboard = soundboard;
 		this.#overlay = overlay;
 		this.#playlist = playlist;
 		this.#playable = playable;
 		this.#onCustomize = onCustomize;
-		this.#onAddTracks = onAddTracks;
+		this.#onMetadata = onMetadata;
 	}
 
 	/** @override */
@@ -122,8 +122,8 @@ export class PlaylistTile extends Component {
 			stop: () => soundboard.stopPlaylist(id),
 			stopInstant: () => soundboard.stopPlaylist(id, { transition: 'instant' }),
 			reset: () => soundboard.forgetPlaylist(id),
-			addTracks: () => this.#onAddTracks(id),
 			customize: () => this.#onCustomize(id),
+			metadata: () => this.#onMetadata(id),
 		};
 		actions[item]?.();
 	}

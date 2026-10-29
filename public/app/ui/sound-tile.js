@@ -19,6 +19,7 @@ export class SoundTile extends Component {
 	#sound;
 	#playable;
 	#onCustomize;
+	#onMetadata;
 
 	/**
 	 * @param {object} options
@@ -27,14 +28,16 @@ export class SoundTile extends Component {
 	 * @param {AudioFileJson} options.sound
 	 * @param {boolean} options.playable
 	 * @param {(soundId: string) => void} options.onCustomize
+	 * @param {(soundId: string) => void} options.onMetadata
 	 */
-	constructor({ soundboard, overlay, sound, playable, onCustomize }) {
+	constructor({ soundboard, overlay, sound, playable, onCustomize, onMetadata }) {
 		super();
 		this.#soundboard = soundboard;
 		this.#overlay = overlay;
 		this.#sound = sound;
 		this.#playable = playable;
 		this.#onCustomize = onCustomize;
+		this.#onMetadata = onMetadata;
 	}
 
 	/** @override */
@@ -59,6 +62,8 @@ export class SoundTile extends Component {
 						this.#soundboard.stopSound(id);
 					} else if (item === 'customize') {
 						this.#onCustomize(id);
+					} else if (item === 'metadata') {
+						this.#onMetadata(id);
 					}
 				});
 			},

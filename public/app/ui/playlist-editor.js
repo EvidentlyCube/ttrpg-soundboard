@@ -1,7 +1,7 @@
 import { PLAYBACK_ORDERS } from '../logic/order-strategies.js';
 import { MAX_CROSSFADE, STOP_MODES } from '../logic/playback-rules.js';
 import { Component } from './component.js';
-import { card, checkbox, labeledRow, moveOrDeleteCard, playToggle, radioGroup, saveStatus, tabs, titleField } from './customize-parts.js';
+import { card, checkbox, labeledRow, moveOrDeleteCard, playFooter, playToggle, radioGroup, saveStatus, tabs, titleField } from './customize-parts.js';
 import { h } from './dom.js';
 import { GainControl } from './gain-control.js';
 import { SecondsControl } from './seconds-control.js';
@@ -41,6 +41,9 @@ export class PlaylistEditor extends Component {
 
 	#onAddTracks;
 	#onMoveTrack;
+	#initialTab;
+	/** @type {HTMLElement | null} */
+	#footer = null;
 
 	/**
 	 * @param {object} options
@@ -48,13 +51,23 @@ export class PlaylistEditor extends Component {
 	 * @param {PlaylistJson} options.playlist
 	 * @param {() => void} options.onAddTracks opens the add dialog for this playlist
 	 * @param {(track: import('../logic/ports.js').AudioFileJson) => void} options.onMoveTrack opens the move dialog for a track
+	 * @param {'playlist' | 'tracks'} [options.tab] the tab it opens on; the first without it
 	 */
-	constructor({ soundboard, playlist, onAddTracks, onMoveTrack }) {
+	constructor({ soundboard, playlist, onAddTracks, onMoveTrack, tab }) {
 		super();
 		this.#soundboard = soundboard;
 		this.#playlist = playlist;
 		this.#onAddTracks = onAddTracks;
 		this.#onMoveTrack = onMoveTrack;
+		this.#initialTab = tab;
+	}
+
+	/** Play and the save status, which the dialog keeps below the scrolling body, on either tab. */
+	get footer() {
+		if (!this.#footer) {
+			throw new Error('PlaylistEditor is not mounted');
+		}
+		return this.#footer;
 	}
 
 	/** @override */
@@ -154,7 +167,7 @@ export class PlaylistEditor extends Component {
 			},
 		});
 
-		const play = playToggle(() => soundboard.togglePlaylist(id));
+		const play = playToggle(() => soundboard.togglePlaylist(id), 'music');
 		play.show(soundboard.getPlaylistSnapshot(id).state !== 'idle');
 
 		this.own(soundboard.on('playlist.stateChanged', (event) => {
@@ -235,7 +248,7 @@ export class PlaylistEditor extends Component {
 		const { bar, panels } = tabs([
 			{ id: 'playlist', label: 'Playlist', panel: settingsPanel },
 			{ id: 'tracks', label: tracksLabel(this.#playlist.tracks.length), panel: tracksPanel },
-		]);
+		], this.#initialTab);
 		// Tracks moved or deleted from the open dialog leave it.
 		this.own(soundboard.on('playlist.changed', (event) => {
 			const tab = bar.querySelector('[data-tab="tracks"]');
@@ -243,12 +256,8 @@ export class PlaylistEditor extends Component {
 				tab.textContent = tracksLabel(event.playlist.tracks.length);
 			}
 		}));
-		return h('div', { class: 'space-y-5' },
-			bar,
-			...panels,
-			// Stays in view on either tab, however long the track list is.
-			h('div', { class: 'sticky -bottom-4 -mx-5 -mb-4 flex items-center justify-between gap-4 border-t border-line bg-panel px-5 py-3' },
-				play.element, status.element));
+		this.#footer = playFooter(play.element, status.element);
+		return h('div', { class: 'space-y-5' }, bar, ...panels);
 	}
 
 	/** Saves at once whatever is still waiting: the playlist's own options and every track renamed in the dialog. */

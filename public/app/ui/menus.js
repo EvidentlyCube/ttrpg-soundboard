@@ -9,6 +9,16 @@
  */
 
 /**
+ * The header's app menu (DESIGN.md §9.1).
+ * @returns {MenuItem[]}
+ */
+export function appMenuItems() {
+	return [
+		{ id: 'regenerateWaves', label: 'Regenerate Waves', enabled: true, group: 0 },
+	];
+}
+
+/**
  * The sound tile's context menu (DESIGN.md §9.3).
  * @param {boolean} isActive whether any instance of the sound is playing
  * @returns {MenuItem[]}
@@ -18,6 +28,7 @@ export function soundMenuItems(isActive) {
 		{ id: 'play', label: 'Play', enabled: true, group: 0 },
 		{ id: 'stopAll', label: 'Stop All', enabled: isActive, group: 0 },
 		{ id: 'customize', label: 'Customize', enabled: true, group: 1 },
+		{ id: 'metadata', label: 'Metadata', enabled: true, group: 1 },
 	];
 }
 
@@ -38,7 +49,7 @@ export function playlistMenuItems({ state, resume }) {
 		{ id: 'stop', label: 'Stop', enabled: active, group: 2 },
 		{ id: 'stopInstant', label: 'Stop (Instant)', enabled: active, group: 2 },
 		{ id: 'reset', label: 'Reset', enabled: !active && resume !== null, group: 2 },
-		{ id: 'addTracks', label: 'Add tracks…', enabled: true, group: 3 },
 		{ id: 'customize', label: 'Customize', enabled: true, group: 3 },
+		{ id: 'metadata', label: 'Metadata', enabled: true, group: 3 },
 	];
 }

@@ -1,10 +1,14 @@
 import { AddDialog } from './add-dialog.js';
 import { Component } from './component.js';
+import { openContextMenu } from './context-menu.js';
 import { DebugView } from './debug-view.js';
 import { DownloadDialog } from './download-dialog.js';
 import { ExternalChangesButton } from './external-changes-button.js';
 import { Dialog } from './dialog.js';
 import { h, on } from './dom.js';
+import { icon } from './icons.js';
+import { appMenuItems } from './menus.js';
+import { MetadataDialog } from './metadata-dialog.js';
 import { MoveDialog } from './move-dialog.js';
 import { Overlay } from './overlay.js';
 import { PlayerDock } from './player-dock.js';
@@ -109,6 +113,7 @@ class Board extends Component {
 	/** Stacks on top of a Customize dialog. */
 	#moveDialog = new Dialog();
 	#trashDialog = new Dialog();
+	#metadataDialog = new Dialog();
 	/** The item whose Customize dialog is open, so the dialog can close when the item is deleted or moved away. @type {{ kind: 'sound' | 'playlist', id: string } | null} */
 	#editing = null;
 	/** @type {Map<string, SoundTile>} */
@@ -142,8 +147,24 @@ class Board extends Component {
 		const isPlayable = (/** @type {AudioFileJson} */ file) => !this.#unplayable.has(file.id);
 
 		const controls = h('div', { class: 'flex items-center gap-5' });
+		const menuButton = h('button', {
+			'type': 'button',
+			'class': 'grid size-8 cursor-pointer place-items-center rounded-md text-muted hover:bg-raised-hover hover:text-text focus-visible:outline-2 focus-visible:outline-music',
+			'title': 'Menu',
+			'aria-label': 'Menu',
+			'aria-haspopup': 'menu',
+			'data-app-menu': true,
+			'onClick': () => {
+				const { left, bottom } = menuButton.getBoundingClientRect();
+				openContextMenu(overlay, appMenuItems(), { x: left, y: bottom + 4 }, (item) => {
+					if (item === 'regenerateWaves') {
+						soundboard.regenerateWaveforms();
+					}
+				});
+			},
+		}, icon('menu', 'size-5'));
 		const header = h('header', { class: 'flex shrink-0 items-center justify-between gap-6 border-b border-line bg-panel px-5 py-3' },
-			h('h1', { class: 'text-lg font-semibold tracking-tight' }, 'Soundboard'),
+			h('div', { class: 'flex items-center gap-3' }, menuButton, h('h1', { class: 'text-lg font-semibold tracking-tight' }, 'Soundboard')),
 			controls);
 		this.#adopt(new ExternalChangesButton(soundboard, (problems) => this.#showRefreshProblems(problems)).mount(controls));
 		this.#adopt(new WaveformIndicator(soundboard).mount(controls));
@@ -167,7 +188,7 @@ class Board extends Component {
 				playlist,
 				playable: playlist.tracks.some(isPlayable),
 				onCustomize: (playlistId) => this.#customizePlaylist(playlistId),
-				onAddTracks: (playlistId) => this.#add({ kind: 'playlist', playlistId }),
+				onMetadata: (playlistId) => this.#showMetadata({ kind: 'playlist', id: playlistId }),
 			}).mount(playlistGrid);
 			this.#playlistTiles.set(playlist.id, tile);
 			this.#adopt(tile);
@@ -179,7 +200,14 @@ class Board extends Component {
 		const soundGrid = soundSection.grid;
 		/** @param {AudioFileJson} sound */
 		const addSoundTile = (sound) => {
-			const tile = new SoundTile({ soundboard, overlay, sound, playable: isPlayable(sound), onCustomize: (soundId) => this.#customizeSound(soundId) }).mount(soundGrid);
+			const tile = new SoundTile({
+				soundboard,
+				overlay,
+				sound,
+				playable: isPlayable(sound),
+				onCustomize: (soundId) => this.#customizeSound(soundId),
+				onMetadata: (soundId) => this.#showMetadata({ kind: 'sound', id: soundId }),
+			}).mount(soundGrid);
 			this.#soundTiles.set(sound.id, tile);
 			this.#adopt(tile);
 		};
@@ -216,7 +244,26 @@ class Board extends Component {
 		this.own(() => this.#dialog.close());
 		this.own(() => this.#moveDialog.close());
 		this.own(() => this.#trashDialog.close());
+		this.own(() => this.#metadataDialog.close());
 		return root;
+	}
+
+	/**
+	 * Shows where a sound, or every track of a playlist, came from (DESIGN.md §9.13).
+	 * @param {{ kind: 'sound' | 'playlist', id: string }} target
+	 */
+	#showMetadata(target) {
+		const library = this.#soundboard.getLibrary();
+		const item = target.kind === 'sound'
+			? library?.sounds.find((entry) => entry.id === target.id)
+			: library?.playlists.find((entry) => entry.id === target.id);
+		if (!item) {
+			return;
+		}
+		const dialog = new MetadataDialog({ soundboard: this.#soundboard, target });
+		const body = h('div');
+		dialog.mount(body);
+		this.#metadataDialog.open({ title: `Metadata: "${item.title}"`, body, onClose: () => dialog.destroy() });
 	}
 
 	/** Opens the trash dialog, which closes itself once the trash is empty. */
@@ -257,8 +304,10 @@ class Board extends Component {
 	/**
 	 * Opens the add dialog for a target, or a notice when the server can't download.
 	 * @param {{ kind: 'sound' } | { kind: 'newPlaylist' } | { kind: 'playlist', playlistId: string }} target
+	 * @param {() => void} [returnTo] reopens the dialog it came from: when it is closed, or once the download it started
+	 * 	has been dismissed
 	 */
-	#add(target) {
+	#add(target, returnTo) {
 		const soundboard = this.#soundboard;
 		this.#overlay.close();
 		const tools = soundboard.getDownloadTools();
@@ -267,7 +316,7 @@ class Board extends Component {
 			const body = h('div', { class: 'space-y-3 text-sm' },
 				h('p', {}, 'Downloads need yt-dlp and ffmpeg.'),
 				h('p', {}, `${missing.join(' and ')} ${missing.length === 1 ? 'was' : 'were'} not found when the app started. Install ${missing.length === 1 ? 'it' : 'them'}, then restart the app.`));
-			this.#dialog.open({ title: 'Downloads are not available', body });
+			this.#dialog.open({ title: 'Downloads are not available', body, onClose: returnTo });
 			return;
 		}
 		/** @type {Record<typeof target.kind, string>} */
@@ -277,8 +326,32 @@ class Board extends Component {
 			const playlist = soundboard.getLibrary()?.playlists.find((entry) => entry.id === target.playlistId);
 			title = `Add tracks to ${playlist?.title ?? target.playlistId}`;
 		}
-		const dialog = new AddDialog({ soundboard, target, onStarted: () => this.#dialog.close() });
-		this.#openEditor(title, dialog, () => {});
+		let started = false;
+		const dialog = new AddDialog({
+			soundboard,
+			target,
+			onStarted: () => {
+				started = true;
+				this.#dialog.close();
+			},
+		});
+		this.#openEditor(title, dialog, () => {
+			if (!returnTo) {
+				return;
+			}
+			if (!started) {
+				returnTo();
+				return;
+			}
+			// The download dialog covers the board while it runs; the way back opens once it is dismissed.
+			const unsubscribe = soundboard.on('download.changed', ({ job }) => {
+				if (job === null) {
+					unsubscribe();
+					returnTo();
+				}
+			});
+			this.own(unsubscribe);
+		});
 	}
 
 	/** @param {Component} child */
@@ -299,15 +372,20 @@ class Board extends Component {
 		}
 	}
 
-	/** @param {string} playlistId */
-	#customizePlaylist(playlistId) {
+	/**
+	 * @param {string} playlistId
+	 * @param {'playlist' | 'tracks'} [tab]
+	 */
+	#customizePlaylist(playlistId, tab) {
 		const soundboard = this.#soundboard;
 		const playlist = soundboard.getLibrary()?.playlists.find((entry) => entry.id === playlistId);
 		if (playlist) {
 			const editor = new PlaylistEditor({
 				soundboard,
 				playlist,
-				onAddTracks: () => this.#add({ kind: 'playlist', playlistId }),
+				tab,
+				// The add dialog takes this one's place, and gives it back on the Tracks tab when it is done.
+				onAddTracks: () => this.#add({ kind: 'playlist', playlistId }, () => this.#customizePlaylist(playlistId, 'tracks')),
 				onMoveTrack: (track) => this.#move({ kind: 'track', id: track.id, playlistId }, track.title),
 			});
 			this.#openEditor('Customize playlist', editor, () => {
@@ -342,6 +420,7 @@ class Board extends Component {
 		this.#dialog.open({
 			title,
 			body,
+			footer: editor instanceof SoundEditor || editor instanceof PlaylistEditor ? editor.footer : undefined,
 			onClose: () => {
 				this.#editing = null;
 				this.#moveDialog.close();

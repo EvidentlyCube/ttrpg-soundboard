@@ -29,9 +29,11 @@ export function card(title, accent, ...children) {
 		class: 'group relative rounded-xl border border-line-dim bg-raised-dim px-4 pt-6 pb-4 shadow-md shadow-black/30 transition-colors '
 			+ 'hover:border-line hover:bg-raised focus-within:border-line focus-within:bg-raised',
 	},
+	// The pill stays on one line within the card, so a long title, such as a track's, ends in "…" with a tooltip.
 	h('h3', {
-		class: 'absolute -top-3 left-4 rounded-full bg-line-dim px-3 py-0.5 text-xs font-semibold uppercase tracking-widest text-muted transition-colors '
+		class: 'absolute -top-3 left-4 max-w-[calc(100%-2rem)] truncate rounded-full bg-line-dim px-3 py-0.5 text-xs font-semibold uppercase tracking-widest text-muted transition-colors '
 			+ `group-hover:text-surface group-focus-within:text-surface ${CARD_ACCENTS[accent]}`,
+		title,
 	}, title),
 	...children);
 }
@@ -153,16 +155,33 @@ export function titleField({ value, hint, accent = 'music', onTitle }) {
 	return { element: h('div', { class: 'space-y-1.5' }, field, hintText), input };
 }
 
+/** Play button colors, written out in full so Tailwind generates them (DESIGN.md §9.6). */
+const PLAY_ACCENTS = {
+	sfx: 'bg-sfx text-surface focus-visible:outline-sfx',
+	music: 'bg-music text-surface focus-visible:outline-music',
+};
+
 /**
- * A Play / Stop button that shows whether the item is playing.
- * @param {() => void} onClick
+ * The footer the dialog keeps below its scrolling body: Play in the middle, the save status on the right.
+ * @param {HTMLElement} play
+ * @param {HTMLElement} status
  */
-export function playToggle(onClick) {
+export function playFooter(play, status) {
+	return h('div', { class: 'grid grid-cols-[1fr_auto_1fr] items-center gap-4' },
+		h('span'), play, h('span', { class: 'justify-self-end' }, status));
+}
+
+/**
+ * A Play / Stop button in the dialog's accent that shows whether the item is playing.
+ * @param {() => void} onClick
+ * @param {keyof typeof PLAY_ACCENTS} accent
+ */
+export function playToggle(onClick, accent) {
 	const iconSlot = h('span');
 	const label = h('span');
 	const element = h('button', {
 		'type': 'button',
-		'class': 'flex cursor-pointer items-center gap-2 rounded-md border border-line px-3 py-1.5 text-sm hover:bg-raised-hover',
+		'class': `flex min-w-28 cursor-pointer items-center justify-center gap-2 rounded-md px-4 py-1.5 text-sm font-semibold shadow-md shadow-black/30 hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 ${PLAY_ACCENTS[accent]}`,
 		'data-item-preview': true,
 		'onClick': onClick,
 	}, iconSlot, label);
@@ -178,9 +197,10 @@ export function playToggle(onClick) {
  * Tabs over panels, the first one selected. The tab bar stays at the top while the dialog scrolls. Left and right
  * arrows move between tabs, and only the selected panel is shown.
  * @param {{ id: string, label: string, panel: HTMLElement }[]} tabs
+ * @param {string} [initial] the id of the tab selected at first; the first one without it
  * @returns {{ bar: HTMLElement, panels: HTMLElement[] }}
  */
-export function tabs(tabs) {
+export function tabs(tabs, initial) {
 	const buttons = tabs.map(({ id, label }) => h('button', {
 		'type': 'button',
 		'role': 'tab',
@@ -214,7 +234,7 @@ export function tabs(tabs) {
 			}
 		});
 	});
-	select(0);
+	select(Math.max(0, tabs.findIndex((tab) => tab.id === initial)));
 	const bar = h('div', { class: 'sticky -top-4 z-10 -mx-5 -mt-4 flex gap-5 border-b border-line bg-panel px-5 pt-3', role: 'tablist' }, buttons);
 	return { bar, panels };
 }

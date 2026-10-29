@@ -66,6 +66,18 @@ export class WaveformService {
 		void this.#generate(++this.#run);
 	}
 
+	/**
+	 * Makes the waveforms of the given files again, whether or not they have one, replacing what is stored. A run in
+	 * progress gives way to it.
+	 * @param {string[]} ids
+	 */
+	regenerate(ids) {
+		this.#run++;
+		this.#status = { running: true, done: 0, total: 0, failed: 0 };
+		this.#emitProgress();
+		void this.#generate(this.#run, ids);
+	}
+
 	/** Ends generation after the file being decoded; its result is dropped. */
 	stop() {
 		if (!this.#status.running) {
@@ -105,11 +117,14 @@ export class WaveformService {
 		this.#cache.delete(id);
 	}
 
-	/** @param {number} run */
-	async #generate(run) {
+	/**
+	 * @param {number} run
+	 * @param {string[]} [given] the files to make; the ones the server is missing without it
+	 */
+	async #generate(run, given) {
 		let ids;
 		try {
-			ids = await this.#api.fetchMissingWaveforms();
+			ids = given ?? await this.#api.fetchMissingWaveforms();
 		} catch (error) {
 			this.#logger.warn('Could not ask the server which waveforms are missing', error);
 			if (run === this.#run) {

@@ -1,5 +1,5 @@
 import { Component } from './component.js';
-import { card, labeledRow, moveOrDeleteCard, playToggle, saveStatus, titleField } from './customize-parts.js';
+import { card, labeledRow, moveOrDeleteCard, playFooter, playToggle, saveStatus, titleField } from './customize-parts.js';
 import { h } from './dom.js';
 import { GainControl } from './gain-control.js';
 import { RangeControl } from './range-control.js';
@@ -18,6 +18,8 @@ export class SoundEditor extends Component {
 	#soundboard;
 	#sound;
 	#onMove;
+	/** @type {HTMLElement | null} */
+	#footer = null;
 
 	/**
 	 * @param {object} options
@@ -30,6 +32,14 @@ export class SoundEditor extends Component {
 		this.#soundboard = soundboard;
 		this.#sound = sound;
 		this.#onMove = onMove;
+	}
+
+	/** Play and the save status, which the dialog keeps below the scrolling body. */
+	get footer() {
+		if (!this.#footer) {
+			throw new Error('SoundEditor is not mounted');
+		}
+		return this.#footer;
 	}
 
 	/** @override */
@@ -117,7 +127,7 @@ export class SoundEditor extends Component {
 		};
 		const fades = { fadeIn: fade('fadeIn', 'Fade in'), fadeOut: fade('fadeOut', 'Fade out') };
 
-		const play = playToggle(() => (soundboard.isSoundActive(id) ? soundboard.stopSound(id) : soundboard.playSound(id)));
+		const play = playToggle(() => (soundboard.isSoundActive(id) ? soundboard.stopSound(id) : soundboard.playSound(id)), 'sfx');
 		play.show(soundboard.isSoundActive(id));
 
 		this.own(soundboard.on('sound.activeChanged', (event) => {
@@ -155,14 +165,14 @@ export class SoundEditor extends Component {
 		});
 		this.own(removal.destroy);
 
+		this.#footer = playFooter(play.element, status.element);
 		// The cards' title pills stick out above them, so they need the extra space.
 		return h('div', { class: 'space-y-8 pt-3' },
 			card('Sound', 'sfx', title.element),
 			card('Volume', 'sfx', gainSlot),
 			range && card('Start and end', 'sfx', rangeSlot),
 			card('Fades', 'sfx', h('div', { class: 'space-y-3' }, fades.fadeIn.element, fades.fadeOut.element)),
-			removal.element,
-			h('div', { class: 'flex items-center justify-between gap-4' }, play.element, status.element));
+			removal.element);
 	}
 
 	/** Focuses the title field, for when the dialog opens. */
