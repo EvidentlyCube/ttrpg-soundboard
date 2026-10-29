@@ -29,34 +29,7 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## Proposals
 
-### Error handling
-
-**Goal.** Every problem the app knows about is listed in one place. When there are any, a button in the header says so and opens a dialog with the list. Problems found at startup, and ones that appear later (failed downloads, failed saves, tracks that fail to play), land in the same list.
-
-**Design changes.**
-- §3.1 step 4 and §3.5: warnings and unreadable durations are also recorded as problems, not only printed. `Reporter` stays as it is; bootstrap returns the list next to the library (§3.4), and a refresh (§3.6) rebuilds it.
-- §5.1: a `Problems` list in `src/library/` (kind, path or item id, message, `at`), held by the server beside the library and settings store. Startup problems are replaced on refresh; runtime problems are added.
-- §5.2: `problems` in the `/api/library` response (the startup list), a `problem` event-stream message for runtime ones, and `DELETE /api/problems/<id>` to dismiss one. `/api/problems` gives the whole list for a page that was away.
-- §6.1, §6.2: `getProblems()`, `dismissProblem(id)`, `dismissAllProblems()` and a `problems.changed` event `{ count }`. The facade also records what it already announces as errors (`sound.error`, `playlist.error`, `sound/playlist/track.saveFailed`, failed downloads, `app.startFailed` excluded since the page is unusable then), de-duplicated by kind + item.
-- §9.1: header Problems button (count, red-tinted), shown only while the list is not empty, left of the external changes button. New §9.14 Problems dialog.
-- §9.8 and the example in §2.3 stay as they are. The refresh dialog (§9.1) keeps showing invalid options files, which stop the refresh entirely; they are not "problems" in the list because nothing was loaded.
-
-**Open questions.**
-1. **What counts as a problem?** Recommended: unsupported audio files, orphan options files, symlinks, empty playlists, files whose duration couldn't be measured, failed saves, failed downloads, and sounds or tracks that failed to decode or play. Not included: invalid options files (fatal at start, §3.1 step 3, and shown by the refresh dialog).
-2. **Where do runtime problems live?** Recommended: the page keeps its own (playback and decode errors are only known there), the server keeps its own (startup, downloads, saves it sees fail), and the dialog merges both. Nothing is persisted; F5 gives a clean list from the server's side. Alternative: the page reports its errors to the server so every tab sees them; more machinery for little gain.
-3. **Dismissing.** Recommended: each row has a Dismiss button, and there is a Dismiss all. Startup problems come back on the next start or refresh if the files are still wrong. A problem for an item that is deleted or moved away disappears with it.
-4. **Repeated errors.** Recommended: one row per kind and item, with a count ("×3") and the latest time, so a track failing every loop doesn't flood the list.
-5. **Does the tile still flash red?** Recommended: yes, unchanged (§9.1); the list is in addition.
-6. **Duration fallback.** The backlog mentions reading the duration in the browser on first play. Recommended: leave it out of this feature; reporting comes first.
-7. **Button look.** Recommended: red (`bg-danger` if the theme has it, otherwise the existing error red) for errors, yellow (`notice`) when all problems are warnings (unsupported files, symlinks, empty playlists).
-
-**Plan.**
-1. `Problems` list (add, merge repeats, dismiss, remove for an item, replace startup ones) — unit tests.
-2. Bootstrap and refresh produce startup problems from scan warnings and null durations; the terminal output stays as it is — tests with the fake reporter and prompter.
-3. Server: `problems` in `/api/library`, `GET /api/problems`, `DELETE /api/problems/<id>`, `problem` events; failed downloads and saves recorded — HTTP tests.
-4. Facade: load, merge with page-side errors, dismiss, `problems.changed`, forgetting on removal — tests with the fake `BackendApi`.
-5. UI: header button and Problems dialog — Playwright tests; manual checks in `TESTING.md`.
-6. `DESIGN.md` update in its own commit; remove this proposal and the backlog entry.
+None yet.
 
 ---
 
@@ -73,14 +46,6 @@ None yet.
 In the owner's order: work from the top. Each entry becomes a proposal (above) before any code is written.
 
 **Decided for all of them.** Customization changes apply immediately and are saved with a 500 ms debounce, as the sound Customize dialog does (DESIGN.md §6.4, §9.7). Re-sorting on screen waits until the dialog closes. Playback state is never remembered across a page reload, so F5 always gives a clean start.
-
-### Error handling
-
-Show every problem found at startup in one place. If there are any, a button in the page header says that there are issues to handle, and opens a dialog listing all of them.
-
-- **Today:** warnings go to the terminal only (DESIGN.md §3.1: unsupported files, orphan options files, symlinks, empty playlists), and the browser learns nothing. The refresh dialog (§9.1) lists invalid options files, but only after a refresh.
-- **Includes:** files whose duration can't be measured. Bootstrap stores `"duration": null` for them (§3.5), but the UI assumes every sound has one: the sound dialog leaves out its Start and end section for such a sound, and crossfades skip such tracks. Reporting them is the first step; reading the duration in the browser on first play is an option for later.
-- **Notes:** the server needs to keep the list and send it (a field of `/api/library` or an event), and the same list should cover problems that appear later (failed downloads, failed saves, tracks that fail to play).
 
 ### Basic mobile design
 
