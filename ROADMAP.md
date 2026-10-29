@@ -29,35 +29,7 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## Proposals
 
-### Protect the API from other web pages
-
-**Goal.** A web page open in the same browser can no longer use the soundboard's API. Today a page on any site can send a simple cross-site `POST` (for example `text/plain` to `/api/trash/delete` or `/api/move`, or an empty `POST` to `/api/refresh`), and a page that rebinds its DNS name to `127.0.0.1` can read and write every endpoint. After this feature the server answers only requests that come from its own page and are addressed to its own address. The soundboard page itself behaves exactly as before.
-
-**Design changes.**
-- §5.2 HTTP API: a new "Request guard" paragraph after the table. It lists the three checks below, their status codes and which paths they cover. The `400` rows for "invalid JSON" gain a `415` for a body that is not `application/json`, and the waveform `PUT` row names its required content type.
-- §1.1 Constraints: one line saying the server is meant for a trusted local user only, and what the guard does and does not protect against (other pages in the browser, not other programs or users on the same machine).
-- §11 Testing: the guard's tests, if the section lists test areas.
-
-**How it works.** One function in `src/http/` (`request-guard.js`) runs at the top of `route()`, before any path is looked at, so it covers the API, the media and the static files alike:
-1. **Host.** The `Host` header must be one of the server's own names: `127.0.0.1`, `localhost` and `[::1]`, each with the server's actual port. Anything else gets `403 { error }`. This stops DNS rebinding, because a rebound page still sends its own name as `Host`.
-2. **Origin.** When a request has an `Origin` header (browsers send it on every cross-site request and on every non-`GET` request), it must be `http://` plus an accepted host, as above. Otherwise `403`. This is what stops the cross-site simple `POST`s, including the ones with no body (`/api/refresh`, `/api/changes/check`, `/api/trash/restore`), which a content-type rule could never cover. A request with no `Origin` (curl, `<audio>` and `EventSource` loads from the page itself, the test helpers) passes.
-3. **Content type.** A request whose route reads a JSON body must send `application/json`, else `415`. A cross-site page cannot send that type without a preflight, which the server never answers. The waveform `PUT` must send `application/octet-stream`. This is a second line of defense behind the Origin check, and it also makes API mistakes visible.
-
-The server sends no CORS headers and does not answer `OPTIONS` (it already gets `405`), so cross-site `fetch` with non-simple requests cannot pass the preflight.
-
-**Open questions.**
-1. **Should `localhost` and `[::1]` be accepted besides `127.0.0.1`?** Recommended: yes. The server only listens on `127.0.0.1`, but people type `localhost` in the address bar, and today that works. The page then sends `Origin: http://localhost:3000`, which must pass.
-2. **Should the guard also use `Sec-Fetch-Site`?** Recommended: no. `Origin` and `Host` cover the same attacks and also work in the tests' plain HTTP client; `Sec-Fetch-Site` would be a third rule with no extra protection.
-3. **Apply the Host and Origin checks to static files and media, or only to `/api/`?** Recommended: to everything. A rebound page could otherwise read `/media/…` files and the page source. The cost is nothing, since the page's own requests always pass.
-4. **How does LAN access (see the backlog entry below) fit in?** Recommended: the guard takes its list of accepted hosts from one place (`startServer`'s options), which today holds the loopback names. LAN access then adds the `--host` address and the machine's names there, and its token decides who may connect. That feature, not this one, decides how.
-5. **The error body and logging.** Recommended: `403 { "error": "Request not allowed" }` for both Host and Origin, without echoing the header back, and a line to stderr only with `--verbose` (the request log already shows the `403`).
-
-**Plan.**
-1. **Guard function** — tests first for a pure `checkRequest(headers, { hosts, port })`: accepted and rejected `Host` values (missing, wrong port, another name, `localhost.evil.com`, uppercase, trailing dot), `Origin` absent, matching, `null` and foreign, and the right status for each.
-2. **Wire it into the router** — server tests with `rawRequest`: a wrong `Host` gets `403` on an API path, a media path and a static file; a foreign `Origin` gets `403` on a `POST` with no body; the page's own requests (right `Host`, own `Origin`, none) pass. Pass the listening port to the router context.
-3. **Content types** — tests for `415` on a JSON route sent as `text/plain`, with the `Content-Type` parameters (`application/json; charset=utf-8`) accepted, and for the waveform `PUT` with another type. Check that every client call in `public/app/api/backend-api.js` already sends the right type (it does at the time of writing); add a test that keeps it so if one is missing.
-4. **Browser check** — a Playwright test that the page still works through `localhost` as well as `127.0.0.1`; a line in `TESTING.md`'s manual checklist for opening a hostile page's `fetch` from another port.
-5. **Design update** — `DESIGN.md` as listed above, then remove this proposal and its backlog entry (separate commit).
+None yet.
 
 ---
 
@@ -74,12 +46,6 @@ None yet.
 In the owner's order: work from the top. Each entry becomes a proposal (above) before any code is written.
 
 **Decided for all of them.** Customization changes apply immediately and are saved with a 500 ms debounce, as the sound Customize dialog does (DESIGN.md §6.4, §9.7). Re-sorting on screen waits until the dialog closes. Playback state is never remembered across a page reload, so F5 always gives a clean start.
-
-### Protect the API from other web pages
-
-Any page open in the same browser can send simple cross-site requests to `127.0.0.1`, for example a `text/plain` `POST` to `/api/trash/delete`, and DNS rebinding reaches every endpoint (DESIGN.md §5.2).
-
-- **Notes:** require `application/json` on requests with a body, and reject requests whose `Host` is not the server's own address (`localhost`, `127.0.0.1` and whatever LAN access later adds). Applies to `readJsonBody` and the waveform upload (`src/http/router.js`). LAN access builds on this (see below).
 
 ### Ogg Opus files
 
@@ -182,7 +148,7 @@ Open the app on a phone on the same network to choose what plays, while the PC d
 - **Notes:**
   - Would add a `--host` option (DESIGN.md §1), a command relay (`POST /api/commands`), an event stream of playback state, and a "player" and "remote" role for pages.
   - Open: whether the remote is a separate page or a role of the same page. Today every open tab is an independent player, so the proposal must say which tab is the player and what happens when a second player connects.
-  - Needs "Protect the API from other web pages" first, and a way to keep other people on the network out (for example a token in the link), since anything on the LAN could otherwise run downloads and delete files.
+  - Builds on the request guard (DESIGN.md §5.2): the list of accepted `Host` names (`LOOPBACK_HOSTS`) is where the LAN address goes. It also needs a way to keep other people on the network out (for example a token in the link), since anything on the LAN could otherwise run downloads and delete files.
 
 ### Preloading the next track
 
