@@ -3,5 +3,6 @@ declare var soundboardTest: {
 	clock: import('../../helpers/fake-clock.js').FakeClock;
 	engine: import('../../helpers/fake-audio-engine.js').FakeAudioEngine;
 	decoder: import('../../helpers/fake-waveform-decoder.js').FakeWaveformDecoder;
+	release?: () => void;
 };
 declare var soundboardTestOptions: { unplayableFormats: string[] } | undefined;

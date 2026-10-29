@@ -77,6 +77,11 @@ export class CustomizeDialog {
 		await expect(this._dialog.locator(`[data-seconds-control="${name}"] [data-seconds-readout]`)).toHaveText(reading);
 	}
 
+	/** Holds the delete button down until it acts. */
+	async holdToDelete() {
+		await this._dialog.getByRole('button', { name: 'Hold to delete' }).click({ delay: 700 });
+	}
+
 	async play() {
 		await this._dialog.getByRole('button', { name: 'Play' }).click();
 	}

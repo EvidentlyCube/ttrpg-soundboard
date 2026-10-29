@@ -1,5 +1,7 @@
 import { join } from 'node:path';
 import { test as base } from '@playwright/test';
+import { HeaderPage } from '../pages/header.js';
+import { TrashPage } from '../pages/dialogs/trash.js';
 import { PlaylistEditorPage } from '../pages/dialogs/playlist-editor.js';
 import { SoundEditorPage } from '../pages/dialogs/sound-editor.js';
 import { FooterPage } from '../pages/footer.js';
@@ -46,6 +48,14 @@ class Soundboard {
 		await this.waitUntilLoaded();
 	}
 
+	/**
+	 * Waits long enough for the app to have noticed a change in the folder, if it is going to: it waits for the folder to
+	 * be quiet for a second first (DESIGN.md §5.3). The one place a test waits in real time, to show that nothing happens.
+	 */
+	async waitForTheFolderToSettle() {
+		await this.#page.waitForTimeout(1500);
+	}
+
 	async reload() {
 		await this.#page.reload();
 	}
@@ -59,8 +69,9 @@ class Soundboard {
  * @property {SoundsPage} sounds
  * @property {FooterPage} footer
  * @property {Audio} audio
+ * @property {HeaderPage} header
  * @property {Disk} disk
- * @property {{ soundEditor: SoundEditorPage, playlistEditor: PlaylistEditorPage }} dialogs
+ * @property {{ soundEditor: SoundEditorPage, playlistEditor: PlaylistEditorPage, trash: TrashPage }} dialogs
  * @typedef {object} Options
  * @property {string[]} unplayableFormats formats this "browser" cannot play, such as 'ogg' (Safari)
  * @property {'example' | import('../../helpers/tmp-tree.js').TreeSpec} library what the server serves: a copy of the example fixture, or a tree to build
@@ -87,6 +98,8 @@ const fixtures = {
 	soundboard: async ({ page, library, splash }, use) => {
 		const server = await startSoundboardServer(library);
 		await use(new Soundboard(page, server.url, server.root, splash));
+		// The page may still be saving waveforms; stop it before the folder goes.
+		await page.goto('about:blank');
 		await server.stop();
 	},
 
@@ -111,7 +124,11 @@ const fixtures = {
 	},
 
 	dialogs: async ({ page }, use) => {
-		await use({ soundEditor: new SoundEditorPage(page), playlistEditor: new PlaylistEditorPage(page) });
+		await use({ soundEditor: new SoundEditorPage(page), playlistEditor: new PlaylistEditorPage(page), trash: new TrashPage(page) });
+	},
+
+	header: async ({ page }, use) => {
+		await use(new HeaderPage(page));
 	},
 
 	audio: async ({ page }, use) => {

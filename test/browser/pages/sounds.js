@@ -27,6 +27,11 @@ export class SoundsPage {
 	}
 
 	/** @param {string} title */
+	async expectGone(title) {
+		await expect(this.#tile(title)).toBeHidden();
+	}
+
+	/** @param {string} title */
 	async click(title) {
 		await this.#tile(title).click();
 	}

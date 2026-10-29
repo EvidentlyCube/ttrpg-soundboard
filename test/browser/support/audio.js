@@ -60,6 +60,45 @@ export class Audio {
 		));
 	}
 
+	/**
+	 * What a bus is set to, which the volume sliders in the header decide.
+	 * @param {'master' | 'music' | 'sfx'} bus
+	 * @param {unknown} gain a number, or a matcher such as `expect.closeTo`
+	 */
+	async expectBusGain(bus, gain) {
+		await expect.poll(() => this.#page.evaluate((name) => soundboardTest.engine.busGains[name], bus)).toEqual(gain);
+	}
+
+	/** Makes waveform decoding wait, so a test can look at the indicator while it runs. Call it before the splash is clicked. */
+	async holdWaveforms() {
+		await this.#page.evaluate(() => {
+			soundboardTest.decoder.gate = new Promise((resolve) => {
+				soundboardTest.release = resolve;
+			});
+		});
+	}
+
+	/** Lets the waiting waveform decoding go on. */
+	async releaseWaveforms() {
+		await this.#page.evaluate(() => {
+			soundboardTest.decoder.gate = null;
+			soundboardTest.release?.();
+		});
+	}
+
+	/**
+	 * Lets time pass until every missing waveform is made. The service rests a moment between two files (DESIGN.md §6.6),
+	 * and each file takes a real round trip to the server, so time is moved on again and again until the header's
+	 * indicator is gone.
+	 */
+	async finishWaveforms() {
+		const indicator = this.#page.locator('[data-waveform-indicator]');
+		await expect(async () => {
+			await this.advance(250);
+			await expect(indicator).toBeHidden({ timeout: 50 });
+		}).toPass({ timeout: 15_000, intervals: [20] });
+	}
+
 	/** The system takes the audio device away, as when the lid closes or another app takes over. */
 	async suspend() {
 		await this.#page.evaluate(() => soundboardTest.engine.simulate('suspended'));
