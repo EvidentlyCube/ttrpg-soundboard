@@ -29,12 +29,12 @@ node index.js <path-to-audio-directory> [--port <number>] [--verbose]
 | Runtime dependencies | **None on the server.** The browser loads exactly one third-party file: Tailwind CSS's browser build, vendored in `public/vendor/` (§9.6). The browser never fetches anything from the internet; only the server does, and only the links the user pastes (§5.4). |
 | External programs | `yt-dlp` and `ffmpeg`, for downloads only (§5.4). They are found on `PATH` and run as child processes; the app never bundles or installs them. Without them, everything except downloads works as usual. |
 | UI styling | Tailwind CSS v4 browser build (`@tailwindcss/browser`). It turns class names into CSS at runtime, so there is no CLI and no build step. |
-| Dev dependencies | Tooling only, never imported by app code: `typescript` and `@types/node` (type-checking JSDoc), `eslint`, `@eslint/js`, `@stylistic/eslint-plugin` and `globals` (linting and formatting) |
+| Dev dependencies | Tooling only, never imported by app code: `typescript` and `@types/node` (type-checking JSDoc), `eslint`, `@eslint/js`, `@stylistic/eslint-plugin` and `globals` (linting and formatting), and `@playwright/test` (the browser tests, §11) |
 | Language | Plain `.js` with JSDoc types. No build or compile step. The browser loads the source files directly as ES modules. |
-| Type-checking | `tsc` (TypeScript 7) with `checkJs` and `strict`, across four projects with different globals (§10.1) |
+| Type-checking | `tsc` (TypeScript 7) with `checkJs` and `strict`, across five projects with different globals (§10.1) |
 | Formatting | ESLint with `@stylistic`, auto-fixed with `--fix`. Not Prettier, which always puts `&&`, `\|\|` and `?:` at the end of a line. Multi-line expressions put the operator at the **start** of the line (`@stylistic/operator-linebreak: before`); assignments keep `=` at the end. |
 | Module system | ES modules everywhere (`"type": "module"`) |
-| Tests | `node --test` with `node:assert/strict` ([`TESTING.md`](TESTING.md)) |
+| Tests | `node --test` with `node:assert/strict`, and Playwright for the UI ([`TESTING.md`](TESTING.md)) |
 | Browsers | Current desktop Chrome, Firefox and **Safari** |
 | Touch | No special handling. Touch users may not be able to open the context menus. |
 | Memory/CPU | Files stream over HTTP Range requests. The server never holds audio in memory. The browser holds decoded audio only for small sound effects, within a fixed memory budget. |
@@ -1247,6 +1247,7 @@ public/
 test/
 	backend/    cli/  downloads/  http/  library/  metadata/
 	frontend/   logic tests, backend-api.test.js, ui/ (pure UI helpers)
+	browser/    Playwright suite (§11): playwright.config.js, support/ (fixtures, server, test-main, audio, disk), pages/, specs/
 	helpers/    fake-audio-engine.js  fake-clock.js  fake-backend-api.js  fake-prompter.js  fake-reporter.js  fake-process-runner.js
 	            tmp-tree.js  tag-builders.js  http-client.js  seeded-random.js
 test_fixtures/
@@ -1264,6 +1265,7 @@ Each project is checked against only the globals its code may use, so the compil
 | Frontend logic (`tsconfig.logic.json`) | `public/app/logic/**` | ECMAScript only: **no DOM, no Node**. Using `document`, `window`, `console` or `setTimeout` here is a compile error. |
 | Frontend UI (`tsconfig.ui.json`) | `public/app/**` except `logic/` | DOM |
 | Frontend tests (`tsconfig.frontend-tests.json`) | `test/frontend/**`, `test/helpers/**` | Node, plus the sources they import |
+| Browser tests (`tsconfig.browser-tests.json`) | `test/browser/**` except `support/test-main.js` | Node and DOM (the callbacks given to `page.evaluate` run in the page). `test-main.js` runs only in the browser, where its imports resolve, and is left out. |
 
 ESLint backs this up with `no-restricted-globals` in `public/app/logic/**`.
 
@@ -1273,16 +1275,17 @@ ESLint backs this up with `no-restricted-globals` in `public/app/logic/**`.
 |---|---|
 | `npm start -- <dir>` | `node index.js <dir>` |
 | `npm run dev -- <dir>` | `node --watch index.js <dir>` |
-| `npm test` | `node --test` |
+| `npm test` | `node --test` over `test/backend`, `test/frontend` and `test/helpers` |
+| `npm run test:browser` | `playwright test -c test/browser/playwright.config.js`; needs the Playwright browsers and is not part of `check` |
 | `npm run typecheck` | `tsc -p` for every project in §10.1 |
 | `npm run lint` / `npm run lint:fix` | `eslint .` / `eslint . --fix` |
-| `npm run check` | typecheck + lint + test; must pass before every commit |
+| `npm run check` | typecheck + lint + test; must pass before every commit (the browser tests are run separately) |
 
 ---
 
 ## 11. Testing
 
-Logic and backend code are developed test-first and covered by automated tests that run in Node, against fakes for the audio engine, clock, backend and terminal. The DOM layer and `WebAudioEngine` stay thin and are checked by hand in real browsers. What each suite covers, how the fakes work, and the manual checklist are in [`TESTING.md`](TESTING.md).
+Logic and backend code are developed test-first and covered by automated tests that run in Node, against fakes for the audio engine, clock, backend and terminal. The DOM layer is covered by Playwright specs (`test/browser/`) that drive the real page against the real server in Chromium. They replace only sound and time: `support/test-main.js`, served in place of `public/app/main.js`, is the composition root of §6 with `FakeAudioEngine`, `FakeClock` and a fake waveform decoder from `test/helpers/`, so a test moves time with `audio.advance(ms)` and never waits for real audio. The app code itself has no test hooks. Specs are written against page objects (`splash`, `playlists`, `sounds`, `footer`, `header`, the dialogs) and a few fixtures (`soundboard`, `library`, `audio`, `disk`), so they read as a list of what a person does and sees. `WebAudioEngine` stays thin and is checked by hand in real browsers. What each suite covers, how the fakes and fixtures work, and the manual checklist are in [`TESTING.md`](TESTING.md).
 
 ---
 
