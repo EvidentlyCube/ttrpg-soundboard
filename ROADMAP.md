@@ -31,43 +31,43 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ### LAN access and remote control
 
-**Goal.** The splash offers two choices. **Player** is today's app: it plays the audio. **Remote** is a small page for a phone on the same network: it shows the playlist and sound buttons, a Panic Stop button, and one control row per playing playlist (Previous, Pause/Play, Next, with the track and playlist titles). It never plays audio and never calls `start()` on the audio side; it only sends commands to the player page, and shows the state the player reports back. Everything else (volumes, errors, Debug, the ☰ menu, context menus, progress, Customize, downloads, trash) stays on the player's page.
+**Goal.** The splash offers two choices. **Host** is today's app: it plays the audio. **Remote** is a small page for a phone on the same network: it shows the playlist and sound buttons, a Panic Stop button, and one control row per playing playlist (Previous, Pause/Play, Next, with the track and playlist titles). It never plays audio and never calls `start()` on the audio side; it only sends commands to the host page, and shows the state the host reports back. Everything else (volumes, errors, Debug, the ☰ menu, context menus, progress, Customize, downloads, trash) stays on the host's page. The two roles are kept completely apart: a remote never becomes a host, and a page can only be one of them.
 
 **Design changes.**
 - §1 and §1.1: a `--lan` option opens the server to the LAN; "Trust" and "Touch" rows change.
 - §5.2: new relay routes and event messages, the request guard learns the access token and a remote-only allowlist for requests from other machines.
-- §5 (new subsection): the relay (`RemoteRelay`): it keeps the latest state snapshot of the player and hands commands on. It is the only playback-related thing the server ever holds, and it holds it only in memory.
-- §6: `commands.js` keeps its role (the relay forwards the commands as they are, validated by `dispatch()` on the player). New `RemoteLink` (player side) and `RemoteController` (remote side) in `logic/`, new `BackendApi` and `ServerEvents` methods. §6.2 gets the snapshot as data, not as new facade events.
+- §5 (new subsection): the relay (`RemoteRelay`): it keeps the latest state snapshot of the host and hands commands on. It is the only playback-related thing the server ever holds, and it holds it only in memory.
+- §6: `commands.js` keeps its role (the relay forwards the commands as they are, validated by `dispatch()` on the host). New `RemoteLink` (host side) and `RemoteController` (remote side) in `logic/`, new `BackendApi` and `ServerEvents` methods. §6.2 gets the snapshot as data, not as new facade events.
 - §9.0: the splash gets two buttons. §9.1 (new §9.15): the remote page.
 - §3 and §10: the new CLI option, the new files, the type-check project for the remote UI.
 
 **How it works.**
-1. *Roles.* The splash has two buttons. "Player" calls `soundboard.start()` as now. "Remote" skips audio entirely and starts the `RemoteController`. The choice is not remembered: F5 shows the splash again, like every other start.
-2. *Which tab is the player.* A page that starts as Player opens its event stream as `role=player`. The relay targets the **most recently started** player and tells the previous one nothing (today's independent tabs keep working, they just stop being remote targets). With no player, the remote shows "No player connected" and its buttons are disabled.
-3. *Commands.* The remote sends `POST /api/remote/commands` with one command. The relay checks that it is one of the allowed types and forwards it to the player's stream as a `command` message; the player runs it through `dispatch()`. Allowed from a remote: `panic.stop`, `sound.play`, `playlist.toggle`, `playlist.next`, `playlist.previous`, `playlist.pause`, `playlist.resume`. Nothing that customizes, deletes or moves is relayable.
-4. *State.* The player's `RemoteLink` listens to the facade's events and sends a snapshot (`PUT /api/remote/state`): the panic state, the playlists in start order that are playing or paused with their state, track title and index, and the sounds with live instances. It sends a new one on every relevant change, never on `playlist.progress` or `voices.changed`. The relay stores the latest and sends it to every remote stream (also on connect).
-5. *Library.* The remote reads `GET /api/library` for titles and ids, and refetches it when the player says the library changed (the snapshot carries a `libraryVersion`).
+1. *Roles.* The splash has two buttons. "Host" calls `soundboard.start()` as now. "Remote" skips audio entirely and starts the `RemoteController`. The choice is not remembered: F5 shows the splash again, like every other start.
+2. *Which tab is the host.* A page that starts as Host opens its event stream as `role=host`. The **first** host keeps the role for as long as its page is open: a host started later (a second tab, a phone) is an ordinary independent host as today, not controlled by the remotes, and never takes the role over. This way sound can only start coming from another device when you start Host on that device yourself, and only when no other host is there. When the host's page closes, the role is free again for the next page that starts as Host; nobody inherits it by itself. With no host, the remote shows "No host connected" and its buttons are disabled.
+3. *Commands.* The remote sends `POST /api/remote/commands` with one command. The relay checks that it is one of the allowed types and forwards it to the host's stream as a `command` message; the host runs it through `dispatch()`. Allowed from a remote: `panic.stop`, `sound.play`, `playlist.toggle`, `playlist.next`, `playlist.previous`, `playlist.pause`, `playlist.resume`. Nothing that customizes, deletes or moves is relayable.
+4. *State.* The host's `RemoteLink` listens to the facade's events and sends a snapshot (`PUT /api/remote/state`): the panic state, the playlists in start order that are playing or paused with their state, track title and index, and the sounds with live instances. It sends a new one on every relevant change, never on `playlist.progress` or `voices.changed`. The relay stores the latest and sends it to every remote stream (also on connect).
+5. *Library.* The remote reads `GET /api/library` for titles and ids, and refetches it when the host says the library changed (the snapshot carries a `libraryVersion`).
 6. *Security.* `--lan` binds `0.0.0.0` and prints a link with a random token (`http://192.168.1.20:3000/?token=…`). The token is kept in a cookie after the first visit. Requests that don't come from loopback need the token, and may only reach static files, `GET /api/library` and the `/api/remote/…` routes; every other route, `/media` included (the remote plays nothing), answers `403` to them. The `Host` check accepts the LAN address as well. Without `--lan` nothing changes.
 7. *Remote page.* A top row with the Panic Stop button (same fade/now behavior, driven by the snapshot's panic state), then the playlist and sound buttons (tap = play; active ones highlighted), then the stack of players with the three buttons and the titles. No header, no footer bars, no progress, no volume, no menus. Buttons are large for touch.
 
 **Open questions.**
-1. *Names of the splash buttons.* Recommended: **Play here** ("this device plays the sound") and **Remote control** ("control a soundboard on another device"). The code calls the roles `player` and `remote`.
-2. *More than one remote, more than one player.* **Decided:** any number of remotes, one host. Every remote gets every state message, so they all stay in sync with the host. The most recently started player is the host, as above; no warning (a warning for two tabs is "decided against").
+1. *Names of the splash buttons.* Recommended: **Play here** ("this device plays the sound") and **Remote control** ("control a soundboard on another device"). The code calls the roles `host` and `remote`.
+2. *More than one remote, more than one host.* **Decided:** any number of remotes, one host. Every remote gets every state message, so they all stay in sync with the host. The first host page keeps the role (above); no warning (a warning for two tabs is "decided against").
 3. *What a tap on a playlist button does.* Recommended: `playlist.toggle`, which starts it, or pauses/resumes it when already active (check what `toggle` does today and keep the same). A tap on a sound plays it; stopping sounds is Panic Stop's job.
 4. *Security.* Recommended: the token above, and the read-only/remote-only allowlist for non-loopback requests. Alternative: none (trust the LAN), which lets anything on the network delete files and run downloads.
 5. *Bind address.* **Decided:** the flag is `--lan`. Alone it means all interfaces and prints every LAN address it finds as a link; `--lan <address>` binds one.
 6. *HTTPS.* Not needed: the remote plays no audio, so it needs no secure context. The token travels in clear text on the LAN; acceptable?
 7. *Remote on the same machine without `--lan`.* Recommended: allowed (a second tab, loopback, no token), which also makes the whole thing testable with Playwright.
-8. *Stale state.* If the player closes, the relay tells the remotes at once ("No player connected"). If the player's page sleeps (a phone as the player is not a goal), commands are lost; the remote doesn't queue them.
+8. *Stale state.* If the host closes, the relay tells the remotes at once ("No host connected"). If the host's page sleeps, commands are lost; the remote doesn't queue them.
 
 **Plan.**
-1. Relay core (`RemoteRelay`, `src/http/` or `src/remote/`) — keeps the newest player, forwards allowed commands, stores and broadcasts the snapshot, drops the player when its stream closes; unit tests with fake streams.
-2. Routes and event messages — `PUT /api/remote/state`, `POST /api/remote/commands`, the `role` query on `/api/events`, `command`, `remote.state` and `remote.player` messages; HTTP tests including `400`/`403`/`409` (no player).
+1. Relay core (`RemoteRelay`, `src/http/` or `src/remote/`) — keeps the first host (no takeover, no fallback), forwards allowed commands, stores and broadcasts the snapshot, drops the host when its stream closes; unit tests with fake streams.
+2. Routes and event messages — `PUT /api/remote/state`, `POST /api/remote/commands`, the `role` query on `/api/events`, `command`, `remote.state` and `remote.host` messages; HTTP tests including `400`/`403`/`409` (no host).
 3. `--lan` and the token — CLI option, binding, printed links, guard changes (`Host` names, token cookie, allowlist for non-loopback requests); tests for each refused request.
-4. Snapshot and `RemoteLink` (player side) — builds snapshots from facade events, runs relayed commands through `dispatch()`; tests with the fake engine and fake `BackendApi`.
+4. Snapshot and `RemoteLink` (host side) — builds snapshots from facade events, runs relayed commands through `dispatch()`; tests with the fake engine and fake `BackendApi`.
 5. `RemoteController` (remote side) — keeps the library, snapshot and connection state, sends commands, emits events; tests with fakes.
 6. Splash with the two buttons and the mode switch in `main.js`/`App` — Playwright.
-7. Remote page UI (`ui/remote/`): buttons, Panic Stop, player stack — Playwright against the test server with a player page and a remote page open together.
+7. Remote page UI (`ui/remote/`): buttons, Panic Stop, stack of player bars — Playwright against the test server with a host page and a remote page open together.
 8. Manual checks in `TESTING.md` (a real phone on the LAN), then `DESIGN.md` update in its own commit and removal of this proposal and the backlog entry.
 
 ---
@@ -96,7 +96,7 @@ Make the page usable on a phone or tablet.
   - The footer's three bars per row, the tile grid and the dialogs need narrow layouts.
   - Audio unlocking and playback in Safari on iOS need checking.
   - Context menus get **no** touch gesture: long press stays unused (see "Decided against").
-  - Design specific to the remote player belongs to "LAN access and remote control" below, not here.
+  - Design specific to the remote page belongs to "LAN access and remote control" below, not here.
 
 ### Browser test coverage still to write
 
@@ -171,8 +171,8 @@ Open the app on a phone on the same network to choose what plays, while the PC d
 
 - **Seam:** commands and events are plain serializable objects and every command goes through `dispatch()`, which validates it (DESIGN.md §6). The server holds no playback state. Deletions, moves, downloads and the trash are deliberately not commands, so a remote limited to playback follows from the architecture.
 - **Notes:**
-  - Would add a `--lan` option (DESIGN.md §1), a command relay (`POST /api/commands`), an event stream of playback state, and a "player" and "remote" role for pages.
-  - Open: whether the remote is a separate page or a role of the same page. Today every open tab is an independent player, so the proposal must say which tab is the player and what happens when a second player connects.
+  - Would add a `--lan` option (DESIGN.md §1), a command relay (`POST /api/commands`), an event stream of playback state, and a "host" and "remote" role for pages.
+  - Open: whether the remote is a separate page or a role of the same page. Today every open tab is an independent host, so the proposal must say which tab is the host and what happens when a second host connects.
   - Builds on the request guard (DESIGN.md §5.2): the list of accepted `Host` names (`LOOPBACK_HOSTS`) is where the LAN address goes. It also needs a way to keep other people on the network out (for example a token in the link), since anything on the LAN could otherwise run downloads and delete files.
 
 ### Preloading the next track

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 /**
- * What a remote may ask for. Customizing, volumes and everything else that changes something stay on the player's page
+ * What a remote may ask for. Customizing, volumes and everything else that changes something stay on the host's page
  * (DESIGN.md §5.2).
  */
 const RELAYABLE_COMMANDS = new Set([
@@ -22,11 +22,11 @@ export class NotRelayableError extends Error {
 	}
 }
 
-/** A command was sent while no page is playing. */
-export class NoPlayerError extends Error {
+/** A command was sent while no page is hosting. */
+export class NoHostError extends Error {
 	constructor() {
-		super('No player is connected');
-		this.name = 'NoPlayerError';
+		super('No host is connected');
+		this.name = 'NoHostError';
 	}
 }
 
@@ -36,37 +36,40 @@ export class NoPlayerError extends Error {
  * Connects the remotes to the page that plays (DESIGN.md §5). The server still knows nothing about playback: it keeps the
  * latest state the host reported, in memory, and hands commands on without looking at what they mean.
  *
- * Any number of remotes and players can be attached. The most recently attached player is the host: it gets the
- * commands, and only its state is kept. When it goes away, the one before it takes over.
+ * Any number of remotes can attach, but only one host, the first. A page that starts as host later is not controlled
+ * by the remotes and never takes the role over, so sound cannot suddenly start coming from another device. When the host
+ * goes away the role is free again, and it goes to the next page that asks for it, not to one that already asked.
  */
 export class RemoteRelay {
-	/** @type {{ id: string, send: Send }[]} oldest first */
-	#players = [];
+	/** @type {{ id: string, send: Send } | null} */
+	#host = null;
 	/** @type {Set<Send>} */
 	#remotes = new Set();
 	/** @type {object | null} */
 	#state = null;
 
 	/**
-	 * @param {Send} send delivers a message to the player's event stream
-	 * @returns {{ id: string, detach: () => void }} `id` goes with the player's state (`updateState`)
+	 * @param {Send} send delivers a message to the host's event stream
+	 * @returns {{ id: string, detach: () => void } | null} `id` goes with the host's state (`updateState`); `null` when
+	 * another page is the host
 	 */
-	attachPlayer(send) {
-		const player = { id: randomUUID(), send };
-		this.#players.push(player);
-		this.#hostChanged();
+	attachHost(send) {
+		if (this.#host) {
+			return null;
+		}
+		const host = { id: randomUUID(), send };
+		this.#host = host;
+		this.#broadcast({ type: 'remote.host', connected: true });
 		return {
-			id: player.id,
+			id: host.id,
 			detach: () => {
-				const index = this.#players.indexOf(player);
-				if (index === -1) {
+				if (this.#host !== host) {
 					return;
 				}
-				const wasHost = index === this.#players.length - 1;
-				this.#players.splice(index, 1);
-				if (wasHost) {
-					this.#hostChanged();
-				}
+				this.#host = null;
+				this.#state = null;
+				this.#broadcast({ type: 'remote.host', connected: false });
+				this.#broadcast({ type: 'remote.state', state: null });
 			},
 		};
 	}
@@ -77,7 +80,7 @@ export class RemoteRelay {
 	 */
 	attachRemote(send) {
 		this.#remotes.add(send);
-		send({ type: 'remote.player', connected: this.#host !== undefined });
+		send({ type: 'remote.host', connected: this.#host !== null });
 		if (this.#state) {
 			send({ type: 'remote.state', state: this.#state });
 		}
@@ -85,12 +88,12 @@ export class RemoteRelay {
 	}
 
 	/**
-	 * @param {string} playerId from `attachPlayer`
+	 * @param {string} hostId from `attachHost`
 	 * @param {object} state
-	 * @returns {boolean} `false` when that player is not the host, and its state was ignored
+	 * @returns {boolean} `false` when that page is not the host any more, and its state was ignored
 	 */
-	updateState(playerId, state) {
-		if (this.#host?.id !== playerId) {
+	updateState(hostId, state) {
+		if (this.#host?.id !== hostId) {
 			return false;
 		}
 		this.#state = state;
@@ -102,7 +105,7 @@ export class RemoteRelay {
 	 * Passes a command to the host. The host checks that it is well-formed and that its ids exist.
 	 * @param {unknown} command
 	 * @throws {NotRelayableError} for anything a remote may not send
-	 * @throws {NoPlayerError} when no player is connected
+	 * @throws {NoHostError} when no page is hosting
 	 */
 	sendCommand(command) {
 		if (
@@ -114,27 +117,10 @@ export class RemoteRelay {
 		) {
 			throw new NotRelayableError();
 		}
-		const host = this.#host;
-		if (!host) {
-			throw new NoPlayerError();
+		if (!this.#host) {
+			throw new NoHostError();
 		}
-		host.send({ type: 'command', command });
-	}
-
-	get #host() {
-		return this.#players.at(-1);
-	}
-
-	/** The old state belongs to the previous host, so it goes until the new one reports its own. */
-	#hostChanged() {
-		const host = this.#host;
-		const hadState = this.#state !== null;
-		this.#state = null;
-		this.#broadcast({ type: 'remote.player', connected: host !== undefined });
-		if (hadState) {
-			this.#broadcast({ type: 'remote.state', state: null });
-		}
-		host?.send({ type: 'remote.host' });
+		this.#host.send({ type: 'command', command });
 	}
 
 	/** @param {object} message */
