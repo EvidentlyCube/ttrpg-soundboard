@@ -17,7 +17,7 @@ import { checkClip, isPlainObject, validateAudioOptions, validatePlaylistOptions
 /** @typedef {import('./settings-store.js').FileUpdater} FileUpdater */
 /**
  * @typedef {{ title?: string, gain?: number, crossfade?: number, fadeIn?: number, fadeOut?: number, startAt?: number,
- * 	endAt?: number | null, order?: import('./validate.js').PlaybackOrder, trackLooping?: boolean,
+ * 	endAt?: number | null, order?: import('./validate.js').PlaybackOrder, playlistLooping?: boolean, trackLooping?: boolean,
  * 	stopMode?: import('./validate.js').StopMode }} OptionChanges
  */
 
@@ -47,7 +47,7 @@ const SECONDS_KEYS = ['crossfade', 'fadeIn', 'fadeOut'];
 /** The only options the app itself changes, per kind of item; anything else in a request is rejected. */
 const EDITABLE = {
 	sound: { keys: ['title', 'gain', 'startAt', 'endAt', 'fadeIn', 'fadeOut'], validate: validateAudioOptions },
-	playlist: { keys: ['title', 'gain', ...SECONDS_KEYS, 'order', 'trackLooping', 'stopMode'], validate: validatePlaylistOptions },
+	playlist: { keys: ['title', 'gain', ...SECONDS_KEYS, 'order', 'playlistLooping', 'trackLooping', 'stopMode'], validate: validatePlaylistOptions },
 	track: { keys: ['title', 'gain', 'startAt', 'endAt'], validate: validateAudioOptions },
 };
 
@@ -800,6 +800,9 @@ function normalizeChanges(changes, { keys, validate }) {
 	}
 	if (typeof changes.order === 'string') {
 		normalized.order = /** @type {import('./validate.js').PlaybackOrder} */ (changes.order);
+	}
+	if (typeof changes.playlistLooping === 'boolean') {
+		normalized.playlistLooping = changes.playlistLooping;
 	}
 	if (typeof changes.trackLooping === 'boolean') {
 		normalized.trackLooping = changes.trackLooping;

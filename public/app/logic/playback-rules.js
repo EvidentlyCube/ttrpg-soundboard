@@ -42,8 +42,8 @@ export const MAX_CROSSFADE = 30;
  * @returns {Readonly<PlaybackRules>}
  */
 export function resolvePlaybackRules(playlist) {
-	const { crossfade, fadeIn, fadeOut, order, trackLooping, stopMode } = playlist;
-	return { ...DEFAULT_PLAYBACK_RULES, crossfade, fadeIn, fadeOut, order, trackLooping, stopMode };
+	const { crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode } = playlist;
+	return { ...DEFAULT_PLAYBACK_RULES, crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode };
 }
 
 /**

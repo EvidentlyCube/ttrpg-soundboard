@@ -119,6 +119,29 @@ describe('PlayHistory', () => {
 		assert.equal(played.current, 1);
 	});
 
+	it('plays every track once in Random when the playlist does not loop', () => {
+		const played = history('random', { trackCount: 4, loop: false });
+		const first = /** @type {number} */ (played.start());
+		const rest = nexts(played, 4);
+		assert.deepEqual([first, ...rest.slice(0, 3)].sort(), [0, 1, 2, 3]);
+		assert.equal(rest[3], null);
+	});
+
+	it('stops extending when looping is turned off, after what is queued', () => {
+		const played = history('ordered', { trackCount: 2 });
+		played.start();
+		played.setLoop(false);
+		assert.deepEqual(nexts(played, 2), [1, null]);
+	});
+
+	it('extends again when looping is turned back on', () => {
+		const played = history('ordered', { trackCount: 2, loop: false });
+		played.start();
+		assert.deepEqual(nexts(played, 2), [1, null]);
+		played.setLoop(true);
+		assert.deepEqual(nexts(played, 2), [0, 1]);
+	});
+
 	it('repeats a single track in every order', () => {
 		for (const order of /** @type {PlaybackOrder[]} */ (['ordered', 'random', 'shuffle'])) {
 			const played = history(order, { trackCount: 1 });

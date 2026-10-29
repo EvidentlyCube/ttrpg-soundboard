@@ -3,8 +3,9 @@
  * its first entries and where the cursor goes, `extend` the entries to append once the history runs out. Entries are
  * track indices. The functions are pure apart from the injected `random`, so a seeded generator makes them repeatable.
  * @typedef {object} OrderStrategy
- * @property {(trackCount: number, random: () => number, at: number | null) => { entries: number[], cursor: number }} start
- * 	`at` is a track to start at, chosen in the track list or playing when the order changed
+ * @property {(trackCount: number, random: () => number, at: number | null, loop: boolean) => { entries: number[], cursor: number }} start
+ * 	`at` is a track to start at, chosen in the track list or playing when the order changed; without `loop` the
+ * 	first fill is all there is, so Random fills it with a round of every track
  * @property {(trackCount: number, random: () => number, last: number) => number[]} extend `last` is the history's last entry
  */
 
@@ -20,17 +21,16 @@ const STRATEGIES = {
 		extend: (trackCount) => indices(trackCount),
 	},
 	random: {
-		start: (trackCount, random, at) => ({ entries: trackCount > 0 ? [at ?? pick(trackCount, random, null)] : [], cursor: 0 }),
+		start: (trackCount, random, at, loop) => {
+			if (!loop) {
+				return shuffledStart(trackCount, random, at);
+			}
+			return { entries: trackCount > 0 ? [at ?? pick(trackCount, random, null)] : [], cursor: 0 };
+		},
 		extend: (trackCount, random, last) => (trackCount > 0 ? [pick(trackCount, random, last)] : []),
 	},
 	shuffle: {
-		start: (trackCount, random, at) => {
-			const entries = shuffled(trackCount, random);
-			if (at !== null) {
-				swap(entries, 0, entries.indexOf(at));
-			}
-			return { entries, cursor: 0 };
-		},
+		start: (trackCount, random, at) => shuffledStart(trackCount, random, at),
 		extend: (trackCount, random, last) => {
 			const entries = shuffled(trackCount, random);
 			if (trackCount > 1 && entries[0] === last) {
@@ -40,6 +40,20 @@ const STRATEGIES = {
 		},
 	},
 };
+
+/**
+ * A shuffled round of every track, with `at` moved to the front.
+ * @param {number} trackCount
+ * @param {() => number} random
+ * @param {number | null} at
+ */
+function shuffledStart(trackCount, random, at) {
+	const entries = shuffled(trackCount, random);
+	if (at !== null) {
+		swap(entries, 0, entries.indexOf(at));
+	}
+	return { entries, cursor: 0 };
+}
 
 /**
  * @param {PlaybackOrder} name

@@ -19,6 +19,11 @@ export class PlaylistEditorPage extends CustomizeDialog {
 	}
 
 	/** @param {boolean} on */
+	async setRepeatPlaylist(on) {
+		await this._dialog.locator('[data-checkbox="playlist-looping"]').setChecked(on);
+	}
+
+	/** @param {boolean} on */
 	async setRepeatTrack(on) {
 		await this._dialog.locator('[data-checkbox="track-looping"]').setChecked(on);
 	}

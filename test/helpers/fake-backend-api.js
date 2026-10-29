@@ -20,6 +20,7 @@ export function exampleLibrary() {
 				fadeIn: 0,
 				fadeOut: 0,
 				order: 'ordered',
+				playlistLooping: true,
 				trackLooping: false,
 				stopMode: 'resetPlaylist',
 				tracks: [
@@ -35,6 +36,7 @@ export function exampleLibrary() {
 				fadeIn: 0,
 				fadeOut: 0,
 				order: 'ordered',
+				playlistLooping: true,
 				trackLooping: false,
 				stopMode: 'resetPlaylist',
 				tracks: [{ id: 'Tavern/1.mp3', title: 'Song', format: 'mp3', size: 3_000_000, gain: 1, duration: 150, ...NO_CLIP, url: '/media/Tavern/1.mp3' }],

@@ -145,6 +145,12 @@ describe('buildLibrary', () => {
 		assert.deepEqual(library.playlists.map((entry) => entry.order), ['shuffle', 'ordered']);
 	});
 
+	it('takes playlist looping from options, defaulting to on', () => {
+		const scan = scanOf({ playlists: [playlist('A', [audio('A/1.mp3')], true), playlist('B', [audio('B/1.mp3')])] });
+		const library = buildLibrary(scan, new Map([['/music/A.json', { playlistLooping: false }]]));
+		assert.deepEqual(library.playlists.map((entry) => entry.playlistLooping), [false, true]);
+	});
+
 	it('takes track looping from options, defaulting to off', () => {
 		const scan = scanOf({ playlists: [playlist('A', [audio('A/1.mp3')], true), playlist('B', [audio('B/1.mp3')])] });
 		const library = buildLibrary(scan, new Map([['/music/A.json', { trackLooping: true }]]));

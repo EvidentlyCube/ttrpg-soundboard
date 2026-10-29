@@ -158,6 +158,14 @@ describe('validatePlaylistOptions', () => {
 		}
 	});
 
+	it('accepts playlist looping as true or false and rejects anything else', () => {
+		assert.deepEqual(validatePlaylistOptions({ playlistLooping: true }), []);
+		assert.deepEqual(validatePlaylistOptions({ playlistLooping: false }), []);
+		for (const playlistLooping of ['true', 1, null]) {
+			assert.deepEqual(validatePlaylistOptions({ playlistLooping }), ['"playlistLooping" must be true or false'], String(playlistLooping));
+		}
+	});
+
 	it('accepts track looping as true or false and rejects anything else', () => {
 		assert.deepEqual(validatePlaylistOptions({ trackLooping: true }), []);
 		assert.deepEqual(validatePlaylistOptions({ trackLooping: false }), []);

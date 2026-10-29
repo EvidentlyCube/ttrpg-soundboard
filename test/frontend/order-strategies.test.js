@@ -12,8 +12,8 @@ describe('ordered', () => {
 	const ordered = orderStrategy('ordered');
 
 	it('starts with the whole playlist in order, at the first track or the given one', () => {
-		assert.deepEqual(ordered.start(4, Math.random, null), { entries: [0, 1, 2, 3], cursor: 0 });
-		assert.deepEqual(ordered.start(4, Math.random, 2), { entries: [0, 1, 2, 3], cursor: 2 });
+		assert.deepEqual(ordered.start(4, Math.random, null, true), { entries: [0, 1, 2, 3], cursor: 0 });
+		assert.deepEqual(ordered.start(4, Math.random, 2, true), { entries: [0, 1, 2, 3], cursor: 2 });
 	});
 
 	it('extends with the whole playlist in order again', () => {
@@ -26,11 +26,11 @@ describe('random', () => {
 	const random = orderStrategy('random');
 
 	it('starts with one random track, or the given one', () => {
-		const { entries, cursor } = random.start(6, seededRandom(1), null);
+		const { entries, cursor } = random.start(6, seededRandom(1), null, true);
 		assert.equal(entries.length, 1);
 		assert.ok(entries[0] >= 0 && entries[0] < 6);
 		assert.equal(cursor, 0);
-		assert.deepEqual(random.start(6, seededRandom(1), 4), { entries: [4], cursor: 0 });
+		assert.deepEqual(random.start(6, seededRandom(1), 4, true), { entries: [4], cursor: 0 });
 	});
 
 	it('extends one track at a time, never the one that just played', () => {
@@ -57,14 +57,14 @@ describe('shuffle', () => {
 	const shuffle = orderStrategy('shuffle');
 
 	it('starts with a shuffled round of every track', () => {
-		const { entries, cursor } = shuffle.start(6, seededRandom(3), null);
+		const { entries, cursor } = shuffle.start(6, seededRandom(3), null, true);
 		assert.deepEqual(sorted(entries), range(6));
 		assert.equal(cursor, 0);
 	});
 
 	it('starts the round with the given track', () => {
 		for (let seed = 0; seed < 20; seed++) {
-			const { entries } = shuffle.start(6, seededRandom(seed), 4);
+			const { entries } = shuffle.start(6, seededRandom(seed), 4, true);
 			assert.equal(entries[0], 4);
 			assert.deepEqual(sorted(entries), range(6));
 		}
@@ -89,18 +89,33 @@ describe('shuffle', () => {
 	});
 });
 
+describe('without playlist looping', () => {
+	it('fills Random with a round of every track, starting at the chosen one', () => {
+		const random = orderStrategy('random');
+		const { entries, cursor } = random.start(6, seededRandom(1), null, false);
+		assert.deepEqual([...entries].sort(), [0, 1, 2, 3, 4, 5]);
+		assert.equal(cursor, 0);
+		assert.equal(random.start(6, seededRandom(1), 4, false).entries[0], 4);
+	});
+
+	it('leaves Ordered and Shuffle as they are', () => {
+		assert.deepEqual(orderStrategy('ordered').start(4, Math.random, 2, false), { entries: [0, 1, 2, 3], cursor: 2 });
+		assert.deepEqual(orderStrategy('shuffle').start(6, seededRandom(3), null, false), orderStrategy('shuffle').start(6, seededRandom(3), null, true));
+	});
+});
+
 describe('every order', () => {
 	it('gives the same entries for the same seed', () => {
 		for (const name of PLAYBACK_ORDERS) {
 			const strategy = orderStrategy(name);
-			assert.deepEqual(strategy.start(8, seededRandom(5), null), strategy.start(8, seededRandom(5), null), name);
+			assert.deepEqual(strategy.start(8, seededRandom(5), null, true), strategy.start(8, seededRandom(5), null, true), name);
 			assert.deepEqual(strategy.extend(8, seededRandom(5), 3), strategy.extend(8, seededRandom(5), 3), name);
 		}
 	});
 
 	it('has nothing to play for an empty playlist', () => {
 		for (const name of PLAYBACK_ORDERS) {
-			assert.deepEqual(orderStrategy(name).start(0, Math.random, null), { entries: [], cursor: 0 }, name);
+			assert.deepEqual(orderStrategy(name).start(0, Math.random, null, true), { entries: [], cursor: 0 }, name);
 			assert.deepEqual(orderStrategy(name).extend(0, Math.random, 0), [], name);
 		}
 	});

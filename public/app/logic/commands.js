@@ -16,7 +16,7 @@ import { isTransition } from './transitions.js';
  * 	| { type: 'sound.customize', soundId: string, title?: string, gain?: number, startAt?: number, endAt?: number | null,
  * 		fadeIn?: number, fadeOut?: number }
  * 	| { type: 'playlist.customize', playlistId: string, title?: string, gain?: number, crossfade?: number, fadeIn?: number,
- * 		fadeOut?: number, order?: import('./order-strategies.js').PlaybackOrder, trackLooping?: boolean,
+ * 		fadeOut?: number, order?: import('./order-strategies.js').PlaybackOrder, playlistLooping?: boolean, trackLooping?: boolean,
  * 		stopMode?: import('./playback-rules.js').StopMode }
  * 	| { type: 'track.customize', trackId: string, title?: string, gain?: number, startAt?: number, endAt?: number | null }} Command
  */
@@ -48,8 +48,8 @@ const SHAPES = {
 	'playlist.customize': {
 		strings: ['playlistId'],
 		optional: {
-			title: 'string', gain: 'number', crossfade: 'number', fadeIn: 'number', fadeOut: 'number', order: 'string', trackLooping: 'boolean',
-			stopMode: 'string',
+			title: 'string', gain: 'number', crossfade: 'number', fadeIn: 'number', fadeOut: 'number', order: 'string',
+			playlistLooping: 'boolean', trackLooping: 'boolean', stopMode: 'string',
 		},
 	},
 	'track.customize': { strings: ['trackId'], optional: { title: 'string', gain: 'number', startAt: 'number', endAt: 'number or null' } },

@@ -379,6 +379,9 @@ export class PlaylistPlayer {
 		if (rules.order !== this.#rules.order) {
 			this.#history.setOrder(rules.order);
 		}
+		if (rules.playlistLooping !== this.#rules.playlistLooping) {
+			this.#history.setLoop(rules.playlistLooping);
+		}
 		if (rules.trackLooping !== this.#rules.trackLooping) {
 			// Only the current track; one fading out in a crossfade just finishes its fade.
 			this.#current?.voice.setLooping(rules.trackLooping);

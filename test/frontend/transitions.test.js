@@ -9,14 +9,14 @@ describe('playback rules', () => {
 	it('defaults to ordered, looping the playlist but not the track, and no fades', () => {
 		assert.deepEqual(DEFAULT_PLAYBACK_RULES, { order: 'ordered', playlistLooping: true, trackLooping: false, stopMode: 'resetPlaylist', fadeIn: 0, fadeOut: 0, crossfade: 0 });
 		const playlist = {
-			id: 'Combat', title: 'Combat', gain: 1, crossfade: 0, fadeIn: 0, fadeOut: 0, order: /** @type {const} */ ('ordered'), trackLooping: false, stopMode: /** @type {const} */ ('resetPlaylist'), tracks: [],
+			id: 'Combat', title: 'Combat', gain: 1, crossfade: 0, fadeIn: 0, fadeOut: 0, order: /** @type {const} */ ('ordered'), playlistLooping: true, trackLooping: false, stopMode: /** @type {const} */ ('resetPlaylist'), tracks: [],
 		};
 		assert.deepEqual(resolvePlaybackRules(playlist), DEFAULT_PLAYBACK_RULES);
 	});
 
 	it('takes the crossfade, the fades, the order and track looping from the playlist', () => {
 		const playlist = {
-			id: 'Combat', title: 'Combat', gain: 1, crossfade: 2.5, fadeIn: 1, fadeOut: 3, order: /** @type {const} */ ('shuffle'), trackLooping: true, stopMode: /** @type {const} */ ('pause'), tracks: [],
+			id: 'Combat', title: 'Combat', gain: 1, crossfade: 2.5, fadeIn: 1, fadeOut: 3, order: /** @type {const} */ ('shuffle'), playlistLooping: true, trackLooping: true, stopMode: /** @type {const} */ ('pause'), tracks: [],
 		};
 		assert.deepEqual(resolvePlaybackRules(playlist), {
 			...DEFAULT_PLAYBACK_RULES, crossfade: 2.5, fadeIn: 1, fadeOut: 3, order: 'shuffle', trackLooping: true, stopMode: 'pause',

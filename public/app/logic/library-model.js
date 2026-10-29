@@ -217,6 +217,9 @@ export class LibraryModel {
 			}
 			playlist.order = changes.order;
 		}
+		if (changes.playlistLooping !== undefined) {
+			playlist.playlistLooping = changes.playlistLooping;
+		}
 		if (changes.trackLooping !== undefined) {
 			playlist.trackLooping = changes.trackLooping;
 		}

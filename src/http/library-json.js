@@ -17,8 +17,8 @@ export function toLibraryJson(library) {
 }
 
 /** @param {import('../library/library.js').Playlist} playlist */
-export function toPlaylistJson({ id, title, gain, crossfade, fadeIn, fadeOut, order, trackLooping, stopMode, tracks }) {
-	return { id, title, gain, crossfade, fadeIn, fadeOut, order, trackLooping, stopMode, tracks: tracks.map(toFileJson) };
+export function toPlaylistJson({ id, title, gain, crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode, tracks }) {
+	return { id, title, gain, crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode, tracks: tracks.map(toFileJson) };
 }
 
 /** @param {import('../library/library.js').AudioFile} file */

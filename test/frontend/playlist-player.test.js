@@ -24,6 +24,7 @@ function playlistOf(count, { gain = 1, trackGains = [], points = [] } = {}) {
 		fadeIn: 0,
 		fadeOut: 0,
 		order: 'ordered',
+		playlistLooping: true,
 		trackLooping: false,
 		stopMode: 'resetPlaylist',
 		tracks: Array.from({ length: count }, (_, i) => ({ id: `Combat/${i}.mp3`, title: `Track ${i}`, format: 'mp3', size: 1000, gain: trackGains[i] ?? 1, duration: 10, startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0, ...points[i], url: `/t${i}` })),
@@ -235,6 +236,23 @@ describe('PlaylistPlayer', () => {
 			advance(30);
 			assert.equal(player.state, 'idle');
 			assert.equal(engine.liveVoices.length, 0);
+		});
+
+		it('stops after the queued tracks when looping is turned off while playing', () => {
+			const { player, advance } = setup({ tracks: 2 });
+			player.play();
+			advance(0.1 + 10);
+			player.setRules({ ...DEFAULT_PLAYBACK_RULES, playlistLooping: false });
+			advance(0.1 + 10 + 1);
+			assert.equal(player.state, 'idle');
+		});
+
+		it('keeps going past the last track when looping is turned on again', () => {
+			const { player, advance } = setup({ tracks: 2, rules: { playlistLooping: false } });
+			player.play();
+			player.setRules({ ...DEFAULT_PLAYBACK_RULES, playlistLooping: true });
+			advance(0.1 + 10 + 0.1 + 10 + 0.1 + 1);
+			assert.equal(player.state, 'playing');
 		});
 
 		it('does nothing for an empty playlist', () => {

@@ -322,12 +322,12 @@ export class Soundboard {
 				player.forget();
 				return;
 			case 'playlist.customize': {
-				const { title, gain, crossfade, fadeIn, fadeOut, order, trackLooping, stopMode } = command;
-				const playlist = loaded.library.updatePlaylist(player.id, { title, gain, crossfade, fadeIn, fadeOut, order, trackLooping, stopMode });
+				const { title, gain, crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode } = command;
+				const playlist = loaded.library.updatePlaylist(player.id, { title, gain, crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode });
 				if (gain !== undefined) {
 					player.setGain(playlist.gain);
 				}
-				if ([crossfade, fadeIn, fadeOut, order, trackLooping, stopMode].some((value) => value !== undefined)) {
+				if ([crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode].some((value) => value !== undefined)) {
 					player.setRules(resolvePlaybackRules(playlist));
 				}
 				this.#optionsSync.schedule({ kind: 'playlist', id: playlist.id }, {
@@ -337,6 +337,7 @@ export class Soundboard {
 					fadeIn: playlist.fadeIn,
 					fadeOut: playlist.fadeOut,
 					order: playlist.order,
+					playlistLooping: playlist.playlistLooping,
 					trackLooping: playlist.trackLooping,
 					stopMode: playlist.stopMode,
 				});
@@ -450,8 +451,8 @@ export class Soundboard {
 	 * @param {ItemOptions} changes `crossfade`, `fadeIn` and `fadeOut` in seconds, from 0 to MAX_CROSSFADE; `order` one of
 	 * 	PLAYBACK_ORDERS; `stopMode` one of STOP_MODES
 	 */
-	customizePlaylist(playlistId, { title, gain, crossfade, fadeIn, fadeOut, order, trackLooping, stopMode }) {
-		this.dispatch({ type: 'playlist.customize', playlistId, title, gain, crossfade, fadeIn, fadeOut, order, trackLooping, stopMode });
+	customizePlaylist(playlistId, { title, gain, crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode }) {
+		this.dispatch({ type: 'playlist.customize', playlistId, title, gain, crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode });
 	}
 
 	/**

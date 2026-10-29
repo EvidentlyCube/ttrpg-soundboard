@@ -31,6 +31,7 @@ import { sortBy } from './sort.js';
  * @property {number} fadeIn seconds, when the playlist starts; 0 is off
  * @property {number} fadeOut seconds, when it stops; 0 is off
  * @property {import('./validate.js').PlaybackOrder} order how it moves through its tracks
+ * @property {boolean} playlistLooping whether it starts over after its last track
  * @property {boolean} trackLooping whether the current track repeats until the user moves on
  * @property {import('./validate.js').StopMode} stopMode what stopping it remembers
  * @property {AudioFile[]} tracks in path order
@@ -86,6 +87,7 @@ export function playlistOf(id, options, tracks) {
 		fadeIn: options?.fadeIn ?? 0,
 		fadeOut: options?.fadeOut ?? 0,
 		order: options?.order ?? 'ordered',
+		playlistLooping: options?.playlistLooping ?? true,
 		trackLooping: options?.trackLooping ?? false,
 		stopMode: options?.stopMode ?? 'resetPlaylist',
 		tracks,

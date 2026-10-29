@@ -253,6 +253,17 @@ describe('LibraryEditor.updatePlaylist', () => {
 		await assert.rejects(editor.updateSound('Alpha.mp3', /** @type {any} */ ({ order: 'random' })), /Unknown option "order"/);
 	});
 
+	it('saves playlist looping, and only for playlists', async () => {
+		const editor = new LibraryEditor(library());
+		const updated = await editor.updatePlaylist('Combat', { playlistLooping: false });
+		assert.equal(updated.playlistLooping, false);
+		assert.equal((await readOptions('Combat')).playlistLooping, false);
+		await editor.updatePlaylist('Combat', { playlistLooping: true });
+		assert.equal((await readOptions('Combat')).playlistLooping, true);
+		await assert.rejects(editor.updatePlaylist('Combat', /** @type {any} */ ({ playlistLooping: 'yes' })), /"playlistLooping" must be true or false/);
+		await assert.rejects(editor.updateSound('Alpha.mp3', /** @type {any} */ ({ playlistLooping: true })), /Unknown option "playlistLooping"/);
+	});
+
 	it('saves track looping, and only for playlists', async () => {
 		const editor = new LibraryEditor(library());
 		const updated = await editor.updatePlaylist('Combat', { trackLooping: true });

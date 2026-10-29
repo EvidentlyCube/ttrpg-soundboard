@@ -144,6 +144,18 @@ export class PlaylistEditor extends Component {
 			},
 		});
 
+		const playlistLooping = checkbox({
+			name: 'playlist-looping',
+			label: 'Repeat the playlist',
+			description: 'When off, it stops after the last track.',
+			checked: this.#playlist.playlistLooping,
+			accent: 'music',
+			onChange: (checked) => {
+				status.show('saving');
+				soundboard.customizePlaylist(id, { playlistLooping: checked });
+			},
+		});
+
 		const looping = checkbox({
 			name: 'track-looping',
 			label: 'Repeat the current track',
@@ -179,6 +191,7 @@ export class PlaylistEditor extends Component {
 			if (event.playlist.id === id) {
 				gain.update(event.playlist.gain);
 				order.update(event.playlist.order);
+				playlistLooping.update(event.playlist.playlistLooping);
 				looping.update(event.playlist.trackLooping);
 				stopMode.update(event.playlist.stopMode);
 				for (const key of /** @type {TimingKey[]} */ (Object.keys(timings))) {
@@ -240,7 +253,7 @@ export class PlaylistEditor extends Component {
 		const settingsPanel = h('div', { class: 'space-y-8 pt-3' },
 			card('Playlist', 'music', title.element),
 			card('Volume', 'music', gainSlot),
-			card('Playback order', 'music', order.element, h('div', { class: 'mt-4 border-t border-line pt-4' }, looping.element)),
+			card('Playback order', 'music', order.element, h('div', { class: 'mt-4 flex flex-col gap-3 border-t border-line pt-4' }, playlistLooping.element, looping.element)),
 			card('When stopped', 'music', stopMode.element),
 			card('Fades', 'music', h('div', { class: 'space-y-3' }, timings.fadeIn.element, timings.crossfade.element, timings.fadeOut.element)),
 			removal.element);

@@ -498,6 +498,14 @@ describe('Soundboard', () => {
 			assert.equal(api.playlistSaves.at(-1)?.options.stopMode, 'pause');
 		});
 
+		it('saves playlist looping and rejects a non-boolean', async () => {
+			const { soundboard, api, clock } = await started();
+			soundboard.customizePlaylist('Combat', { playlistLooping: false });
+			clock.advance(500);
+			assert.equal(api.playlistSaves[0].options.playlistLooping, false);
+			assert.throws(() => soundboard.dispatch({ type: 'playlist.customize', playlistId: 'Combat', playlistLooping: 'no' }), InvalidCommandError);
+		});
+
 		it('applies track looping to the playing track at once, and saves it', async () => {
 			const { soundboard, api, clock, engine } = await started();
 			soundboard.togglePlaylist('Combat');
@@ -520,7 +528,7 @@ describe('Soundboard', () => {
 			clock.advance(500);
 			assert.deepEqual(api.playlistSaves, [{
 				playlistId: 'Tavern',
-				options: { title: 'Tavern', gain: 2, crossfade: 0, fadeIn: 0, fadeOut: 0, order: 'ordered', trackLooping: false, stopMode: 'resetPlaylist' },
+				options: { title: 'Tavern', gain: 2, crossfade: 0, fadeIn: 0, fadeOut: 0, order: 'ordered', playlistLooping: true, trackLooping: false, stopMode: 'resetPlaylist' },
 				keepalive: false,
 			}]);
 			await settle();

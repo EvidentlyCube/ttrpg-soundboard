@@ -39,6 +39,16 @@ test('order, repeat, when stopped and crossfade are saved', async ({ playlists, 
 	await dialogs.playlistEditor.expectSaved();
 });
 
+test('turning off repeating the playlist is saved', async ({ playlists, dialogs, audio, disk }) => {
+	await playlists.useMenu(PLAYLIST, 'Customize');
+
+	await dialogs.playlistEditor.setRepeatPlaylist(false);
+
+	await audio.advance(500);
+	await disk.expectOptions(PLAYLIST, { playlistLooping: false });
+	await dialogs.playlistEditor.expectSaved();
+});
+
 test('the settings are what the dialog shows after a reload', async ({ soundboard, splash, playlists, dialogs, audio }) => {
 	await playlists.useMenu(PLAYLIST, 'Customize');
 	await dialogs.playlistEditor.chooseOrder('random');

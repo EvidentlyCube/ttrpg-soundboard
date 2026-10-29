@@ -55,7 +55,7 @@ export class PlayHistory {
 	 * @returns {number | null} the track to play
 	 */
 	start(at = null) {
-		const { entries, cursor } = this.#strategy.start(this.#trackCount, this.#random, at);
+		const { entries, cursor } = this.#strategy.start(this.#trackCount, this.#random, at, this.#loop);
 		this.#entries = entries;
 		this.#cursor = cursor;
 		return this.current;
@@ -103,6 +103,15 @@ export class PlayHistory {
 		if (current !== null) {
 			this.start(current);
 		}
+	}
+
+	/**
+	 * Turns the extending of the history on or off. Entries already in it stay, so a playlist that is playing finishes
+	 * what is queued; a history that has not started yet is filled by the new setting at the next start.
+	 * @param {boolean} loop
+	 */
+	setLoop(loop) {
+		this.#loop = loop;
 	}
 
 	/**
