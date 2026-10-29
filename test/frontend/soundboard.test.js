@@ -24,6 +24,7 @@ const EVENT_TYPES = /** @type {const} */ ([
 	'waveforms.progress', 'waveform.ready',
 	'library.externalChanges', 'library.refreshing', 'library.refreshed', 'library.refreshFailed',
 	'download.changed', 'download.log', 'sound.added', 'playlist.added', 'sound.removed', 'playlist.removed',
+	'trash.changed',
 ]);
 
 /** Stands in for the server's pushed messages; the test sends them with `push`. */
@@ -805,6 +806,44 @@ describe('Soundboard', () => {
 			serverEvents.send({ type: 'library.added', sound: { ...file('Boom.mp3'), size: 1000 } });
 			soundboard.playSound('Boom.mp3');
 			assert.equal(engine.bufferLoads.length, loads + 1);
+		});
+	});
+
+	describe('the trash', () => {
+		it('follows the server\'s summary, announcing only real changes', async () => {
+			const { soundboard, serverEvents, eventsOf } = await started();
+			assert.deepEqual(soundboard.trashSummary(), { size: 0, count: 0 });
+			serverEvents.send({ type: 'trash', size: 2000, count: 1 });
+			serverEvents.send({ type: 'trash', size: 2000, count: 1 });
+			assert.deepEqual(soundboard.trashSummary(), { size: 2000, count: 1 });
+			assert.deepEqual(eventsOf('trash.changed'), [{ type: 'trash.changed', size: 2000, count: 1 }]);
+		});
+
+		it('fetches the listing', async () => {
+			const { soundboard, api } = await started();
+			api.trash = { size: 4, playlists: [], sounds: [{ id: 'Old.mp3', title: 'Old', size: 4 }] };
+			assert.deepEqual(await soundboard.loadTrash(), api.trash);
+		});
+
+		it('saves pending changes, restores, and applies what came back', async () => {
+			const { soundboard, api, eventsOf } = await started();
+			soundboard.customizeSound('Boom.mp3', { gain: 0.5 });
+			api.rearrangement = [{
+				type: 'library.added',
+				sound: { id: 'Old.mp3', title: 'Old', format: 'mp3', size: 1, gain: 1, duration: 5, startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0, url: '/media/Old.mp3' },
+			}];
+			await soundboard.restoreFromTrash({ kind: 'sound', id: 'Old.mp3' });
+			assert.equal(api.soundSaves.length, 1);
+			assert.deepEqual(api.trashRequests, [{ restore: { kind: 'sound', id: 'Old.mp3' } }]);
+			assert.deepEqual(eventsOf('sound.added').map((event) => event.type === 'sound.added' && event.sound.id), ['Old.mp3']);
+		});
+
+		it('deletes for good, and rejects with the server\'s message', async () => {
+			const { soundboard, api } = await started();
+			await soundboard.deleteFromTrash('all');
+			assert.deepEqual(api.trashRequests, [{ purge: 'all' }]);
+			api.rearrangement = new Error('There is no sound "x" in the trash');
+			await assert.rejects(soundboard.deleteFromTrash({ kind: 'sound', id: 'x' }), /no sound "x"/);
 		});
 	});
 

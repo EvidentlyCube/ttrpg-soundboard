@@ -1,6 +1,22 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatBytes, formatTime } from '../../../public/app/ui/format.js';
+import { formatBytes, formatMegabytes, formatTime } from '../../../public/app/ui/format.js';
+
+describe('formatMegabytes', () => {
+	it('shows megabytes below a gigabyte, with one decimal below 10', () => {
+		assert.equal(formatMegabytes(4_210_000), '4.2 MB');
+		assert.equal(formatMegabytes(340_400_000), '340 MB');
+	});
+
+	it('switches to gigabytes from 1 GB on', () => {
+		assert.equal(formatMegabytes(1_000_000_000), '1.0 GB');
+		assert.equal(formatMegabytes(12_600_000_000), '13 GB');
+	});
+
+	it('never shows less than 0.1 MB', () => {
+		assert.equal(formatMegabytes(12), '0.1 MB');
+	});
+});
 
 describe('formatBytes', () => {
 	it('uses decimal units, with a decimal below 10', () => {

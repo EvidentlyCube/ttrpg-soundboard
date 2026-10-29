@@ -163,3 +163,65 @@ describe('deleting and moving over HTTP', () => {
 		assert.equal((await call('/api/move', { method: 'POST', body: { id: 'Boom.mp3', to: 'Nope' } })).status, 404);
 	});
 });
+
+describe('the trash over HTTP', () => {
+	it('lists the trash with titles and sizes', async () => {
+		const { call } = await setup();
+		await call('/api/tracks/Combat%2F2.mp3', { method: 'DELETE' });
+		await call('/api/sounds/Boom.mp3', { method: 'DELETE' });
+		const { status, body } = await call('/api/trash');
+		assert.equal(status, 200);
+		assert.deepEqual(body.playlists.map((/** @type {any} */ playlist) => [playlist.id, playlist.tracks.map((/** @type {any} */ track) => track.id)]), [
+			['Combat', ['Combat/2.mp3']],
+		]);
+		assert.deepEqual(body.sounds.map((/** @type {any} */ sound) => [sound.id, sound.title]), [['Boom.mp3', 'Boom.mp3']]);
+		assert.ok(body.size > 0);
+	});
+
+	it('announces the trash on connect and after every change to it', async () => {
+		const { server, call } = await setup();
+		const events = openEvents(server.url);
+		const counts = () => events.messages.filter((message) => message.type === 'trash').map((message) => message.count);
+		await events.until(() => counts().length === 1);
+		await call('/api/sounds/Boom.mp3', { method: 'DELETE' });
+		await events.until(() => counts().length === 2);
+		await call('/api/trash/delete', { method: 'POST', body: { all: true } });
+		await events.until(() => counts().length === 3);
+		assert.deepEqual(counts(), [0, 1, 0]);
+	});
+
+	it('restores an item, answers with the addition and leaves no external changes', async () => {
+		const { server, watcher, call } = await setup();
+		await call('/api/playlists/Combat', { method: 'DELETE' });
+		const response = await call('/api/trash/restore', { method: 'POST', body: { kind: 'playlist', id: 'Combat' } });
+		assert.equal(response.status, 200);
+		assert.deepEqual(response.body.changes.map((/** @type {any} */ change) => [change.type, change.playlist.id]), [['library.added', 'Combat']]);
+		assert.equal(await (await fetch(`${server.url}/media/Combat/1.mp3`)).text(), 'one');
+		assert.equal(await watcher.check(), false);
+	});
+
+	it('restores everything at once', async () => {
+		const { call } = await setup();
+		await call('/api/sounds/Boom.mp3', { method: 'DELETE' });
+		await call('/api/playlists/Tavern', { method: 'DELETE' });
+		const response = await call('/api/trash/restore', { method: 'POST', body: { all: true } });
+		assert.equal(response.body.changes.length, 2);
+		assert.deepEqual((await call('/api/trash')).body, { size: 0, playlists: [], sounds: [] });
+	});
+
+	it('deletes an item for good', async () => {
+		const { root, call } = await setup();
+		await call('/api/sounds/Boom.mp3', { method: 'DELETE' });
+		const response = await call('/api/trash/delete', { method: 'POST', body: { kind: 'sound', id: 'Boom.mp3' } });
+		assert.deepEqual(response, { status: 200, body: { changes: [] } });
+		assert.equal(await exists(join(root, '.trash', 'Boom.mp3')), false);
+	});
+
+	it('answers 400 for a bad body and 404 for what the trash doesn\'t hold', async () => {
+		const { call } = await setup();
+		assert.equal((await call('/api/trash/restore', { method: 'POST', body: { kind: 'song', id: 'x' } })).status, 400);
+		assert.equal((await call('/api/trash/delete', { method: 'POST', body: {} })).status, 400);
+		assert.equal((await call('/api/trash/restore', { method: 'POST', body: { kind: 'sound', id: 'Boom.mp3' } })).status, 404);
+		assert.equal((await call('/api/trash/delete', { method: 'POST', body: { kind: 'playlist', id: '..' } })).status, 404);
+	});
+});

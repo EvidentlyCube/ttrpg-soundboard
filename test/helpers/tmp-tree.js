@@ -41,10 +41,11 @@ async function createTmpDir() {
 }
 
 /**
+ * Writes a tree into a directory, which may already hold files.
  * @param {string} dir
  * @param {TreeSpec} spec
  */
-async function writeTree(dir, spec) {
+export async function writeTree(dir, spec) {
 	for (const [name, content] of Object.entries(spec)) {
 		const path = join(dir, name);
 		if (typeof content === 'string' || content instanceof Uint8Array) {
