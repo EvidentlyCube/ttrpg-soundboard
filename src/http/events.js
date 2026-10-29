@@ -12,15 +12,15 @@ import { toFileJson, toPlaylistJson } from './library-json.js';
 const KEEP_ALIVE_MS = 30_000;
 
 /**
- * Streams typed messages as server-sent events (DESIGN.md §5.2): `externalChanges` on connect and whenever it
+ * Streams typed messages as server-sent events (DESIGN.md §5.2): `externalChanges` and `problems` on connect and whenever it
  * changes, and the download's progress, log and additions while one runs. The stream stays open until the page goes
  * away or the server stops.
  * @param {Request} request
  * @param {Response} response
  * @param {{ watcher?: ChangeWatcher, downloads?: DownloadService, libraryChanges?: LibraryChanges,
- * 	trash?: import('../library/trash.js').Trash }} sources without them, nothing ever changes
+ * 	trash?: import('../library/trash.js').Trash, problems?: import('../library/problems.js').Problems }} sources without them, nothing ever changes
  */
-export function serveEvents(request, response, { watcher, downloads, libraryChanges, trash }) {
+export function serveEvents(request, response, { watcher, downloads, libraryChanges, trash, problems }) {
 	response.writeHead(200, {
 		'Content-Type': 'text/event-stream; charset=utf-8',
 		'Cache-Control': 'no-store',
@@ -44,6 +44,11 @@ export function serveEvents(request, response, { watcher, downloads, libraryChan
 	if (trash) {
 		sendTrash(trash.summary);
 	}
+	const sendProblems = (/** @type {import('../library/problems.js').Problem[]} */ list) => send({ type: 'problems', problems: list });
+	if (problems) {
+		sendProblems(problems.list);
+	}
+	const unsubscribeProblems = problems?.onChange(sendProblems);
 	const unsubscribeTrash = trash?.onChange(sendTrash);
 	const unsubscribeWatcher = watcher?.onChange(sendExternalChanges);
 	const unsubscribeDownloads = downloads?.onEvent((event) => send(toMessage(event)));
@@ -55,6 +60,7 @@ export function serveEvents(request, response, { watcher, downloads, libraryChan
 		unsubscribeDownloads?.();
 		unsubscribeLibrary?.();
 		unsubscribeTrash?.();
+		unsubscribeProblems?.();
 	});
 }
 

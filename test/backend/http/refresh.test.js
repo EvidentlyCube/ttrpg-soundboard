@@ -109,8 +109,8 @@ describe('external changes over HTTP', () => {
 	describe('GET /api/events', () => {
 		it('sends the current state, then every change of it', async () => {
 			const { root, server, call } = await setup();
-			// Every connection also says what the trash holds, which this test doesn't look at.
-			const events = openEvents(server.url, (message) => message.type !== 'trash');
+			// Every connection also says what the trash holds and what is wrong, which this test doesn't look at.
+			const events = openEvents(server.url, (message) => message.type !== 'trash' && message.type !== 'problems');
 			const message = (/** @type {boolean} */ pending) => ({ type: 'externalChanges', pending });
 			assert.deepEqual(await events.first(1), [message(false)]);
 			await writeFile(join(root, 'New.mp3'), 'new');

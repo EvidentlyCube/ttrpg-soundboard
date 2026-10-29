@@ -170,6 +170,24 @@ export class HttpBackendApi {
 		await this.#request('POST', '/api/trash/delete', { body: trashBody(target), plainErrors: true });
 	}
 
+	/** @type {BackendApi['dismissProblem']} */
+	async dismissProblem(id) {
+		await this.#delete(`/api/problems/${encodeURIComponent(id)}`);
+	}
+
+	/** @type {BackendApi['dismissAllProblems']} */
+	async dismissAllProblems() {
+		await this.#delete('/api/problems');
+	}
+
+	/** @param {string} path */
+	async #delete(path) {
+		const response = await fetch(this.#baseUrl + path, { method: 'DELETE' });
+		if (!response.ok) {
+			throw new Error(await errorMessageOf(response));
+		}
+	}
+
 	/**
 	 * @param {'GET' | 'PUT' | 'PATCH' | 'POST' | 'DELETE'} method
 	 * @param {string} path

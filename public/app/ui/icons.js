@@ -13,6 +13,7 @@ const SHAPES = {
 		+ '<path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5"/>',
 	menu: '<path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4.5 7h15M4.5 12h15M4.5 17h15"/>',
 	trash: '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 12.5h9l1-12.5M10 10.5v6M14 10.5v6"/>',
+	alert: '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M12 4.5 3.5 19h17zM12 10v4M12 16.5v.01"/>',
 	check: '<path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="M5 12.5l4.5 4.5L19 7.5"/>',
 };
 

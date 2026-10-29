@@ -127,6 +127,8 @@
  * @property {(target: TrashTarget) => Promise<LibraryChangeMessage[]>} restoreFromTrash resolves with what was added
  * 	back and rejects with the server's message
  * @property {(target: TrashTarget) => Promise<void>} deleteFromTrash deletes for good; rejects with the server's message
+ * @property {(id: string) => Promise<void>} dismissProblem makes the server forget one of its startup problems
+ * @property {() => Promise<void>} dismissAllProblems the same for all of them
  */
 
 /** @typedef {'sound' | 'playlist' | 'track'} ItemKind */
@@ -167,6 +169,7 @@
  * 	| { type: 'download', job: DownloadJob | null, log?: string[] }
  * 	| { type: 'download.log', lines: string[], replaceLast: boolean }
  * 	| ({ type: 'trash' } & TrashSummary)
+ * 	| { type: 'problems', problems: Omit<import('./problem-list.js').ProblemJson, 'count'>[] }
  * 	| LibraryChangeMessage} ServerMessage
  * 	`log` comes with the first `download` message of every connection and replaces the log; `replaceLast`: the first
  * 	line replaces the last one already received

@@ -36,6 +36,7 @@ import { serveStaticFile } from './static-files.js';
  * @property {ChangeWatcher} [watcher] notices external changes; without it there never are any
  * @property {import('./library-changes.js').LibraryChanges} [libraryChanges] tells the event streams about deletions and moves
  * @property {import('../library/trash.js').Trash} [trash] the trash's summary for the event streams
+ * @property {import('../library/problems.js').Problems} [problems] what startup found wrong, for the event streams
  * @property {() => Promise<RefreshOutcome>} [refresh] rebuilds the library and swaps it into this context
  * @property {Promise<RefreshOutcome> | null} refreshing the refresh running now
  * @property {DownloadService} [downloads] without it, downloads are not available
@@ -47,6 +48,7 @@ const WAVEFORMS_PREFIX = '/api/waveforms/';
 const SOUNDS_PREFIX = '/api/sounds/';
 const PLAYLISTS_PREFIX = '/api/playlists/';
 const TRACKS_PREFIX = '/api/tracks/';
+const PROBLEMS_PREFIX = '/api/problems/';
 
 /**
  * @param {RouterContext} context
@@ -144,6 +146,24 @@ async function route(request, response, context) {
 	} else if (pathname === '/api/move') {
 		allowMethods(request, ['POST']);
 		await sendChanges(response, context, await moveItem(library, editor, await readJsonBody(request)));
+	} else if (pathname === '/api/problems') {
+		allowMethods(request, ['DELETE']);
+		context.problems?.dismissAll();
+		response.writeHead(204, { 'Cache-Control': 'no-store' });
+		response.end();
+	} else if (pathname.startsWith(PROBLEMS_PREFIX)) {
+		allowMethods(request, ['DELETE']);
+		let id;
+		try {
+			id = decodeURIComponent(pathname.slice(PROBLEMS_PREFIX.length));
+		} catch {
+			throw new HttpError(404, 'Not found');
+		}
+		if (!context.problems?.dismiss(id)) {
+			throw new HttpError(404, 'Unknown problem');
+		}
+		response.writeHead(204, { 'Cache-Control': 'no-store' });
+		response.end();
 	} else if (pathname === '/api/trash') {
 		allowMethods(request, ['GET']);
 		sendJson(response, 200, toTrashJson(await readTrash(library.root)));
@@ -331,6 +351,11 @@ async function moveItem(library, editor, body) {
  */
 async function sendChanges(response, context, { changes }) {
 	await context.trash?.reload();
+	for (const change of changes) {
+		if (change.type === 'library.removed') {
+			context.problems?.removeFor('soundId' in change ? change.soundId : 'trackId' in change ? change.trackId : change.playlistId);
+		}
+	}
 	context.libraryChanges?.emit(changes);
 	sendJson(response, 200, { changes: changes.map(toMessage) });
 }

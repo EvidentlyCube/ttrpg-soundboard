@@ -6,6 +6,7 @@ import { LibraryModel } from './library-model.js';
 import { OptionsSync } from './options-sync.js';
 import { resolvePlaybackRules } from './playback-rules.js';
 import { PlaylistPlayer } from './playlist-player.js';
+import { ProblemList } from './problem-list.js';
 import { SettingsSync } from './settings-sync.js';
 import { SoundPlayer } from './sound-player.js';
 import { VoiceMonitor } from './voice-monitor.js';
@@ -55,7 +56,8 @@ import { VolumeControl } from './volume.js';
  * 	| { type: 'library.refreshing' }
  * 	| { type: 'library.refreshed' }
  * 	| { type: 'library.refreshFailed', message: string, errors: { path: string, message: string }[], restartNeeded: boolean }
- * 	| { type: 'trash.changed', size: number, count: number }} RefreshEvent
+ * 	| { type: 'trash.changed', size: number, count: number }
+ * 	| { type: 'problems.changed', count: number }} RefreshEvent
  * @typedef {AppEvent | LevelEvent | SoundEvent | PlaylistEvent | VolumeChangedEvent | CustomizeEvent | VoicesEvent | WaveformEvent
  * 	| RefreshEvent | DownloadEvent} SoundboardEvent
  */
@@ -120,6 +122,9 @@ export class Soundboard {
 	#externalChanges = false;
 	/** @type {import('./ports.js').TrashSummary} */
 	#trash = { size: 0, count: 0 };
+	#problems = new ProblemList();
+	/** Id of the download job whose failures are listed already. @type {string | null} */
+	#reportedJob = null;
 	#checkingChanges = false;
 	#refreshing = false;
 	/** Media URLs by sound or track id, for the waveforms. @type {Map<string, string>} */
@@ -189,6 +194,86 @@ export class Soundboard {
 		});
 		engine.on('suspended', () => emit({ type: 'audio.suspended' }));
 		engine.on('resumed', () => emit({ type: 'audio.resumed' }));
+		this.#listenForProblems();
+	}
+
+	/** Lists what the page itself finds wrong (DESIGN.md §6.1), from the events it announces anyway. */
+	#listenForProblems() {
+		/**
+		 * @param {string} kind
+		 * @param {string} path
+		 * @param {string} message
+		 */
+		const record = (kind, path, message) => {
+			this.#problems.record({ kind, path, message });
+			this.#announceProblems();
+		};
+		/**
+		 * @param {string} path
+		 */
+		const resolveSave = (path) => {
+			this.#problems.resolve('save-failed', path);
+			this.#announceProblems();
+		};
+		const events = this.#events;
+		events.on('sound.error', ({ soundId, message }) => record('play-failed', soundId, message));
+		events.on('playlist.error', ({ playlistId, trackId, message }) => record('play-failed', trackId ?? playlistId, message));
+		events.on('sound.saveFailed', ({ soundId, message }) => record('save-failed', soundId, message));
+		events.on('playlist.saveFailed', ({ playlistId, message }) => record('save-failed', playlistId, message));
+		events.on('track.saveFailed', ({ trackId, message }) => record('save-failed', trackId, message));
+		events.on('sound.saved', ({ soundId }) => resolveSave(soundId));
+		events.on('playlist.saved', ({ playlistId }) => resolveSave(playlistId));
+		events.on('track.saved', ({ trackId }) => resolveSave(trackId));
+		events.on('sound.removed', ({ soundId }) => this.#forgetProblems(soundId));
+		events.on('playlist.removed', ({ playlistId }) => this.#forgetProblems(playlistId));
+		events.on('download.changed', ({ job }) => {
+			if (job?.state !== 'failed' || job.id === this.#reportedJob) {
+				return;
+			}
+			this.#reportedJob = job.id;
+			for (const item of job.items) {
+				if (item.state === 'failed') {
+					record('download-failed', item.title, item.error ?? 'The download failed.');
+				}
+			}
+		});
+	}
+
+	/** @param {string} path */
+	#forgetProblems(path) {
+		this.#problems.forget(path);
+		this.#announceProblems();
+	}
+
+	#announceProblems() {
+		this.#events.emit({ type: 'problems.changed', count: this.#problems.list.length });
+	}
+
+	/**
+	 * Everything wrong that is known: the server's problems from startup, and this page's own (failed saves, tracks
+	 * that would not play, failed downloads). `problems.changed` announces every change.
+	 * @returns {import('./problem-list.js').ProblemJson[]}
+	 */
+	getProblems() {
+		return this.#problems.list;
+	}
+
+	/**
+	 * Removes one problem from the list; the server forgets its own for good until the next start or refresh.
+	 * @param {string} id
+	 */
+	dismissProblem(id) {
+		if (this.#problems.dismiss(id) === 'server') {
+			this.#api.dismissProblem(id).catch((error) => this.#logger.warn('Could not dismiss a problem on the server.', error));
+		}
+		this.#announceProblems();
+	}
+
+	dismissAllProblems() {
+		if (this.#problems.clear()) {
+			this.#api.dismissAllProblems().catch((error) => this.#logger.warn('Could not dismiss the problems on the server.', error));
+		}
+		this.#announceProblems();
 	}
 
 	/**
@@ -937,6 +1022,11 @@ export class Soundboard {
 				return;
 			case 'library.removed':
 				this.#onRemoved(message);
+				return;
+			case 'problems':
+				if (this.#problems.setServer(message.problems)) {
+					this.#announceProblems();
+				}
 				return;
 			case 'trash': {
 				const { size, count } = message;

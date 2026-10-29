@@ -73,6 +73,7 @@ export async function main(argv, { input, output, errorOutput, env, waitForShutd
 		server = await startServer({
 			library: outcome.library,
 			settings: outcome.settings,
+			problems: outcome.problems,
 			port: args.port,
 			logError: (error) => errorOutput.write(`${error instanceof Error ? error.stack : String(error)}\n`),
 			logRequest: args.verbose ? (line) => output.write(`${line}\n`) : undefined,

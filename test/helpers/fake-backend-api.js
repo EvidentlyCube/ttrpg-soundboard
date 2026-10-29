@@ -164,6 +164,18 @@ export class FakeBackendApi {
 		}
 	}
 
+	/** Ids of the problems dismissed, or `'all'`. @type {string[]} */
+	dismissedProblems = [];
+
+	/** @param {string} id */
+	async dismissProblem(id) {
+		this.dismissedProblems.push(id);
+	}
+
+	async dismissAllProblems() {
+		this.dismissedProblems.push('all');
+	}
+
 	#rearranged() {
 		if (this.rearrangement instanceof Error) {
 			throw this.rearrangement;

@@ -2,6 +2,7 @@ import { readSourceLink, readTitle } from '../metadata/index.js';
 import { ValidationError } from './errors.js';
 import { isMeasured, measureIfNeeded } from './durations.js';
 import { buildLibrary } from './library.js';
+import { startupProblems } from './problems.js';
 import { readValidatedJson, updateJsonFile, writeJsonAtomic } from './options-store.js';
 import { scanAudioDirectory } from './scanner.js';
 import { INITIAL_SETTINGS_FILE, SettingsStore } from './settings-store.js';
@@ -30,7 +31,7 @@ import { validateAudioOptions, validatePlaylistOptions, validateSettingsFile } f
  */
 
 /**
- * @typedef {{ status: 'ready', library: Library, settings: SettingsStore, scan: ScanResult }
+ * @typedef {{ status: 'ready', library: Library, settings: SettingsStore, scan: ScanResult, problems: import('./problems.js').Problem[] }
  * 	| { status: 'invalid', errors: ValidationError[] }
  * 	| { status: 'cancelled' }} BootstrapOutcome
  * @typedef {Exclude<BootstrapOutcome, { status: 'cancelled' }> | { status: 'noSettings' }} RefreshOutcome
@@ -185,7 +186,7 @@ export class BootstrapService {
 		const library = buildLibrary(scan, optionsByPath);
 		this.#reporter.libraryLoaded(library);
 		const settings = await SettingsStore.load(scan.settingsPath, { updateFile: this.#updateSettingsFile });
-		return { status: 'ready', library, settings, scan };
+		return { status: 'ready', library, settings, scan, problems: startupProblems(scan.warnings, library) };
 	}
 
 	/**

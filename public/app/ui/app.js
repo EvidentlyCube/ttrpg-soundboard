@@ -14,6 +14,8 @@ import { Overlay } from './overlay.js';
 import { PlayerDock } from './player-dock.js';
 import { PlaylistEditor } from './playlist-editor.js';
 import { PlaylistTile } from './playlist-tile.js';
+import { ProblemsButton } from './problems-button.js';
+import { ProblemsDialog } from './problems-dialog.js';
 import { SoundEditor } from './sound-editor.js';
 import { SoundTile } from './sound-tile.js';
 import { Splash } from './splash.js';
@@ -126,6 +128,7 @@ class Board extends Component {
 	/** Stacks on top of a Customize dialog. */
 	#moveDialog = new Dialog();
 	#trashDialog = new Dialog();
+	#problemsDialog = new Dialog();
 	#metadataDialog = new Dialog();
 	/** The item whose Customize dialog is open, so the dialog can close when the item is deleted or moved away. @type {{ kind: 'sound' | 'playlist', id: string } | null} */
 	#editing = null;
@@ -179,6 +182,7 @@ class Board extends Component {
 		const header = h('header', { class: 'flex shrink-0 items-center justify-between gap-6 border-b border-line bg-panel px-5 py-3' },
 			h('div', { class: 'flex items-center gap-3' }, menuButton, h('h1', { class: 'text-lg font-semibold tracking-tight' }, 'Soundboard')),
 			controls);
+		this.#adopt(new ProblemsButton(soundboard, () => this.#openProblems()).mount(controls));
 		this.#adopt(new ExternalChangesButton(soundboard, (problems) => this.#showRefreshProblems(problems)).mount(controls));
 		this.#adopt(new WaveformIndicator(soundboard).mount(controls));
 		this.#adopt(new TrashButton(soundboard, () => this.#openTrash()).mount(controls));
@@ -257,6 +261,7 @@ class Board extends Component {
 		this.own(() => this.#dialog.close());
 		this.own(() => this.#moveDialog.close());
 		this.own(() => this.#trashDialog.close());
+		this.own(() => this.#problemsDialog.close());
 		this.own(() => this.#metadataDialog.close());
 		return root;
 	}
@@ -277,6 +282,14 @@ class Board extends Component {
 		const body = h('div');
 		dialog.mount(body);
 		this.#metadataDialog.open({ title: `Metadata: "${item.title}"`, body, onClose: () => dialog.destroy() });
+	}
+
+	/** Opens the problems dialog, which closes itself once nothing is left. */
+	#openProblems() {
+		const dialog = new ProblemsDialog({ soundboard: this.#soundboard, onEmpty: () => this.#problemsDialog.close() });
+		const body = h('div');
+		dialog.mount(body);
+		this.#problemsDialog.open({ title: 'Problems', body, footer: dialog.footer, onClose: () => dialog.destroy() });
 	}
 
 	/** Opens the trash dialog, which closes itself once the trash is empty. */

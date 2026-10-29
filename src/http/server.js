@@ -6,6 +6,7 @@ import { httpLinkFetcher } from '../downloads/link-fetcher.js';
 import { runProcess } from '../downloads/process-runner.js';
 import { YtDlp } from '../downloads/yt-dlp.js';
 import { LibraryEditor } from '../library/library-editor.js';
+import { Problems } from '../library/problems.js';
 import { Trash } from '../library/trash.js';
 import { WaveformStore } from '../library/waveform-store.js';
 import { LibraryChanges } from './library-changes.js';
@@ -20,6 +21,7 @@ const HOST = '127.0.0.1';
  * @typedef {object} ServerOptions
  * @property {import('../library/library.js').Library} library
  * @property {import('../library/settings-store.js').SettingsStore} settings
+ * @property {import('../library/problems.js').Problem[]} [problems] what startup found wrong (DESIGN.md §5.1)
  * @property {number} port 0 picks a free port
  * @property {string} [publicDir]
  * @property {(error: unknown) => void} logError
@@ -43,7 +45,7 @@ const HOST = '127.0.0.1';
  * @param {ServerOptions} options
  * @returns {Promise<{ url: string, close: () => Promise<void> }>}
  */
-export async function startServer({ library, settings, port, publicDir = PUBLIC_DIR, logError, logRequest, watcher, refresh, downloads }) {
+export async function startServer({ library, settings, problems = [], port, publicDir = PUBLIC_DIR, logError, logRequest, watcher, refresh, downloads }) {
 	const updateFile = watcher?.updateFile;
 	/** @type {import('../library/library-editor.js').FilesWriter} */
 	const writeFiles = (task) => (watcher ? watcher.writeFiles(task) : task());
@@ -67,10 +69,12 @@ export async function startServer({ library, settings, port, publicDir = PUBLIC_
 		watcher,
 		libraryChanges: new LibraryChanges(),
 		trash,
+		problems: new Problems(problems),
 		refreshing: null,
 		refresh: refresh && (async () => {
 			const outcome = await refresh();
 			if (outcome.status === 'ready') {
+				context.problems?.replace(outcome.problems);
 				Object.assign(context, servicesFor(outcome.library), { settings: outcome.settings });
 			}
 			return outcome;
