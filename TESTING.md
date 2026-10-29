@@ -1,16 +1,17 @@
 # Soundboard — Testing
 
-How the app is tested: the automated suite that runs in Node, and the manual checks in real browsers. [`DESIGN.md`](DESIGN.md) §11 summarizes the approach.
+How the app is tested: the automated suite that runs in Node, the Playwright suite that drives the real page in a browser with a fake audio engine, and the manual checks in real browsers. [`DESIGN.md`](DESIGN.md) §11 summarizes the approach.
 
 ## Running the tests
 
 - `npm test` runs every `*.test.js` with the built-in runner (`node --test`). A single file: `node --test test/backend/http/server.test.js`. Several: pass a glob in quotes, such as `node --test "test/frontend/*.test.js"`. A bare directory path does not work.
-- `npm run check` runs type-checking, lint and the tests. It must pass before every commit.
+- `npm run check` runs type-checking, lint and the tests. It must pass before every commit. `npm test` covers `test/backend`, `test/frontend` and `test/helpers`; the browser suite is not part of it.
+- `npm run test:browser` runs the Playwright suite (below). It needs the Playwright browsers (`npx playwright install chromium`) and is run on its own, as `npm run smoke` is. A single file or title: `npm run test:browser -- player-bar` or `npm run test:browser -- -g "pausing"`.
 
 ## Principles
 
 - **Test first** for all domain and logic code: backend, metadata, library, HTTP, and everything in `public/app/logic/`.
-- **No automated DOM tests.** The UI components and `WebAudioEngine` are kept thin and checked in real browsers (below). Pure helpers used by the UI (`format`, `menus`, `position`) are unit-tested.
+- **The UI is tested in a browser, not in Node.** The UI components are checked by the Playwright suite (below), which drives the real page against the real server with the fake audio engine. `WebAudioEngine` is not covered by it, since the fake replaces it, and stays on the manual checklist. Pure helpers used by the UI (`format`, `menus`, `position`) are still unit-tested in Node.
 - Tests live in `test/`, mirroring the source layout: `test/backend/`, `test/frontend/` and `test/helpers/`. They use `describe`/`it` from `node:test` and `node:assert/strict`, and their names describe behavior.
 - **Fixtures stay pristine.** `test_fixtures/example_soundboard` is only ever read or copied to a temporary directory with `copyFixture()`, never written to.
 
@@ -42,6 +43,56 @@ How the app is tested: the automated suite that runs in Node, and the manual che
 | Frontend logic | Event emitter; order strategies; transitions and rules; volume; settings sync and options sync (debounce, one save at a time, flush, settling, failures); library model; command validation; buffer cache (sharing, eviction, in-use protection); sound player (instances, both caps, cancelling pending decodes, errors); playlist player (every state transition, stale callbacks from leaky voices, previous/next/jump rules, seeking, progress, errors and the consecutive-error limit, fades with non-zero rules, the retiring cap); the `Soundboard` facade, including external changes, refreshing, and downloads and their additions (sounds, playlists, tracks for a playlist that plays) with a fake `ServerEvents`, deletions and moves (saves settled first, removals stopping what plays, applied once, cached buffers dropped); the play history and the playlist player taking added and removed tracks; `HttpBackendApi` against the real server. Regenerating every waveform, also over a run in progress. Pure UI helpers: menus, waveform shaping (decibels and rank), the metadata dialog's rows and rebuilt YouTube links. |
 | Playlist invariant | 400 seeded random command sequences, with and without fades, in all three playback orders, with broken and leaky tracks: afterwards, at most one live voice while active, none and no timers while idle (DESIGN.md §8). |
 
+## Browser tests (Playwright)
+
+`test/browser/` holds specs that run in Chromium against the real page and the real server, on a temporary library. Only sound and time are fake: `/app/main.js` is replaced by `support/test-main.js`, a copy of the composition root that uses `FakeAudioEngine`, `FakeClock` and a `FakeWaveformDecoder` (made full size, since the server only takes complete waveforms) from `test/helpers/`, which the browser loads unchanged. The backend API and the event stream are the real ones, so saves, the watcher and refreshes really happen. Production code has no test hooks. Time stands still until a test calls `audio.advance(ms)`; work that is already due (a load that takes no time) runs by itself.
+
+```
+test/browser/
+  playwright.config.js   Chromium; traces and screenshots go to a temp folder, never the repository
+  support/               fixtures.js, server.js, test-main.js, audio.js, disk.js, globals.d.ts
+  pages/                 one page object per area: splash, header, playlists, sounds, footer (with player bars)
+  pages/dialogs/         customize-dialog.js (shared), sound-editor.js, playlist-editor.js, trash.js
+  specs/                 *.spec.js, one per feature area
+```
+
+A spec asks for what it needs by name, and reads like a script:
+
+```js
+test('a playlist starts from its tile and keeps time in the footer', async ({ soundboard, splash, playlists, footer, audio }) => {
+	await soundboard.open();
+	await splash.click();
+	await soundboard.waitUntilLoaded();
+
+	await playlists.click('Music MP3');
+	await footer.expectPlayersCount(1);
+	await audio.expectPlaying('Piece by Piece');
+
+	await audio.advance(1000);
+	await footer.player('Music MP3').expectTime('0:01 / 3:00');
+});
+```
+
+| Fixture | What it is |
+|---|---|
+| `library`, `unplayableFormats` (options) | What the server serves (`'example'`, a copy of the example fixture, or a tree for `createTmpTree`), and the formats this "browser" cannot play. Set with `test.use({ … })`. |
+| `soundboard` | `open()`, `waitUntilLoaded()`, `startAndWaitUntilLoaded()`, `reload()`, and `waitForTheFolderToSettle()`, the one real-time wait, to show that nothing happens. One server and one temporary library per test. |
+| `splash`, `header`, `playlists`, `sounds`, `footer`, `dialogs` | Page objects. Actions wait for what they need; assertions are `expect…` methods that retry, so a spec never sleeps or polls. |
+| `audio` | The fake engine and clock: `advance`, `script(title, { duration, loadDelay, loadError, bufferError, … })` (every file with that title), `expectPlaying`, `expectPlayingCount`, `expectVoice`, `expectBusGain`, `suspend`/`resume`, and holding and finishing waveform making. |
+| `disk` | The audio folder: `expectOptions`, `expectSettings`, `expectFile`, and changes behind the app's back with `addCopyOf` and `remove`. |
+
+Lessons for whoever writes or changes a spec:
+
+- Locate by role and visible name first. The few `data-*` hooks used are ones the UI already has for its own state (`data-sound-id`, `data-playlist-id`, `data-player-bar`, `data-active`, `data-error`, `data-gain-readout`, …). Add a page-object method, not a locator in a spec.
+- Several playlists can hold the same song, so `audio.script` sets every file with the title.
+- The red error ring on a tile lasts 2 s of real time (`window.setTimeout`), not of fake time. A debounced save (500 ms) and the waveform service's pause between files are on the fake clock; `audio.advance(500)` makes the save happen.
+- The screen uses a real minus sign (`−6.0 dB`); `expectVolume` converts. Bus volumes are saved as the slider's position, not as the gain.
+- Hold buttons (delete, restore) use real timers: `click({ delay: 700 })`.
+- The `soundboard` fixture leaves the page before stopping the server, since the page may still be saving waveforms.
+- Fake audio and a headless browser cannot tell how the UI feels or what the real engine does; the manual checklist keeps those checks.
+
+The features not covered yet are collected in [`ROADMAP.md`](ROADMAP.md) ("Browser test coverage still to write"). Each spec file has been checked by breaking the UI it covers on purpose and confirming the spec failed.
+
 ## Checking the tests themselves
 
 When new tests pass on the first run, deliberately break the behavior they are meant to protect and confirm they fail, then restore the code. This has caught several tests that passed for the wrong reason.
@@ -56,6 +107,8 @@ node scripts/mutate.js public/app/logic/options-sync.js "if (entry.saving || !op
 `<find>` must occur exactly once in the file. It prints `CAUGHT:` with the failing tests and exits 0, or `SURVIVED:` and exits 1 when the tests still pass.
 
 ## Browser smoke tests
+
+These older scripts are being replaced by the Playwright suite above and will be removed when it covers what they check. The ones that drive the real `WebAudioEngine` (fades, crossfades, loops, clip points) have no replacement yet.
 
 The real page has been driven in headless Chromium over the DevTools protocol, with real mouse input (`Input.dispatchMouseEvent`) and Node's built-in `WebSocket`, against the real server and a copy of the example fixture. The scripts are in `scripts/browser-smoke/`: `harness.js` starts the server and Chromium, and each other file checks one feature and prints `"check": "ok"` or `"FAIL …"` lines. They always exit 0, so `npm run smoke [name filter]` runs them and counts the failures. It needs `chromium-browser` on `PATH` and stays out of `npm run check`. Screenshots go to a temp folder, never the repository. The scripts are excluded from the backend type-check, since they are throwaway driving code. Some assertions describe earlier versions of the UI and fail now (`clip-ui`, `crossfade-smoke`, `tracks-smoke`, `ui-smoke`; [`ROADMAP.md`](ROADMAP.md)); the others pass. Lessons for whoever writes or changes one:
 
