@@ -16,6 +16,7 @@ describe('readTitle', () => {
 			'b.MP3': id3,
 			'c.ogg': ogg,
 			'd.OGG': ogg,
+			'f.opus': buildOgg({ codec: 'opus', comments: ['TITLE=From Opus'] }),
 			'ogg-in-disguise.mp3': ogg,
 			'e.wav': id3,
 		});
@@ -27,6 +28,7 @@ describe('readTitle', () => {
 		assert.equal(await readTitle(join(tree.root, 'b.MP3')), 'From ID3');
 		assert.equal(await readTitle(join(tree.root, 'c.ogg')), 'From Ogg');
 		assert.equal(await readTitle(join(tree.root, 'd.OGG')), 'From Ogg');
+		assert.equal(await readTitle(join(tree.root, 'f.opus')), 'From Opus');
 	});
 
 	it('trusts the extension over the content', async () => {

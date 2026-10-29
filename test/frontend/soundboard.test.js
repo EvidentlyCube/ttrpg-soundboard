@@ -53,7 +53,7 @@ class FakeServerEvents {
 	}
 }
 
-/** @param {{ canPlay?: (format: 'mp3' | 'ogg') => boolean }} [options] */
+/** @param {{ canPlay?: (format: 'mp3' | 'ogg' | 'opus') => boolean }} [options] */
 function setup({ canPlay } = {}) {
 	const clock = new FakeClock();
 	const engine = new FakeAudioEngine(clock, { canPlay, defaultScript: { duration: 30, loadDelay: 0.1 } });

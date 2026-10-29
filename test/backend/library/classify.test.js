@@ -19,6 +19,8 @@ describe('audioFormatOf', () => {
 		assert.equal(audioFormatOf('a.MP3'), 'mp3');
 		assert.equal(audioFormatOf('b.ogg'), 'ogg');
 		assert.equal(audioFormatOf('b.Ogg'), 'ogg');
+		assert.equal(audioFormatOf('c.opus'), 'opus');
+		assert.equal(audioFormatOf('c.OPUS'), 'opus');
 	});
 
 	it('returns null for anything else', () => {
@@ -78,10 +80,11 @@ describe('classifyDirectory', () => {
 		const result = classifyDirectory([
 			file('Song.wav'),
 			file('Song.FLAC'),
+			file('Song.webm'),
 			file('cover.jpg'),
 			file('readme.txt'),
 		], { isRoot: true });
-		assert.deepEqual(result.unsupportedAudio, ['Song.wav', 'Song.FLAC']);
+		assert.deepEqual(result.unsupportedAudio, ['Song.wav', 'Song.FLAC', 'Song.webm']);
 		assert.deepEqual(result.audioFiles, []);
 	});
 

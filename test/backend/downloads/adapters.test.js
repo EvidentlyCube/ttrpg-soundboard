@@ -73,6 +73,12 @@ describe('Ffmpeg', () => {
 		assert.deepEqual(calls[1].args, ['-hide_banner', '-nostdin', '-y', '-ss', '5.000', '-i', 'in.webm', '-t', '12.250', '-map', '0:a:0', '-c:a', 'libvorbis', '-q:a', '5', 'cut.ogg']);
 	});
 
+	it('copies the first audio stream without encoding it', async () => {
+		const { run, calls } = fakeProcessRunner(() => ({ code: 0 }));
+		await new Ffmpeg(run).remux('in.webm', 'out.opus', { signal: new AbortController().signal, ...noOutput });
+		assert.deepEqual(calls[0].args, ['-hide_banner', '-nostdin', '-y', '-i', 'in.webm', '-map', '0:a:0', '-c:a', 'copy', 'out.opus']);
+	});
+
 	it('fails with ffmpeg\'s last line', async () => {
 		const { run } = fakeProcessRunner((_command, _args, process) => {
 			process.line('in.webm: No such file or directory');

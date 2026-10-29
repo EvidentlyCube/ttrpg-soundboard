@@ -144,11 +144,11 @@ describe('downloads over HTTP', () => {
 
 		await events.until((message) => message.type === 'download' && message.job?.state === 'done');
 		const added = events.messages.find((message) => message.type === 'library.added');
-		assert.equal(added.sound.id, 'Me at the zoo [zoo].ogg');
-		assert.equal(added.sound.url, '/media/Me%20at%20the%20zoo%20%5Bzoo%5D.ogg');
+		assert.equal(added.sound.id, 'Me at the zoo [zoo].opus');
+		assert.equal(added.sound.url, '/media/Me%20at%20the%20zoo%20%5Bzoo%5D.opus');
 		assert.ok(events.messages.some((message) => message.type === 'download.log' && message.lines.includes('[download] 100%')));
 		const library = await call('/api/library');
-		assert.ok(library.body.sounds.some((/** @type {{ id: string }} */ sound) => sound.id === 'Me at the zoo [zoo].ogg'));
+		assert.ok(library.body.sounds.some((/** @type {{ id: string }} */ sound) => sound.id === 'Me at the zoo [zoo].opus'));
 		assert.equal(await watcher.check(), false);
 
 		const current = await call('/api/download');

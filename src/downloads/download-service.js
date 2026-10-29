@@ -72,10 +72,12 @@ export const MAX_LOG_LINES = 1000;
 const LOG_BATCH_MS = 250;
 /** Lookups are remembered so a download can refer to them; only the latest few are kept. */
 const MAX_PROBES = 10;
-const KEPT_EXTENSIONS = new Set(['.mp3', '.ogg']);
+const KEPT_EXTENSIONS = new Set(['.mp3', '.ogg', '.opus']);
+/** Containers YouTube serves Opus in; tried as a lossless copy into `.opus` before re-encoding. */
+const REMUXABLE_EXTENSIONS = new Set(['.webm', '.weba']);
 /** Leftovers of an interrupted yt-dlp download, never the result. */
 const PARTIAL_EXTENSIONS = new Set(['.part', '.ytdl', '.temp']);
-const CONTENT_TYPE_EXTENSIONS = /** @type {Record<string, string>} */ ({ 'audio/mpeg': '.mp3', 'audio/mp3': '.mp3', 'audio/ogg': '.ogg' });
+const CONTENT_TYPE_EXTENSIONS = /** @type {Record<string, string>} */ ({ 'audio/mpeg': '.mp3', 'audio/mp3': '.mp3', 'audio/ogg': '.ogg', 'audio/opus': '.opus' });
 
 /**
  * Looks links up and downloads them into the library, one job at a time (DESIGN.md §5.4). Jobs live in memory only;
@@ -396,15 +398,29 @@ export class DownloadService {
 			return downloaded;
 		}
 		this.#setItems(job, [output], 'converting');
+		const callbacks = {
+			signal,
+			onLine: (/** @type {string} */ text, /** @type {boolean} */ transient) => this.#writeLog(text, transient),
+			onCommand: (/** @type {string} */ line) => this.#writeLog(line, false),
+		};
+		if (output.chapter === null && REMUXABLE_EXTENSIONS.has(extname(downloaded.name).toLowerCase())) {
+			const opusName = safeFileName(withExtension(downloaded.name, '.opus'));
+			const opusPath = join(directory, 'out', opusName);
+			try {
+				await this.#ffmpeg.remux(downloaded.path, opusPath, callbacks);
+				return { path: opusPath, name: opusName };
+			} catch {
+				signal.throwIfAborted();
+				this.#writeLog('The audio is not Opus, so it is converted to Ogg Vorbis instead.', false);
+			}
+		}
 		const name = output.chapter
 			? chapterFileName(downloaded.name, output.chapter.number, output.chapter.chapter.title, fetch.videoId ?? '')
 			: safeFileName(withExtension(downloaded.name, '.ogg'));
 		const path = join(directory, 'out', name);
 		await this.#ffmpeg.convert(downloaded.path, path, {
 			clip: output.chapter && { start: output.chapter.chapter.start, end: output.chapter.chapter.end },
-			signal,
-			onLine: (text, transient) => this.#writeLog(text, transient),
-			onCommand: (line) => this.#writeLog(line, false),
+			...callbacks,
 		});
 		return { path, name };
 	}

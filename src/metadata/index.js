@@ -10,18 +10,21 @@ import { readOggDuration, readOggSourceLink, readOggTitle } from './ogg.js';
 const TITLE_READERS = {
 	'.mp3': readId3Title,
 	'.ogg': readOggTitle,
+	'.opus': readOggTitle,
 };
 
 /** @type {Record<string, (reader: ByteSource) => Promise<string | null>>} */
 const LINK_READERS = {
 	'.mp3': readId3SourceLink,
 	'.ogg': readOggSourceLink,
+	'.opus': readOggSourceLink,
 };
 
 /** @type {Record<string, (reader: ByteSource) => Promise<number | null>>} */
 const DURATION_READERS = {
 	'.mp3': readMpegDuration,
 	'.ogg': readOggDuration,
+	'.opus': readOggDuration,
 };
 
 /**

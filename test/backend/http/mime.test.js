@@ -18,6 +18,6 @@ describe('contentTypeFor', () => {
 
 describe('AUDIO_CONTENT_TYPES', () => {
 	it('maps each supported format', () => {
-		assert.deepEqual(AUDIO_CONTENT_TYPES, { mp3: 'audio/mpeg', ogg: 'audio/ogg' });
+		assert.deepEqual(AUDIO_CONTENT_TYPES, { mp3: 'audio/mpeg', ogg: 'audio/ogg', opus: 'audio/ogg; codecs=opus' });
 	});
 });

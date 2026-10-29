@@ -90,6 +90,23 @@ class FakeYtDlp {
 class FakeFfmpeg {
 	/** @type {{ input: string, output: string, clip: { start: number, end: number } | null }[]} */
 	conversions = [];
+	/** @type {{ input: string, output: string }[]} */
+	remuxes = [];
+	remuxFails = false;
+
+	/**
+	 * @param {string} input
+	 * @param {string} output
+	 * @param {{ onCommand: (line: string) => void }} options
+	 */
+	async remux(input, output, { onCommand }) {
+		this.remuxes.push({ input: basename(input), output: basename(output) });
+		onCommand(`$ ffmpeg -c:a copy ${basename(output)}`);
+		if (this.remuxFails) {
+			throw new Error('Invalid audio codec');
+		}
+		await writeFile(output, 'opus');
+	}
 
 	/**
 	 * @param {string} input
@@ -200,7 +217,7 @@ describe('DownloadService', () => {
 	});
 
 	describe('downloading', () => {
-		it('converts a whole video into a sound, with its title and source', async () => {
+		it('copies the Opus audio of a whole video into an .opus sound, with its title and source', async () => {
 			const { service, ffmpeg, events, finished, options, library, root } = await setup();
 			const { probeId } = await service.probe('https://www.youtube.com/watch?v=zoo');
 			const started = service.start({ probeId, target: { kind: 'sound' } });
@@ -209,13 +226,38 @@ describe('DownloadService', () => {
 			const job = await finished();
 			assert.equal(job.state, 'done');
 			assert.deepEqual(job.items, [{ title: 'Me at the zoo', state: 'done', error: null }]);
-			assert.deepEqual(ffmpeg.conversions, [{ input: 'Me at the zoo [zoo].webm', output: 'Me at the zoo [zoo].ogg', clip: null }]);
-			const saved = await options('Me at the zoo [zoo].ogg');
+			assert.deepEqual(ffmpeg.remuxes, [{ input: 'Me at the zoo [zoo].webm', output: 'Me at the zoo [zoo].opus' }]);
+			assert.deepEqual(ffmpeg.conversions, []);
+			const saved = await options('Me at the zoo [zoo].opus');
 			assert.equal(saved.title, 'Me at the zoo');
 			assert.deepEqual(saved.source, { origin: 'download', url: 'https://www.youtube.com/watch?v=zoo', extractor: 'Youtube', videoId: 'zoo' });
-			assert.ok(library.sounds.some((sound) => sound.id === 'Me at the zoo [zoo].ogg'));
+			assert.ok(library.sounds.some((sound) => sound.id === 'Me at the zoo [zoo].opus'));
 			assert.ok(events.some((event) => event.type === 'library.added' && 'sound' in event));
 			assert.deepEqual(await readdir(join(root, WORKSPACE_NAME)), []);
+		});
+
+		it('converts a whole video to Ogg Vorbis when its audio can\'t be copied', async () => {
+			const { service, ffmpeg, finished, options } = await setup();
+			ffmpeg.remuxFails = true;
+			const { probeId } = await service.probe('https://www.youtube.com/watch?v=zoo');
+			service.start({ probeId, target: { kind: 'sound' } });
+			const job = await finished();
+			assert.equal(job.state, 'done');
+			assert.deepEqual(ffmpeg.conversions, [{ input: 'Me at the zoo [zoo].webm', output: 'Me at the zoo [zoo].ogg', clip: null }]);
+			assert.match(service.current()?.log.join('\n') ?? '', /not Opus/);
+			assert.equal((await options('Me at the zoo [zoo].ogg')).title, 'Me at the zoo');
+		});
+
+		it('keeps an Opus direct link as it is', async () => {
+			const { service, fetcher, ffmpeg, finished } = await setup();
+			fetcher.info = { contentType: 'audio/opus', size: 4, name: 'Wind' };
+			const { probeId } = await service.probe('https://example.com/Wind');
+			service.start({ probeId, target: { kind: 'sound' } });
+			const job = await finished();
+			assert.equal(job.state, 'done');
+			assert.deepEqual(ffmpeg.conversions, []);
+			assert.deepEqual(ffmpeg.remuxes, []);
+			assert.match(service.current()?.log.join('\n') ?? '', /Wind\.opus/);
 		});
 
 		it('cuts the chosen chapters from one download, in order, each with its chapter number and start', async () => {
@@ -248,8 +290,8 @@ describe('DownloadService', () => {
 			assert.equal(job.failed, 1);
 			assert.deepEqual(job.items[1], { title: 'Song b', state: 'failed', error: 'Video b is unavailable' });
 			const battle = library.playlists.find((playlist) => playlist.id === 'Battle');
-			assert.deepEqual(battle?.tracks.map((track) => track.id), ['Battle/Song a [a].ogg', 'Battle/Song c [c].ogg']);
-			assert.deepEqual((await options('Battle/Song c [c].ogg')).source, { origin: 'download', url: 'https://www.youtube.com/watch?v=c', extractor: 'Youtube', videoId: 'c', playlistId: 'PL1' });
+			assert.deepEqual(battle?.tracks.map((track) => track.id), ['Battle/Song a [a].opus', 'Battle/Song c [c].opus']);
+			assert.deepEqual((await options('Battle/Song c [c].opus')).source, { origin: 'download', url: 'https://www.youtube.com/watch?v=c', extractor: 'Youtube', videoId: 'c', playlistId: 'PL1' });
 		});
 
 		it('keeps an MP3 direct link as it is and records the link', async () => {
@@ -333,7 +375,7 @@ describe('DownloadService', () => {
 			const job = await finished();
 			assert.equal(job.state, 'cancelled');
 			assert.deepEqual(job.items.map((item) => item.state), ['done', 'cancelled', 'cancelled']);
-			assert.ok(library.sounds.some((sound) => sound.id === 'Song a [a].ogg'));
+			assert.ok(library.sounds.some((sound) => sound.id === 'Song a [a].opus'));
 			assert.deepEqual(await readdir(join(root, WORKSPACE_NAME)), []);
 		});
 

@@ -3,7 +3,7 @@
  * the composition root injects (DESIGN.md §6). This module has no runtime code.
  */
 
-/** @typedef {'mp3' | 'ogg'} AudioFormat */
+/** @typedef {'mp3' | 'ogg' | 'opus'} AudioFormat */
 /** @typedef {'master' | 'music' | 'sfx'} Bus */
 /** @typedef {Record<Bus, number>} Volumes */
 

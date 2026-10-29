@@ -1,6 +1,6 @@
 import { extname } from 'node:path';
 
-/** @typedef {'mp3' | 'ogg'} AudioFormat */
+/** @typedef {'mp3' | 'ogg' | 'opus'} AudioFormat */
 /** @typedef {{ name: string, kind: 'file' | 'directory' | 'symlink' | 'other' }} DirectoryEntry */
 
 /**
@@ -15,8 +15,8 @@ import { extname } from 'node:path';
  */
 
 /** @type {Record<string, AudioFormat>} */
-const SUPPORTED_FORMATS = { '.mp3': 'mp3', '.ogg': 'ogg' };
-const UNSUPPORTED_AUDIO_EXTENSIONS = new Set(['.wav', '.flac', '.m4a', '.aac', '.opus', '.wma', '.aif', '.aiff', '.webm', '.mp4']);
+const SUPPORTED_FORMATS = { '.mp3': 'mp3', '.ogg': 'ogg', '.opus': 'opus' };
+const UNSUPPORTED_AUDIO_EXTENSIONS = new Set(['.wav', '.flac', '.m4a', '.aac', '.wma', '.aif', '.aiff', '.webm', '.mp4']);
 const OPTIONS_EXTENSION = '.json';
 
 /**

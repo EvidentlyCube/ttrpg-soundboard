@@ -10,7 +10,7 @@ import { FULL, rampTo } from '../logic/fade-ramp.js';
 /** @typedef {import('../logic/fade-ramp.js').FadeRamp} FadeRamp */
 
 /** @type {Record<AudioFormat, string>} */
-const MIME_TYPES = { mp3: 'audio/mpeg', ogg: 'audio/ogg' };
+const MIME_TYPES = { mp3: 'audio/mpeg', ogg: 'audio/ogg', opus: 'audio/ogg; codecs=opus' };
 
 /** Short enough to feel immediate, long enough to avoid clicks when a slider moves. */
 const GAIN_SMOOTHING_SECONDS = 0.015;

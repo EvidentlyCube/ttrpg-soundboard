@@ -160,7 +160,7 @@ describe('LibraryModel', () => {
 	});
 
 	describe('additions from downloads', () => {
-		const track = (/** @type {string} */ id, format = /** @type {'mp3' | 'ogg'} */ ('mp3')) => ({
+		const track = (/** @type {string} */ id, format = /** @type {'mp3' | 'ogg' | 'opus'} */ ('mp3')) => ({
 			id, title: id, format, size: 1, gain: 1, duration: 1, startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0, url: `/media/${id}`,
 		});
 

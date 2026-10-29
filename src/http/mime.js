@@ -1,7 +1,7 @@
 import { extname } from 'node:path';
 
 /** @type {Record<import('../library/classify.js').AudioFormat, string>} */
-export const AUDIO_CONTENT_TYPES = { mp3: 'audio/mpeg', ogg: 'audio/ogg' };
+export const AUDIO_CONTENT_TYPES = { mp3: 'audio/mpeg', ogg: 'audio/ogg', opus: 'audio/ogg; codecs=opus' };
 
 /** @type {Record<string, string>} */
 const STATIC_CONTENT_TYPES = {

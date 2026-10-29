@@ -41,6 +41,25 @@ export class Ffmpeg {
 			'-q:a', VORBIS_QUALITY,
 			output,
 		];
+		await this.#execute(args, { signal, onLine, onCommand });
+	}
+
+	/**
+	 * Copies the first audio stream into an Ogg file without re-encoding, which only works when it is Opus (or Vorbis).
+	 * @param {string} input
+	 * @param {string} output an `.opus` path
+	 * @param {Omit<ConvertOptions, 'clip'>} options
+	 */
+	async remux(input, output, { signal, onLine, onCommand }) {
+		const args = ['-hide_banner', '-nostdin', '-y', '-i', input, '-map', '0:a:0', '-c:a', 'copy', output];
+		await this.#execute(args, { signal, onLine, onCommand });
+	}
+
+	/**
+	 * @param {string[]} args
+	 * @param {Omit<ConvertOptions, 'clip'>} options
+	 */
+	async #execute(args, { signal, onLine, onCommand }) {
 		onCommand(commandLine('ffmpeg', args));
 		/** @type {string[]} */
 		const lines = [];
