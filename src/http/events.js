@@ -17,10 +17,10 @@ const KEEP_ALIVE_MS = 30_000;
  * away or the server stops.
  * @param {Request} request
  * @param {Response} response
- * @param {{ watcher?: ChangeWatcher, downloads?: DownloadService, libraryChanges?: LibraryChanges }} sources without
- * 	them, nothing ever changes
+ * @param {{ watcher?: ChangeWatcher, downloads?: DownloadService, libraryChanges?: LibraryChanges,
+ * 	trash?: import('../library/trash.js').Trash }} sources without them, nothing ever changes
  */
-export function serveEvents(request, response, { watcher, downloads, libraryChanges }) {
+export function serveEvents(request, response, { watcher, downloads, libraryChanges, trash }) {
 	response.writeHead(200, {
 		'Content-Type': 'text/event-stream; charset=utf-8',
 		'Cache-Control': 'no-store',
@@ -40,6 +40,11 @@ export function serveEvents(request, response, { watcher, downloads, libraryChan
 			send({ type: 'download', job: null, log: [] });
 		}
 	}
+	const sendTrash = (/** @type {import('../library/trash.js').TrashSummary} */ summary) => send({ type: 'trash', ...summary });
+	if (trash) {
+		sendTrash(trash.summary);
+	}
+	const unsubscribeTrash = trash?.onChange(sendTrash);
 	const unsubscribeWatcher = watcher?.onChange(sendExternalChanges);
 	const unsubscribeDownloads = downloads?.onEvent((event) => send(toMessage(event)));
 	const unsubscribeLibrary = libraryChanges?.onChange((change) => send(toMessage(change)));
@@ -49,6 +54,7 @@ export function serveEvents(request, response, { watcher, downloads, libraryChan
 		unsubscribeWatcher?.();
 		unsubscribeDownloads?.();
 		unsubscribeLibrary?.();
+		unsubscribeTrash?.();
 	});
 }
 

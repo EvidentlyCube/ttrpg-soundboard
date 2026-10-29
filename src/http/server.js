@@ -6,6 +6,7 @@ import { httpLinkFetcher } from '../downloads/link-fetcher.js';
 import { runProcess } from '../downloads/process-runner.js';
 import { YtDlp } from '../downloads/yt-dlp.js';
 import { LibraryEditor } from '../library/library-editor.js';
+import { Trash } from '../library/trash.js';
 import { WaveformStore } from '../library/waveform-store.js';
 import { LibraryChanges } from './library-changes.js';
 import { logWhenDone } from './request-log.js';
@@ -51,6 +52,9 @@ export async function startServer({ library, settings, port, publicDir = PUBLIC_
 		editor: new LibraryEditor(current, { updateFile, writeFiles }),
 		waveforms: new WaveformStore(current),
 	});
+	// The trash is not watched (DESIGN.md §2.5): it is read now and after the app's own changes to it.
+	const trash = new Trash(library.root);
+	await trash.reload();
 	/** @type {import('./router.js').RouterContext} */
 	const context = {
 		...servicesFor(library),
@@ -59,6 +63,7 @@ export async function startServer({ library, settings, port, publicDir = PUBLIC_
 		logError,
 		watcher,
 		libraryChanges: new LibraryChanges(),
+		trash,
 		refreshing: null,
 		refresh: refresh && (async () => {
 			const outcome = await refresh();

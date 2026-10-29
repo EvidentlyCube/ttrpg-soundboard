@@ -66,9 +66,10 @@ async function setup({ refresh } = {}) {
 /**
  * Reads `GET /api/events` message by message.
  * @param {string} baseUrl
+ * @param {(message: { type: string }) => boolean} [keep]
  */
-function openEvents(baseUrl) {
-	/** @type {unknown[]} */
+function openEvents(baseUrl, keep = () => true) {
+	/** @type {{ type: string }[]} */
 	const messages = [];
 	/** @type {(() => void) | null} */
 	let wake = null;
@@ -80,7 +81,10 @@ function openEvents(baseUrl) {
 			const blocks = buffer.split('\n\n');
 			buffer = blocks.pop() ?? '';
 			for (const block of blocks.filter((text) => text.startsWith('data: '))) {
-				messages.push(JSON.parse(block.slice('data: '.length)));
+				const message = JSON.parse(block.slice('data: '.length));
+				if (keep(message)) {
+					messages.push(message);
+				}
 			}
 			wake?.();
 		});
@@ -105,7 +109,8 @@ describe('external changes over HTTP', () => {
 	describe('GET /api/events', () => {
 		it('sends the current state, then every change of it', async () => {
 			const { root, server, call } = await setup();
-			const events = openEvents(server.url);
+			// Every connection also says what the trash holds, which this test doesn't look at.
+			const events = openEvents(server.url, (message) => message.type !== 'trash');
 			const message = (/** @type {boolean} */ pending) => ({ type: 'externalChanges', pending });
 			assert.deepEqual(await events.first(1), [message(false)]);
 			await writeFile(join(root, 'New.mp3'), 'new');

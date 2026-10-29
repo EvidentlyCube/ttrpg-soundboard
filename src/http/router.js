@@ -2,6 +2,7 @@ import { relative, sep } from 'node:path';
 import { DownloadBusyError, InvalidDownloadError, ToolsUnavailableError, UnusableLinkError } from '../downloads/errors.js';
 import { ValidationError } from '../library/errors.js';
 import { UnknownPlaylistError, UnknownSoundError, UnknownTrackError } from '../library/library-editor.js';
+import { readTrash, UnknownTrashItemError } from '../library/trash.js';
 import { isPlainObject, VOLUME_BUSES } from '../library/validate.js';
 import { findMediaFile, isMediaPath, serveMedia } from './media.js';
 import { InvalidWaveformError, UnknownWaveformFileError } from '../library/waveform-store.js';
@@ -32,6 +33,7 @@ import { serveStaticFile } from './static-files.js';
  * @property {(error: unknown) => void} logError called for unexpected failures, never for client mistakes
  * @property {ChangeWatcher} [watcher] notices external changes; without it there never are any
  * @property {import('./library-changes.js').LibraryChanges} [libraryChanges] tells the event streams about deletions and moves
+ * @property {import('../library/trash.js').Trash} [trash] the trash's summary for the event streams
  * @property {() => Promise<RefreshOutcome>} [refresh] rebuilds the library and swaps it into this context
  * @property {Promise<RefreshOutcome> | null} refreshing the refresh running now
  * @property {DownloadService} [downloads] without it, downloads are not available
@@ -113,7 +115,7 @@ async function route(request, response, context) {
 	} else if (pathname.startsWith(SOUNDS_PREFIX)) {
 		allowMethods(request, ['PATCH', 'DELETE']);
 		if (request.method === 'DELETE') {
-			sendChanges(response, context, await editItem(pathname, SOUNDS_PREFIX, (id) => editor.deleteSound(id)));
+			await sendChanges(response, context, await editItem(pathname, SOUNDS_PREFIX, (id) => editor.deleteSound(id)));
 			return;
 		}
 		const body = /** @type {OptionChanges} */ (await readJsonBody(request));
@@ -121,7 +123,7 @@ async function route(request, response, context) {
 	} else if (pathname.startsWith(PLAYLISTS_PREFIX)) {
 		allowMethods(request, ['PATCH', 'DELETE']);
 		if (request.method === 'DELETE') {
-			sendChanges(response, context, await editItem(pathname, PLAYLISTS_PREFIX, (id) => editor.deletePlaylist(id)));
+			await sendChanges(response, context, await editItem(pathname, PLAYLISTS_PREFIX, (id) => editor.deletePlaylist(id)));
 			return;
 		}
 		const body = /** @type {OptionChanges} */ (await readJsonBody(request));
@@ -130,14 +132,26 @@ async function route(request, response, context) {
 		allowMethods(request, ['PATCH', 'DELETE']);
 		// Decoding the whole rest of the path keeps literal slashes, so ids encoded whole or per segment both work.
 		if (request.method === 'DELETE') {
-			sendChanges(response, context, await editItem(pathname, TRACKS_PREFIX, (id) => editor.deleteTrack(id)));
+			await sendChanges(response, context, await editItem(pathname, TRACKS_PREFIX, (id) => editor.deleteTrack(id)));
 			return;
 		}
 		const body = /** @type {OptionChanges} */ (await readJsonBody(request));
 		sendJson(response, 200, toFileJson(await editItem(pathname, TRACKS_PREFIX, (id) => editor.updateTrack(id, body))));
 	} else if (pathname === '/api/move') {
 		allowMethods(request, ['POST']);
-		sendChanges(response, context, await moveItem(library, editor, await readJsonBody(request)));
+		await sendChanges(response, context, await moveItem(library, editor, await readJsonBody(request)));
+	} else if (pathname === '/api/trash') {
+		allowMethods(request, ['GET']);
+		sendJson(response, 200, toTrashJson(await readTrash(library.root)));
+	} else if (pathname === '/api/trash/restore') {
+		allowMethods(request, ['POST']);
+		const item = trashItemOf(await readJsonBody(request));
+		await sendChanges(response, context, await trashCall(() => editor.restoreFromTrash(item)));
+	} else if (pathname === '/api/trash/delete') {
+		allowMethods(request, ['POST']);
+		const item = trashItemOf(await readJsonBody(request));
+		await trashCall(() => editor.purgeFromTrash(item));
+		await sendChanges(response, context, { changes: [] });
 	} else if (pathname === '/api/download') {
 		allowMethods(request, ['GET', 'POST', 'DELETE']);
 		await serveDownload(request, response, context.downloads);
@@ -305,15 +319,65 @@ async function moveItem(library, editor, body) {
 }
 
 /**
- * Tells every page about a deletion or a move, and answers with the same messages, so the page that asked can apply
- * them at once.
+ * Tells every page about a deletion, a move or a change to the trash, and answers with the same messages, so the page
+ * that asked can apply them at once. Each of them may change the trash, which is read again first.
  * @param {Response} response
  * @param {RouterContext} context
- * @param {import('../library/library-editor.js').Rearrangement} rearrangement
+ * @param {{ changes: import('../library/library-editor.js').LibraryChange[] }} result
  */
-function sendChanges(response, context, { changes }) {
+async function sendChanges(response, context, { changes }) {
+	await context.trash?.reload();
 	context.libraryChanges?.emit(changes);
 	sendJson(response, 200, { changes: changes.map(toMessage) });
+}
+
+/**
+ * @param {unknown} body `{ kind, id }` or `{ all: true }`
+ * @returns {import('../library/trash.js').TrashItem | 'all'}
+ */
+function trashItemOf(body) {
+	if (isPlainObject(body) && body.all === true) {
+		return 'all';
+	}
+	if (
+		!isPlainObject(body)
+		|| !(body.kind === 'sound' || body.kind === 'track' || body.kind === 'playlist')
+		|| typeof body.id !== 'string'
+	) {
+		throw new HttpError(400, 'Name a "kind" (sound, track or playlist) and an "id", or send "all": true');
+	}
+	return { kind: body.kind, id: body.id };
+}
+
+/**
+ * Turns the trash's errors into HTTP errors.
+ * @template T
+ * @param {() => Promise<T>} call
+ * @returns {Promise<T>}
+ */
+async function trashCall(call) {
+	try {
+		return await call();
+	} catch (error) {
+		if (error instanceof UnknownTrashItemError) {
+			throw new HttpError(404, error.message);
+		}
+		if (error instanceof ValidationError) {
+			throw new HttpError(400, error.message);
+		}
+		throw error;
+	}
+}
+
+/** @param {import('../library/trash.js').TrashListing} listing */
+function toTrashJson({ size, playlists, sounds }) {
+	/** @param {import('../library/trash.js').TrashedFile} file */
+	const toFile = ({ id, title, size: fileSize }) => ({ id, title, size: fileSize });
+	return {
+		size,
+		playlists: playlists.map((playlist) => ({ id: playlist.id, title: playlist.title, size: playlist.size, tracks: playlist.tracks.map(toFile) })),
+		sounds: sounds.map(toFile),
+	};
 }
 
 /**
