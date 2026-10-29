@@ -29,7 +29,59 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## Proposals
 
-None yet.
+### Managing the trash
+
+**Goal.** A header button shows how much is in the trash. It opens a dialog that lists the trashed playlists (with their tracks indented beneath them) and sounds. Each entry can be restored to the board or deleted for good, one at a time or all at once.
+
+**Design changes.**
+
+- **§2.5 Trash and moves.** The trash gets a reading, and two new actions.
+  - **Reading the trash.** Root-level audio files in `.trash/` are **sounds**. Each folder there is a **playlist**, and the audio files at any depth inside it are its **tracks**. Titles come from the trashed options files, falling back to the default titles (§2.4). A trashed playlist's title comes from `.trash/<name>.json` if there is one. When only single tracks were deleted, there is none, and the folder name is used. Dot files are skipped. Other files are not listed, but they count toward the size.
+  - **Size.** This is the total of every file under `.trash/`.
+  - **Restoring a sound** moves it, with its options file and waveform, back to the root. On a clash it gets ` (2)` as other additions do (`moveAudioFile`). Its title stays as it was (question B).
+  - **Restoring a track**, when its playlist (a root folder of that name) exists, puts it back into its old folder. If that folder is a subdirectory the playlist doesn't include, the track goes to the playlist's top level instead (question C). Clashes get ` (2)`. When the playlist is gone, a new playlist folder is created, `.trash/<name>.json` is **copied** next to it (so the tracks still in the trash keep it), and the track goes back in as above. Without a trashed options file, the new playlist gets an options file with the folder's name as its title.
+  - **Restoring a playlist** whose name is free moves the whole folder and its options file back, with everything in them. If a playlist of that name exists, each track is restored into it as above, and the trashed options file is ignored.
+  - **A trashed playlist with no audio files left** leaves the trash completely: its folder, anything else still in it, and its options file. This happens after its last track is restored or deleted (question D).
+  - **Deleting for good** removes the audio file, its options file and its waveform. For a playlist, it removes the folder and its options file.
+  - **Everything.** "Restore all" restores every playlist, then every sound. "Delete all" removes `.trash/` itself.
+- **§5.1 `LibraryEditor`.** New `restoreSound(id)`, `restoreTrack(id)`, `restorePlaylist(id)` and `restoreAll()`, where the ids are the trashed paths (the item's old id).
+  - Each adds what it restored to the library as additions do, re-reading the options files, and returns `{ changes, written, renamed }`. Here `changes` holds `library.added` messages: the sound, or the receiving playlist with all its tracks.
+  - A new `trash.js` holds `listTrash(root)`, `trashSize(root)` and `purgeTrash(root, { kind, id } | 'all')`. The trash never takes part in the change watcher's baseline. Restores still go through `watcher.writeFiles`, so the restored files are recorded afresh. Purges go through it too, so they take their turn.
+- **§5.2 HTTP API.**
+  - `GET /api/trash` returns `{ size, playlists: [{ id, title, size, tracks: [{ id, title, size }] }], sounds: [{ id, title, size }] }`, sorted as the board sorts (§2.2).
+  - `POST /api/trash/restore` and `POST /api/trash/delete` take the body `{ kind: 'sound' | 'track' | 'playlist', id }` or `{ all: true }`. They answer `200 { changes }`, plus `404` for an id that isn't in the trash and `400` for a bad body.
+  - A new event stream message, `trash`, carries `{ size, count }`. Here `count` is the number of listed entries: playlists plus sounds, with tracks counted only inside their playlist. It is sent on connect and after anything that changes the trash: deletions, moves that leave a playlist empty, restores and purges. A quick change check (window focus, §5.3) also recounts it, so a trash emptied by hand is noticed.
+- **§6.1, §6.2, §6.8 facade.**
+  - `trashSummary()` returns `{ size, count }`, announced as `trash.changed`.
+  - `loadTrash()` fetches the listing.
+  - `restoreFromTrash(target)` and `deleteFromTrash(target)` first wait for `OptionsSync.settleAll()`, then apply the `changes` from the answer as deletions and moves do, so restored sounds and tracks appear at once. These are not commands.
+  - New `BackendApi` methods: `trash()`, `restoreFromTrash(target)` and `deleteFromTrash(target)`.
+- **§9.1 header.** A **Trash** button sits left of the volume controls, after the waveform progress. It shows a trash icon and the size, such as "Trash · 340 MB". It is shown only while `count > 0`.
+  - The size uses decimal units, as Finder does: MB below 1 GB, then GB. It has one decimal below 10 (`4.2 MB`, `1.4 GB`) and none above (`340 MB`), and never shows less than `0.1 MB`.
+- **New §9.12 Trash dialog** (`ui/trash-dialog.js`), titled "Trash".
+  - Playlists come first, as on the board, each as a row with a blue stripe, its title, its track count and size. Its tracks follow in rows indented beneath it, each with its title and its path inside the playlist in muted text when nested, and its size. Sounds follow, with an amber stripe.
+  - Each row has **Restore** and **Delete** hold buttons (1 s). Restore uses a neutral style, Delete the red one.
+  - The footer has **Restore all** and **Delete all**, each held for **3 s**. The dialog closes when the trash becomes empty.
+  - The list is fetched when the dialog opens and again on every `trash.changed`, so another tab's deletions show up. Rows stay disabled while an action runs, and a failure shows in red in the footer.
+- **§9.4 `holdButton`.** It gets a `holdMs` option (default 1000) and a `tone` option (`'danger'` or `'neutral'`). The fill's duration becomes an inline `transition-duration`, since Tailwind can't build a class from a variable.
+- **TESTING.md.** Manual checks for the button's visibility and size, the indentation, both hold lengths, and restores appearing on the board in two tabs.
+
+**Open questions.**
+
+- **A. Is there a confirmation beyond the hold?** *Recommended:* no. The 3 s hold on Delete all is the confirmation.
+- **B. Does a restored sound or track that is renamed to ` (2)` also get ` (2)` in its title?** *Recommended:* no. Only the file name changes. A file without a stored title shows its file name, so it shows the ` (2)` anyway. A file with a stored title keeps that title, as moves do.
+- **C. Where does a track go when it came from a subdirectory the playlist no longer includes?** *Recommended:* the playlist's top level, so it always shows up and the playlist's `includedSubdirectories` is never changed behind the user's back. The other option is to put it back into its subdirectory and add that subdirectory to `includedSubdirectories`. That could also bring in other files sitting in that subdirectory.
+- **D. Files the app doesn't show, left in a trashed playlist folder after its last track is restored.** An example is an `Artwork/` folder that went into the trash with the playlist. *Recommended:* they are deleted with the folder, so the trash never holds anything the dialog can't show. The other option is to keep them, but then the size would count files the dialog doesn't list. (Restoring a playlist whose name is free moves everything back, so this happens only after restoring into an existing playlist, or track by track.)
+- **E. The order of Restore all.** *Recommended:* playlists first, then sounds. Each item goes through the same rules as restoring it alone, so clashes between trashed items resolve the same way.
+
+**Plan.** In the lean flow: code first, with the owner checking the UI, then tests and DESIGN.md in one sweep.
+1. **Reading the trash** (`trash.js`): the listing, titles and sizes.
+2. **Restores in `LibraryEditor`**: sounds, tracks into existing and missing playlists, whole playlists, Restore all, and removing a trashed playlist once its audio is gone.
+3. **Purges**: single items and everything.
+4. **HTTP and events**: `GET /api/trash`, the restore and delete routes, and the `trash` message (sent on connect, after deletions and moves, and on quick checks).
+5. **Facade**: `trashSummary`, `trash.changed`, `loadTrash`, the restore and delete methods, and the `BackendApi` methods.
+6. **UI**: `holdButton` options, the header button and the trash dialog.
+7. **Tests** for steps 1–5, **TESTING.md** checks, then **DESIGN.md** (its own commit), and removing this proposal and the backlog entry "Managing the trash".
 
 ---
 
