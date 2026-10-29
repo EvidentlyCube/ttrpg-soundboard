@@ -26,6 +26,16 @@ export class PlaylistsPage {
 		await this.#tile(title).click();
 	}
 
+	/**
+	 * Opens the tile's context menu and picks an item, such as "Next (Instant)".
+	 * @param {string} title
+	 * @param {string} item
+	 */
+	async useMenu(title, item) {
+		await this.#tile(title).click({ button: 'right' });
+		await this.#page.getByRole('menuitem', { name: item, exact: true }).click();
+	}
+
 	/** @param {string} title */
 	async expectPlaying(title) {
 		await expect(this.#tile(title)).toHaveAttribute('data-active', 'true');

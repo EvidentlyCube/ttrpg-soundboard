@@ -27,6 +27,7 @@ export class FooterPage {
 
 /** One playlist's player bar. */
 export class PlayerBarPage {
+	#page;
 	#bar;
 
 	/**
@@ -34,7 +35,70 @@ export class PlayerBarPage {
 	 * @param {string} playlistTitle
 	 */
 	constructor(page, playlistTitle) {
+		this.#page = page;
 		this.#bar = page.locator('[data-player-bar]').filter({ has: page.getByText(playlistTitle, { exact: true }) });
+	}
+
+	/** @param {'Previous' | 'Pause' | 'Resume' | 'Next' | 'Stop'} name */
+	#control(name) {
+		return this.#bar.getByRole('button', { name, exact: true });
+	}
+
+	async pause() {
+		await this.#control('Pause').click();
+	}
+
+	async resume() {
+		await this.#control('Resume').click();
+	}
+
+	async next() {
+		await this.#control('Next').click();
+	}
+
+	async previous() {
+		await this.#control('Previous').click();
+	}
+
+	async stop() {
+		await this.#control('Stop').click();
+	}
+
+	async expectPaused() {
+		await expect(this.#control('Resume')).toBeVisible();
+	}
+
+	async expectNotPaused() {
+		await expect(this.#control('Pause')).toBeVisible();
+	}
+
+	/** Clicks the progress bar. @param {number} fraction where on the bar, from 0 (start) to 1 (end) */
+	async seekTo(fraction) {
+		const bar = this.#bar.locator('[data-progress]');
+		const box = await bar.boundingBox();
+		if (!box) {
+			throw new Error('The progress bar is not on screen');
+		}
+		await this.#page.mouse.click(box.x + box.width * fraction, box.y + box.height / 2);
+	}
+
+	async openTrackList() {
+		await this.#bar.getByTitle('Choose a track').click();
+	}
+
+	/** Picks a track from the open track list. @param {string} title */
+	async jumpTo(title) {
+		await this.#page.getByRole('menuitem', { name: title }).click();
+	}
+
+	/** @param {string[]} titles the open track list, in order */
+	async expectTrackList(titles) {
+		await expect(this.#page.getByRole('menuitem').locator('span.truncate')).toHaveText(titles);
+	}
+
+	/** @param {string} title the track marked in the open track list */
+	async expectCurrentInTrackList(title) {
+		await expect(this.#page.locator('[role=menuitem][data-current=true]')).toHaveText(new RegExp(title));
 	}
 
 	/** @param {string} title */
