@@ -10,8 +10,9 @@
 	"scripts": {
 		"start": "node index.js",
 		"dev": "node --watch index.js",
-		"test": "node --test",
-		"typecheck": "tsc -p tsconfig.backend.json && tsc -p tsconfig.logic.json && tsc -p tsconfig.ui.json && tsc -p tsconfig.frontend-tests.json",
+		"test": "node --test \"test/backend/**/*.test.js\" \"test/frontend/**/*.test.js\" \"test/helpers/**/*.test.js\"",
+		"test:browser": "playwright test -c test/browser/playwright.config.js",
+		"typecheck": "tsc -p tsconfig.backend.json && tsc -p tsconfig.logic.json && tsc -p tsconfig.ui.json && tsc -p tsconfig.frontend-tests.json && tsc -p tsconfig.browser-tests.json",
 		"lint": "eslint .",
 		"lint:fix": "eslint . --fix",
 		"check": "npm run typecheck && npm run lint && npm test",
@@ -19,6 +20,7 @@
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
+		"@playwright/test": "1.64.1",
 		"@stylistic/eslint-plugin": "^5.10.0",
 		"@types/node": "^24.19.2",
 		"eslint": "^10.13.0",
