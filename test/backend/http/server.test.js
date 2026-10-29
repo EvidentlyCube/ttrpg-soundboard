@@ -295,10 +295,10 @@ describe('server', () => {
 			}
 		});
 
-		it('only allows PATCH', async () => {
+		it('only allows PATCH and DELETE', async () => {
 			const response = await get('/api/sounds/Boom.mp3');
 			assert.equal(response.status, 405);
-			assert.equal(response.headers.get('allow'), 'PATCH');
+			assert.equal(response.headers.get('allow'), 'PATCH, DELETE');
 		});
 	});
 
@@ -368,10 +368,10 @@ describe('server', () => {
 			}
 		});
 
-		it('only allows PATCH', async () => {
+		it('only allows PATCH and DELETE', async () => {
 			const response = await get('/api/playlists/Combat');
 			assert.equal(response.status, 405);
-			assert.equal(response.headers.get('allow'), 'PATCH');
+			assert.equal(response.headers.get('allow'), 'PATCH, DELETE');
 		});
 	});
 

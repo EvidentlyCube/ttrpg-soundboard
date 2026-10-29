@@ -5,6 +5,12 @@ import { differs, matchesScan, stampFile, takeBaseline, takeSnapshot } from './t
 /** @typedef {import('./scanner.js').ScanResult} ScanResult */
 /** @typedef {import('./settings-store.js').FileUpdater} FileUpdater */
 /** @typedef {import('./tree-snapshot.js').Baseline} Baseline */
+/**
+ * @typedef {object} FileChanges what a task given to `writeFiles` did, by absolute path
+ * @property {string[]} [written] files created or rewritten
+ * @property {string[]} [removed] files that are gone, such as those moved into the trash
+ * @property {[string, string][]} [renamed] files moved within the root, from and to
+ */
 
 /**
  * @typedef {object} DirectoryWatcher
@@ -91,16 +97,27 @@ export class ChangeWatcher {
 	});
 
 	/**
-	 * Runs a task that creates files, such as adding a download to the library, with nothing else in between, then
-	 * records the files it lists so they don't count as external changes.
-	 * @template {{ written: string[] }} T
+	 * Runs a task that creates, removes or renames files, such as adding a download to the library or deleting a sound,
+	 * with nothing else in between, then records the files it lists so they don't count as external changes.
+	 * @template {FileChanges} T
 	 * @param {() => Promise<T>} task
 	 * @returns {Promise<T>}
 	 */
 	writeFiles(task) {
 		return this.#exclusive(async () => {
 			const result = await task();
-			for (const path of result.written) {
+			for (const path of result.removed ?? []) {
+				this.#baseline.delete(path);
+			}
+			// A rename keeps size, modified time and content, so the entry only changes its key.
+			for (const [from, to] of result.renamed ?? []) {
+				const entry = this.#baseline.get(from);
+				this.#baseline.delete(from);
+				if (entry) {
+					this.#baseline.set(to, entry);
+				}
+			}
+			for (const path of result.written ?? []) {
 				try {
 					this.#baseline.set(path, await stampFile(path));
 				} catch {

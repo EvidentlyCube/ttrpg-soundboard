@@ -5,7 +5,7 @@ import { UnknownPlaylistError, UnknownSoundError, UnknownTrackError } from '../l
 import { isPlainObject, VOLUME_BUSES } from '../library/validate.js';
 import { findMediaFile, isMediaPath, serveMedia } from './media.js';
 import { InvalidWaveformError, UnknownWaveformFileError } from '../library/waveform-store.js';
-import { serveEvents } from './events.js';
+import { serveEvents, toMessage } from './events.js';
 import { toFileJson, toLibraryJson, toPlaylistJson } from './library-json.js';
 import { allowMethods, HttpError, sendJson } from './responses.js';
 import { serveStaticFile } from './static-files.js';
@@ -31,6 +31,7 @@ import { serveStaticFile } from './static-files.js';
  * @property {string} publicDir
  * @property {(error: unknown) => void} logError called for unexpected failures, never for client mistakes
  * @property {ChangeWatcher} [watcher] notices external changes; without it there never are any
+ * @property {import('./library-changes.js').LibraryChanges} [libraryChanges] tells the event streams about deletions and moves
  * @property {() => Promise<RefreshOutcome>} [refresh] rebuilds the library and swaps it into this context
  * @property {Promise<RefreshOutcome> | null} refreshing the refresh running now
  * @property {DownloadService} [downloads] without it, downloads are not available
@@ -110,18 +111,33 @@ async function route(request, response, context) {
 		allowMethods(request, ['GET', 'PUT']);
 		await serveWaveform(request, response, waveforms, pathname);
 	} else if (pathname.startsWith(SOUNDS_PREFIX)) {
-		allowMethods(request, ['PATCH']);
+		allowMethods(request, ['PATCH', 'DELETE']);
+		if (request.method === 'DELETE') {
+			sendChanges(response, context, await editItem(pathname, SOUNDS_PREFIX, (id) => editor.deleteSound(id)));
+			return;
+		}
 		const body = /** @type {OptionChanges} */ (await readJsonBody(request));
 		sendJson(response, 200, toFileJson(await editItem(pathname, SOUNDS_PREFIX, (id) => editor.updateSound(id, body))));
 	} else if (pathname.startsWith(PLAYLISTS_PREFIX)) {
-		allowMethods(request, ['PATCH']);
+		allowMethods(request, ['PATCH', 'DELETE']);
+		if (request.method === 'DELETE') {
+			sendChanges(response, context, await editItem(pathname, PLAYLISTS_PREFIX, (id) => editor.deletePlaylist(id)));
+			return;
+		}
 		const body = /** @type {OptionChanges} */ (await readJsonBody(request));
 		sendJson(response, 200, toPlaylistJson(await editItem(pathname, PLAYLISTS_PREFIX, (id) => editor.updatePlaylist(id, body))));
 	} else if (pathname.startsWith(TRACKS_PREFIX)) {
-		allowMethods(request, ['PATCH']);
-		const body = /** @type {OptionChanges} */ (await readJsonBody(request));
+		allowMethods(request, ['PATCH', 'DELETE']);
 		// Decoding the whole rest of the path keeps literal slashes, so ids encoded whole or per segment both work.
+		if (request.method === 'DELETE') {
+			sendChanges(response, context, await editItem(pathname, TRACKS_PREFIX, (id) => editor.deleteTrack(id)));
+			return;
+		}
+		const body = /** @type {OptionChanges} */ (await readJsonBody(request));
 		sendJson(response, 200, toFileJson(await editItem(pathname, TRACKS_PREFIX, (id) => editor.updateTrack(id, body))));
+	} else if (pathname === '/api/move') {
+		allowMethods(request, ['POST']);
+		sendChanges(response, context, await moveItem(library, editor, await readJsonBody(request)));
 	} else if (pathname === '/api/download') {
 		allowMethods(request, ['GET', 'POST', 'DELETE']);
 		await serveDownload(request, response, context.downloads);
@@ -264,6 +280,40 @@ function downloadCall(call) {
 		}));
 	}
 	return result;
+}
+
+/**
+ * Moves a sound into a playlist, or a track into another playlist or out to the sounds (`to: null`).
+ * @param {Library} library
+ * @param {LibraryEditor} editor
+ * @param {unknown} body
+ */
+async function moveItem(library, editor, body) {
+	if (
+		!isPlainObject(body)
+		|| typeof body.id !== 'string'
+		|| !(typeof body.to === 'string' || body.to === null)
+	) {
+		throw new HttpError(400, 'A move needs an "id" and "to", a playlist id or null');
+	}
+	const { id, to } = /** @type {{ id: string, to: string | null }} */ (body);
+	const isSound = library.sounds.some((sound) => sound.id === id);
+	if (isSound && to === null) {
+		throw new HttpError(400, 'The sound is already a sound effect');
+	}
+	return editItem('', '', () => (isSound ? editor.moveSound(id, /** @type {string} */ (to)) : editor.moveTrack(id, to)));
+}
+
+/**
+ * Tells every page about a deletion or a move, and answers with the same messages, so the page that asked can apply
+ * them at once.
+ * @param {Response} response
+ * @param {RouterContext} context
+ * @param {import('../library/library-editor.js').Rearrangement} rearrangement
+ */
+function sendChanges(response, context, { changes }) {
+	context.libraryChanges?.emit(changes);
+	sendJson(response, 200, { changes: changes.map(toMessage) });
 }
 
 /**

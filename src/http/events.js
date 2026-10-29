@@ -5,6 +5,8 @@ import { toFileJson, toPlaylistJson } from './library-json.js';
 /** @typedef {import('../library/change-watcher.js').ChangeWatcher} ChangeWatcher */
 /** @typedef {import('../downloads/download-service.js').DownloadService} DownloadService */
 /** @typedef {import('../downloads/download-service.js').DownloadEvent} DownloadEvent */
+/** @typedef {import('../library/library-editor.js').LibraryChange} LibraryChange */
+/** @typedef {import('./library-changes.js').LibraryChanges} LibraryChanges */
 
 /** Proxies and browsers may drop a stream that stays silent too long. */
 const KEEP_ALIVE_MS = 30_000;
@@ -15,9 +17,10 @@ const KEEP_ALIVE_MS = 30_000;
  * away or the server stops.
  * @param {Request} request
  * @param {Response} response
- * @param {{ watcher?: ChangeWatcher, downloads?: DownloadService }} sources without them, nothing ever changes
+ * @param {{ watcher?: ChangeWatcher, downloads?: DownloadService, libraryChanges?: LibraryChanges }} sources without
+ * 	them, nothing ever changes
  */
-export function serveEvents(request, response, { watcher, downloads }) {
+export function serveEvents(request, response, { watcher, downloads, libraryChanges }) {
 	response.writeHead(200, {
 		'Content-Type': 'text/event-stream; charset=utf-8',
 		'Cache-Control': 'no-store',
@@ -39,19 +42,21 @@ export function serveEvents(request, response, { watcher, downloads }) {
 	}
 	const unsubscribeWatcher = watcher?.onChange(sendExternalChanges);
 	const unsubscribeDownloads = downloads?.onEvent((event) => send(toMessage(event)));
+	const unsubscribeLibrary = libraryChanges?.onChange((change) => send(toMessage(change)));
 	const keepAlive = setInterval(() => response.write(': keep-alive\n\n'), KEEP_ALIVE_MS);
 	request.on('close', () => {
 		clearInterval(keepAlive);
 		unsubscribeWatcher?.();
 		unsubscribeDownloads?.();
+		unsubscribeLibrary?.();
 	});
 }
 
 /**
  * Additions carry the item in the `/api/library` format.
- * @param {DownloadEvent} event
+ * @param {DownloadEvent | LibraryChange} event
  */
-function toMessage(event) {
+export function toMessage(event) {
 	if (event.type !== 'library.added') {
 		return event;
 	}

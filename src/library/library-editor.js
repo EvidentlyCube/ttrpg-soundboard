@@ -1,9 +1,10 @@
-import { lstat, mkdir, rename, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, rename, stat } from 'node:fs/promises';
+import { basename, join } from 'node:path';
 import { safeFileName, uniqueName } from '../downloads/file-names.js';
 import { audioFormatOf } from './classify.js';
 import { measureIfNeeded } from './durations.js';
 import { ValidationError } from './errors.js';
+import { exists, mergeDirectory, moveAudioFile, TRASH_DIRECTORY, trashDirectoryFor } from './file-moves.js';
 import { audioFileOf, playlistOf } from './library.js';
 import { updateJsonFile, writeJsonAtomic } from './options-store.js';
 import { sortBy } from './sort.js';
@@ -21,6 +22,20 @@ import { checkClip, isPlainObject, validateAudioOptions, validatePlaylistOptions
 
 /** @typedef {{ title: string, source: import('./validate.js').Source }} NewFileOptions */
 /** @typedef {{ written: string[] }} Addition `written` lists every file created, for the change watcher's baseline */
+/**
+ * @typedef {{ type: 'library.removed', soundId: string }
+ * 	| { type: 'library.removed', trackId: string, playlistId: string }
+ * 	| { type: 'library.removed', playlistId: string }
+ * 	| { type: 'library.added', sound: AudioFile }
+ * 	| { type: 'library.added', playlist: Playlist }} LibraryChange
+ */
+/**
+ * @typedef {object} Rearrangement what a deletion or a move did
+ * @property {LibraryChange[]} changes in the order they happened, for the pages
+ * @property {string[]} removed files that left the root, for the change watcher's baseline
+ * @property {[string, string][]} renamed files moved within the root
+ */
+/** @typedef {<T extends import('./change-watcher.js').FileChanges>(task: () => Promise<T>) => Promise<T>} FilesWriter */
 
 /** @type {readonly ('crossfade' | 'fadeIn' | 'fadeOut')[]} */
 const SECONDS_KEYS = ['crossfade', 'fadeIn', 'fadeOut'];
@@ -66,16 +81,19 @@ export class UnknownPlaylistError extends Error {
 export class LibraryEditor {
 	#library;
 	#updateFile;
+	#writeFiles;
 	/** The last write queued for each options file. @type {Map<string, Promise<unknown>>} */
 	#writes = new Map();
 
 	/**
 	 * @param {Library} library updated in place
-	 * @param {{ updateFile?: FileUpdater }} [options]
+	 * @param {{ updateFile?: FileUpdater, writeFiles?: FilesWriter }} [options] `writeFiles` runs deletions and moves,
+	 * 	so the change watcher can follow them
 	 */
-	constructor(library, { updateFile = updateJsonFile } = {}) {
+	constructor(library, { updateFile = updateJsonFile, writeFiles = (task) => task() } = {}) {
 		this.#library = library;
 		this.#updateFile = updateFile;
+		this.#writeFiles = writeFiles;
 	}
 
 	/**
@@ -221,6 +239,239 @@ export class LibraryEditor {
 	}
 
 	/**
+	 * Moves a sound into the trash, with its options file and waveform (DESIGN.md §2).
+	 * @param {string} soundId
+	 * @returns {Promise<Rearrangement>}
+	 */
+	async deleteSound(soundId) {
+		const sound = this.#sound(soundId);
+		this.#takeSound(sound);
+		return this.#rearrange({ files: [sound] }, () => this.#putSound(sound), async () => {
+			const { renamed } = await moveAudioFile(sound.absolutePath, trashDirectoryFor(this.#library.root, sound.id));
+			return { changes: [{ type: 'library.removed', soundId }], removed: renamed.map(([from]) => from), renamed: [] };
+		});
+	}
+
+	/**
+	 * Moves a track into the trash. A playlist's only track takes the playlist with it, so an empty playlist never
+	 * exists.
+	 * @param {string} trackId
+	 * @returns {Promise<Rearrangement>}
+	 */
+	async deleteTrack(trackId) {
+		const { playlist, track } = this.#track(trackId);
+		if (playlist.tracks.length === 1) {
+			return this.deletePlaylist(playlist.id);
+		}
+		this.#takeTrack(playlist, track);
+		return this.#rearrange({ files: [track] }, () => this.#putTrack(playlist, track), async () => {
+			const { renamed } = await moveAudioFile(track.absolutePath, trashDirectoryFor(this.#library.root, track.id));
+			return {
+				changes: [{ type: 'library.removed', trackId, playlistId: playlist.id }],
+				removed: renamed.map(([from]) => from),
+				renamed: [],
+			};
+		});
+	}
+
+	/**
+	 * Moves a playlist's whole directory and its options file into the trash, merging the directory into one of the same
+	 * name already there. The options file replaces an older one.
+	 * @param {string} playlistId
+	 * @returns {Promise<Rearrangement>}
+	 */
+	async deletePlaylist(playlistId) {
+		const playlist = this.#playlist(playlistId);
+		this.#takePlaylist(playlist);
+		return this.#rearrange({ files: playlist.tracks, playlist }, () => this.#putPlaylist(playlist), async () => ({
+			changes: [{ type: 'library.removed', playlistId }],
+			removed: await this.#trashPlaylist(playlist),
+			renamed: [],
+		}));
+	}
+
+	/**
+	 * Moves a sound into a playlist's directory, where it becomes a track. Its options file and waveform go with it.
+	 * @param {string} soundId
+	 * @param {string} playlistId
+	 * @returns {Promise<Rearrangement>}
+	 */
+	async moveSound(soundId, playlistId) {
+		const sound = this.#sound(soundId);
+		const target = this.#playlist(playlistId);
+		this.#takeSound(sound);
+		return this.#rearrange({ files: [sound] }, () => this.#putSound(sound), async () => {
+			const { path, renamed } = await moveAudioFile(sound.absolutePath, join(this.#library.root, target.id));
+			this.#putTrack(target, { ...sound, id: `${target.id}/${basename(path)}`, absolutePath: path });
+			return {
+				changes: [{ type: 'library.removed', soundId }, { type: 'library.added', playlist: target }],
+				removed: [],
+				renamed,
+			};
+		});
+	}
+
+	/**
+	 * Moves a track into another playlist's directory, or into the root as a sound. A track from a nested subdirectory
+	 * lands in the top level. A playlist's only track takes the playlist with it, as `deleteTrack` does.
+	 * @param {string} trackId
+	 * @param {string | null} playlistId null for the sound effects
+	 * @returns {Promise<Rearrangement>}
+	 */
+	async moveTrack(trackId, playlistId) {
+		const { playlist: source, track } = this.#track(trackId);
+		if (playlistId === source.id) {
+			throw new ValidationError(null, ['The track is already in that playlist']);
+		}
+		const target = playlistId === null ? null : this.#playlist(playlistId);
+		const last = source.tracks.length === 1;
+		this.#takeTrack(source, track);
+		if (last) {
+			this.#takePlaylist(source);
+		}
+		const undo = () => {
+			this.#putTrack(source, track);
+			if (last) {
+				this.#putPlaylist(source);
+			}
+		};
+		return this.#rearrange({ files: [track], playlist: last ? source : undefined }, undo, async () => {
+			const directory = target === null ? this.#library.root : join(this.#library.root, target.id);
+			const { path, renamed } = await moveAudioFile(track.absolutePath, directory);
+			const name = basename(path);
+			const moved = { ...track, id: target === null ? name : `${target.id}/${name}`, absolutePath: path };
+			/** @type {LibraryChange} */
+			const added = target === null ? { type: 'library.added', sound: moved } : { type: 'library.added', playlist: target };
+			if (target === null) {
+				this.#putSound(moved);
+			} else {
+				this.#putTrack(target, moved);
+			}
+			return {
+				changes: [
+					last ? { type: 'library.removed', playlistId: source.id } : { type: 'library.removed', trackId, playlistId: source.id },
+					added,
+				],
+				removed: last ? await this.#trashPlaylist(source) : [],
+				renamed,
+			};
+		});
+	}
+
+	/**
+	 * The item is already out of the library, so late saves fail as unknown; saves queued before wait to finish, so none
+	 * can recreate an options file at the old path. A failure puts the item back.
+	 * Waiting happens before the task is handed to `writeFiles`, because the change watcher runs saves and tasks in turn.
+	 * @param {{ files: AudioFile[], playlist?: Playlist }} owners whose options files must be written first
+	 * @param {() => void} undo
+	 * @param {() => Promise<Rearrangement>} task
+	 * @returns {Promise<Rearrangement>}
+	 */
+	async #rearrange({ files, playlist }, undo, task) {
+		const paths = files.map((file) => `${file.absolutePath}.json`);
+		if (playlist) {
+			paths.push(join(this.#library.root, `${playlist.id}.json`));
+		}
+		await Promise.allSettled(paths.map((path) => this.#writes.get(path)));
+		try {
+			return await this.#writeFiles(task);
+		} catch (error) {
+			undo();
+			throw error;
+		}
+	}
+
+	/**
+	 * @param {Playlist} playlist already out of the library
+	 * @returns {Promise<string[]>} the files that left the root
+	 */
+	async #trashPlaylist(playlist) {
+		const root = this.#library.root;
+		const optionsPath = join(root, `${playlist.id}.json`);
+		const trash = join(root, TRASH_DIRECTORY);
+		await mergeDirectory(join(root, playlist.id), trash);
+		if (await exists(optionsPath)) {
+			await rename(optionsPath, join(trash, `${playlist.id}.json`));
+		}
+		return [...playlist.tracks.flatMap((track) => [track.absolutePath, `${track.absolutePath}.json`]), optionsPath];
+	}
+
+	/** @param {string} soundId */
+	#sound(soundId) {
+		const sound = this.#library.sounds.find((entry) => entry.id === soundId);
+		if (!sound) {
+			throw new UnknownSoundError(soundId);
+		}
+		return sound;
+	}
+
+	/** @param {string} trackId */
+	#track(trackId) {
+		for (const playlist of this.#library.playlists) {
+			const track = playlist.tracks.find((entry) => entry.id === trackId);
+			if (track) {
+				return { playlist, track };
+			}
+		}
+		throw new UnknownTrackError(trackId);
+	}
+
+	/** @param {string} playlistId */
+	#playlist(playlistId) {
+		const playlist = this.#library.playlists.find((entry) => entry.id === playlistId);
+		if (!playlist) {
+			throw new UnknownPlaylistError(playlistId);
+		}
+		return playlist;
+	}
+
+	/** @param {AudioFile} sound */
+	#takeSound(sound) {
+		this.#library.sounds = this.#library.sounds.filter((entry) => entry !== sound);
+		this.#library.files.delete(sound.id);
+	}
+
+	/** @param {AudioFile} sound */
+	#putSound(sound) {
+		this.#library.sounds = sortBy([...this.#library.sounds, sound], (entry) => entry.title);
+		this.#library.files.set(sound.id, sound);
+	}
+
+	/**
+	 * @param {Playlist} playlist
+	 * @param {AudioFile} track
+	 */
+	#takeTrack(playlist, track) {
+		playlist.tracks = playlist.tracks.filter((entry) => entry !== track);
+		this.#library.files.delete(track.id);
+	}
+
+	/**
+	 * @param {Playlist} playlist
+	 * @param {AudioFile} track
+	 */
+	#putTrack(playlist, track) {
+		playlist.tracks = sortBy([...playlist.tracks, track], (entry) => entry.id);
+		this.#library.files.set(track.id, track);
+	}
+
+	/** @param {Playlist} playlist */
+	#takePlaylist(playlist) {
+		this.#library.playlists = this.#library.playlists.filter((entry) => entry !== playlist);
+		for (const track of playlist.tracks) {
+			this.#library.files.delete(track.id);
+		}
+	}
+
+	/** @param {Playlist} playlist */
+	#putPlaylist(playlist) {
+		this.#library.playlists = sortBy([...this.#library.playlists, playlist], (entry) => entry.title);
+		for (const track of playlist.tracks) {
+			this.#library.files.set(track.id, track);
+		}
+	}
+
+	/**
 	 * Moves a file into place under a free name, measures it, and writes its options file.
 	 * @param {string} from
 	 * @param {string} directoryId '' for the root, otherwise a playlist id
@@ -266,11 +517,6 @@ export class LibraryEditor {
 		write.then(forget, forget);
 		return write;
 	}
-}
-
-/** @param {string} path */
-async function exists(path) {
-	return lstat(path).then(() => true, () => false);
 }
 
 /**

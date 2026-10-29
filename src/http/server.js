@@ -7,6 +7,7 @@ import { runProcess } from '../downloads/process-runner.js';
 import { YtDlp } from '../downloads/yt-dlp.js';
 import { LibraryEditor } from '../library/library-editor.js';
 import { WaveformStore } from '../library/waveform-store.js';
+import { LibraryChanges } from './library-changes.js';
 import { logWhenDone } from './request-log.js';
 import { createRequestHandler } from './router.js';
 
@@ -42,10 +43,12 @@ const HOST = '127.0.0.1';
  */
 export async function startServer({ library, settings, port, publicDir = PUBLIC_DIR, logError, logRequest, watcher, refresh, downloads }) {
 	const updateFile = watcher?.updateFile;
+	/** @type {import('../library/library-editor.js').FilesWriter} */
+	const writeFiles = (task) => (watcher ? watcher.writeFiles(task) : task());
 	/** @param {import('../library/library.js').Library} current */
 	const servicesFor = (current) => ({
 		library: current,
-		editor: new LibraryEditor(current, { updateFile }),
+		editor: new LibraryEditor(current, { updateFile, writeFiles }),
 		waveforms: new WaveformStore(current),
 	});
 	/** @type {import('./router.js').RouterContext} */
@@ -55,6 +58,7 @@ export async function startServer({ library, settings, port, publicDir = PUBLIC_
 		publicDir,
 		logError,
 		watcher,
+		libraryChanges: new LibraryChanges(),
 		refreshing: null,
 		refresh: refresh && (async () => {
 			const outcome = await refresh();
@@ -74,7 +78,7 @@ export async function startServer({ library, settings, port, publicDir = PUBLIC_
 			fetcher,
 			// Read when a file is added, so an addition after a refresh lands in the new library.
 			editor: () => context.editor,
-			writeFiles: (task) => (watcher ? watcher.writeFiles(task) : task()),
+			writeFiles,
 		});
 	}
 	const handle = createRequestHandler(context);
