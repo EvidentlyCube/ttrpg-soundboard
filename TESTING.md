@@ -128,6 +128,10 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] Switching the audio output (speakers, headphones, Bluetooth) while playing.
 - [ ] Ogg tiles play, or are disabled with an explanation where the browser can't play Ogg.
 
+**Other web pages**
+- [ ] Open the board as `http://127.0.0.1:3000` and as `http://localhost:3000`: both load and work. Opening it by the machine's LAN address or any other name shows an error page (`403`).
+- [ ] With the board running, serve another page from a different port (`python3 -m http.server 8000` in an empty folder) and open it. In its console, `fetch('http://127.0.0.1:3000/api/refresh', { method: 'POST', mode: 'no-cors', body: 'x' })` and the same for `/api/trash/delete` fail or answer `403` in the Network tab, and nothing changes in the board or the folder.
+
 **Sounds**
 - [ ] Overlapping sounds; the stop button appears and disappears; a ninth instance replaces the oldest.
 - [ ] Sounds never create a player bar.

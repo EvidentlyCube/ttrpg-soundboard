@@ -17,6 +17,8 @@ const LARGE_AUDIO = Buffer.alloc(4 * 1024 * 1024, 7);
 /** A file without points or fades, whose name and tags said nothing about where it came from. */
 const FILE_DEFAULTS = { startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0, source: { origin: 'unknown' } };
 
+const JSON_TYPE = { 'Content-Type': 'application/json' };
+
 /** @type {import('../../helpers/tmp-tree.js').TmpDir} */
 let tree;
 /** @type {Awaited<ReturnType<typeof startServer>>} */
@@ -94,7 +96,7 @@ async function json(response) {
 
 /** @param {unknown} body */
 function putVolumes(body) {
-	return get('/api/settings/volumes', { method: 'PUT', body: typeof body === 'string' ? body : JSON.stringify(body) });
+	return get('/api/settings/volumes', { method: 'PUT', headers: JSON_TYPE, body: typeof body === 'string' ? body : JSON.stringify(body) });
 }
 
 describe('server', () => {
@@ -246,7 +248,7 @@ describe('server', () => {
 		 * @param {unknown} body
 		 */
 		function patchSound(encodedId, body) {
-			return get(`/api/sounds/${encodedId}`, { method: 'PATCH', body: typeof body === 'string' ? body : JSON.stringify(body) });
+			return get(`/api/sounds/${encodedId}`, { method: 'PATCH', headers: JSON_TYPE, body: typeof body === 'string' ? body : JSON.stringify(body) });
 		}
 
 		it('saves a change to the options file and returns the updated sound', async () => {
@@ -310,7 +312,7 @@ describe('server', () => {
 		 * @param {unknown} body
 		 */
 		function patchTrack(encodedId, body) {
-			return get(`/api/tracks/${encodedId}`, { method: 'PATCH', body: JSON.stringify(body) });
+			return get(`/api/tracks/${encodedId}`, { method: 'PATCH', headers: JSON_TYPE, body: JSON.stringify(body) });
 		}
 
 		it('renames a track whose id is encoded as one segment or segment by segment', async () => {
@@ -345,7 +347,7 @@ describe('server', () => {
 		 * @param {unknown} body
 		 */
 		function patchPlaylist(encodedId, body) {
-			return get(`/api/playlists/${encodedId}`, { method: 'PATCH', body: typeof body === 'string' ? body : JSON.stringify(body) });
+			return get(`/api/playlists/${encodedId}`, { method: 'PATCH', headers: JSON_TYPE, body: typeof body === 'string' ? body : JSON.stringify(body) });
 		}
 
 		it('saves a change to the playlist options file and returns the playlist with its tracks', async () => {

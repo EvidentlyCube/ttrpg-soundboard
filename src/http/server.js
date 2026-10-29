@@ -9,6 +9,7 @@ import { LibraryEditor } from '../library/library-editor.js';
 import { Trash } from '../library/trash.js';
 import { WaveformStore } from '../library/waveform-store.js';
 import { LibraryChanges } from './library-changes.js';
+import { LOOPBACK_HOSTS } from './request-guard.js';
 import { logWhenDone } from './request-log.js';
 import { createRequestHandler } from './router.js';
 
@@ -60,6 +61,8 @@ export async function startServer({ library, settings, port, publicDir = PUBLIC_
 		...servicesFor(library),
 		settings,
 		publicDir,
+		// The port is known only once the server listens.
+		guard: { hosts: LOOPBACK_HOSTS, port },
 		logError,
 		watcher,
 		libraryChanges: new LibraryChanges(),
@@ -103,6 +106,7 @@ export async function startServer({ library, settings, port, publicDir = PUBLIC_
 
 	const address = server.address();
 	const actualPort = typeof address === 'object' && address !== null ? address.port : port;
+	context.guard.port = actualPort;
 	return {
 		url: `http://${HOST}:${actualPort}`,
 		close: () => new Promise((resolve) => {

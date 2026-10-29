@@ -145,9 +145,9 @@ describe('external changes over HTTP', () => {
 
 		it('does not count the app\'s own saves', async () => {
 			const { call } = await setup();
-			const patch = { method: 'PATCH', body: JSON.stringify({ title: 'Big Boom' }) };
+			const patch = { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'Big Boom' }) };
 			assert.equal((await call('/api/sounds/Boom.mp3', patch)).status, 200);
-			assert.equal((await call('/api/settings/volumes', { method: 'PUT', body: JSON.stringify({ music: 0.5 }) })).status, 200);
+			assert.equal((await call('/api/settings/volumes', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ music: 0.5 }) })).status, 200);
 			assert.deepEqual((await call('/api/changes/check', { method: 'POST' })).body, { externalChanges: false });
 		});
 	});
@@ -160,7 +160,7 @@ describe('external changes over HTTP', () => {
 			const library = (await call('/api/library')).body;
 			assert.deepEqual(library.sounds.map((/** @type {{ id: string }} */ sound) => sound.id), ['Boom.mp3', 'New.mp3']);
 			assert.equal((await fetch(`${server.url}/media/New.mp3`)).status, 200);
-			const patch = { method: 'PATCH', body: JSON.stringify({ title: 'Brand new' }) };
+			const patch = { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'Brand new' }) };
 			assert.equal((await call('/api/sounds/New.mp3', patch)).status, 200);
 			assert.deepEqual((await call('/api/changes/check', { method: 'POST' })).body, { externalChanges: false });
 		});
@@ -225,7 +225,7 @@ describe('external changes over HTTP', () => {
 			const refreshing = call('/api/refresh', { method: 'POST' });
 			await new Promise((resolve) => setTimeout(resolve, 50));
 			let saved = false;
-			const saving = call('/api/sounds/Boom.mp3', { method: 'PATCH', body: JSON.stringify({ title: 'Big Boom' }) })
+			const saving = call('/api/sounds/Boom.mp3', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'Big Boom' }) })
 				.then((result) => {
 					saved = true;
 					return result;

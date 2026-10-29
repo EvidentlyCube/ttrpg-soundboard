@@ -4,6 +4,7 @@ import { ValidationError } from '../library/errors.js';
 import { UnknownPlaylistError, UnknownSoundError, UnknownTrackError } from '../library/library-editor.js';
 import { readTrash, UnknownTrashItemError } from '../library/trash.js';
 import { isPlainObject, VOLUME_BUSES } from '../library/validate.js';
+import { checkRequest } from './request-guard.js';
 import { findMediaFile, isMediaPath, serveMedia } from './media.js';
 import { InvalidWaveformError, UnknownWaveformFileError } from '../library/waveform-store.js';
 import { serveEvents, toMessage } from './events.js';
@@ -30,6 +31,7 @@ import { serveStaticFile } from './static-files.js';
  * @property {LibraryEditor} editor
  * @property {WaveformStore} waveforms
  * @property {string} publicDir
+ * @property {{ hosts: string[], port: number }} guard the names and port the server answers to (`request-guard.js`)
  * @property {(error: unknown) => void} logError called for unexpected failures, never for client mistakes
  * @property {ChangeWatcher} [watcher] notices external changes; without it there never are any
  * @property {import('./library-changes.js').LibraryChanges} [libraryChanges] tells the event streams about deletions and moves
@@ -77,6 +79,8 @@ export function createRequestHandler(context) {
 async function route(request, response, context) {
 	// The raw path is used on purpose: URL parsing would resolve `..` before the static file guard could see it.
 	const pathname = (request.url ?? '/').split('?')[0];
+
+	checkRequest(request.headers, context.guard);
 
 	if (pathname === '/api/events') {
 		allowMethods(request, ['GET']);
@@ -431,10 +435,24 @@ async function updateVolumes(settings, body) {
 }
 
 /**
+ * A page on another site can only send a few content types without asking the server first, and JSON is not one of
+ * them, so insisting on the right type is a second defense behind the Origin check.
+ * @param {Request} request
+ * @param {string} expected
+ */
+function requireContentType(request, expected) {
+	const type = (request.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
+	if (type !== expected) {
+		throw new HttpError(415, `Send ${expected}`);
+	}
+}
+
+/**
  * @param {Request} request
  * @returns {Promise<unknown>}
  */
 async function readJsonBody(request) {
+	requireContentType(request, 'application/json');
 	/** @type {Buffer[]} */
 	const chunks = [];
 	let size = 0;
@@ -500,6 +518,7 @@ async function serveWaveform(request, response, waveforms, pathname) {
  * @returns {Promise<Buffer>}
  */
 async function readRawBody(request, limit) {
+	requireContentType(request, 'application/octet-stream');
 	/** @type {Buffer[]} */
 	const chunks = [];
 	let size = 0;

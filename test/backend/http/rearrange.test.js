@@ -46,7 +46,7 @@ async function setup() {
 	 * @param {{ method?: string, body?: unknown }} [init]
 	 */
 	const call = async (path, { method = 'GET', body } = {}) => {
-		const response = await fetch(server.url + path, { method, body: body === undefined ? undefined : JSON.stringify(body) });
+		const response = await fetch(server.url + path, { method, headers: body === undefined ? {} : { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
 		const text = await response.text();
 		return { status: response.status, body: /** @type {any} */ (text === '' ? null : JSON.parse(text)) };
 	};

@@ -45,3 +45,12 @@ test('the page runs on the fake audio engine, which the click unlocks', async ({
 	const unlocks = await page.evaluate(() => soundboardTest.engine.unlockCount);
 	expect(unlocks).toBeGreaterThan(0);
 });
+
+test('the page works when opened as localhost, which is the same server under another name', async ({ page, soundboard, splash, playlists }) => {
+	await soundboard.open();
+	await page.goto(page.url().replace('127.0.0.1', 'localhost'));
+	await splash.click();
+	await soundboard.waitUntilLoaded();
+
+	await playlists.expectShown('Music MP3', 'Music Mix', 'Music Ogg', 'Music Order');
+});
