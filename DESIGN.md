@@ -143,6 +143,7 @@ Playlist options (`Combat.json`)
 	"fadeIn": 1,
 	"fadeOut": 3,
 	"order": "shuffle",
+	"playlistLooping": true,
 	"trackLooping": false,
 	"stopMode": "pause",
 	"includedSubdirectories": ["Boss", "Boss/Phase 2"]
@@ -151,12 +152,13 @@ Playlist options (`Combat.json`)
 - `gain` means the same as for sounds and tracks, and applies to the whole playlist.
 - `crossfade` (§8.4), `fadeIn` and `fadeOut` (§8.5) are in seconds, `0` (the default, off) to `30`, rounded to 3 decimals. Every time the app writes keeps whole milliseconds, which is what the dialogs show.
 - `order` is how the playlist moves through its tracks (§8.1): `"ordered"` (the default), `"random"` or `"shuffle"`.
+- `playlistLooping` makes the playlist start over after its last track (§8.1); `true` by default. When `false` it stops there instead, for one-shot sequences.
 - `trackLooping` makes the current track repeat until the user moves on (§8.1); `false` by default.
 - `stopMode` is what stopping the playlist remembers (§8.1): `"pause"` (the track and its position), `"resetTrack"` (the track, to start over) or `"resetPlaylist"` (nothing, the default).
 - `includedSubdirectories` lists paths relative to the playlist directory, using `/`. Every depth is listed explicitly.
 - Listed directories that no longer exist are ignored. They are not removed.
 
-**Validation (fatal).** Any options file or `.soundboard` that fails `JSON.parse`, is not an object, or has the wrong type for a known key (`title` must be a non-empty string, `gain` must be a number from `0` to `4`, `crossfade`, `fadeIn` and `fadeOut` numbers from `0` to `30`, `order` one of `"ordered"`, `"random"` and `"shuffle"`, `trackLooping` `true` or `false`, `stopMode` one of `"pause"`, `"resetTrack"` and `"resetPlaylist"`, `startAt` a non-negative number, `endAt` a non-negative number or `null` and, when both points are numbers, at least 10 ms (`MIN_CLIP_MS`) after `startAt`, `duration` a non-negative number or `null` and present together with a well-formed `measuredFrom`, `includedSubdirectories` must be an array of strings, `source` an object whose `origin` is one of the five above, whose `url`, `extractor`, `videoId` and `playlistId` are strings, whose `chapter` is a positive integer and whose `chapterStart` is a non-negative number (other keys inside it are kept), `version` must be a positive integer, `volumes.*` must be numbers in `0..1`) is an error. Bootstrap gathers **all** such errors, prints them in red with their paths, and exits with code `1` **before asking any questions or writing anything**. The user must fix or delete those files. Options files of empty playlists are validated too.
+**Validation (fatal).** Any options file or `.soundboard` that fails `JSON.parse`, is not an object, or has the wrong type for a known key (`title` must be a non-empty string, `gain` must be a number from `0` to `4`, `crossfade`, `fadeIn` and `fadeOut` numbers from `0` to `30`, `order` one of `"ordered"`, `"random"` and `"shuffle"`, `playlistLooping` and `trackLooping` `true` or `false`, `stopMode` one of `"pause"`, `"resetTrack"` and `"resetPlaylist"`, `startAt` a non-negative number, `endAt` a non-negative number or `null` and, when both points are numbers, at least 10 ms (`MIN_CLIP_MS`) after `startAt`, `duration` a non-negative number or `null` and present together with a well-formed `measuredFrom`, `includedSubdirectories` must be an array of strings, `source` an object whose `origin` is one of the five above, whose `url`, `extractor`, `videoId` and `playlistId` are strings, whose `chapter` is a positive integer and whose `chapterStart` is a non-negative number (other keys inside it are kept), `version` must be a positive integer, `volumes.*` must be numbers in `0..1`) is an error. Bootstrap gathers **all** such errors, prints them in red with their paths, and exits with code `1` **before asking any questions or writing anything**. The user must fix or delete those files. Options files of empty playlists are validated too.
 
 **Unknown keys are preserved.** Whenever the app rewrites a file, it reads it again, merges, and writes back the whole object, so keys from future versions survive.
 
@@ -302,7 +304,7 @@ On success the server replaces its library and settings store with the new ones 
 
 ```js
 Library   { root, playlists: Playlist[], sounds: AudioFile[], files: Map<id, AudioFile> }
-Playlist  { id, title, gain, crossfade, fadeIn, fadeOut, order, trackLooping, stopMode, tracks: AudioFile[], includedSubdirectories: string[] }
+Playlist  { id, title, gain, crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode, tracks: AudioFile[], includedSubdirectories: string[] }
 AudioFile { id /* root-relative POSIX path */, title, format: 'mp3'|'ogg', size, gain, duration /* seconds or null */,
             startAt, endAt /* seconds or null */, fadeIn, fadeOut, source /* §2.3, origin filled in, or null */, absolutePath }
 Settings  { volumes: { master, music, sfx } }   // held by SettingsStore, saved to .soundboard
@@ -311,7 +313,7 @@ Settings  { volumes: { master, music, sfx } }   // held by SettingsStore, saved 
 - `playlists` contains only non-empty playlists, sorted by title; `sounds` are sorted by title; tracks keep path order (§2.2).
 - `files` indexes every sound and track by id. It is the only list of files the server may stream.
 - `LibraryEditor` changes the library while the app runs. `updateSound(id, { title?, gain?, startAt?, endAt?, fadeIn?, fadeOut? })` validates the change with the options file rules (§2.3), rejects unknown keys, trims the title, and rounds the numbers. The points are checked again after merging with the sound's current ones, so a change to one point must still fit the other. It then merges the change into the sound's options file (read, merge, atomic write, unknown keys kept), and only once that succeeded updates the `AudioFile` in place and sorts `sounds` again. Writes to one options file run one after another in the order they were requested, so the file always ends with the newest values; a failed write doesn't block later ones. An id that isn't a sound (including a track id) is an `UnknownSoundError`.
-- `updatePlaylist(id, { title?, gain?, crossfade?, fadeIn?, fadeOut?, order?, trackLooping?, stopMode? })` does the same for a playlist's options file (`<directory>.json` in the root), leaving its `includedSubdirectories` alone, and sorts `playlists` again after a rename. The crossfade, the order, track looping and the stop mode are accepted only here, and the points only for sounds. An unknown id is an `UnknownPlaylistError`.
+- `updatePlaylist(id, { title?, gain?, crossfade?, fadeIn?, fadeOut?, order?, playlistLooping?, trackLooping?, stopMode? })` does the same for a playlist's options file (`<directory>.json` in the root), leaving its `includedSubdirectories` alone, and sorts `playlists` again after a rename. The crossfade, the order, track looping and the stop mode are accepted only here, and the points only for sounds. An unknown id is an `UnknownPlaylistError`.
 - `updateTrack(id, { title?, gain?, startAt?, endAt? })` does the same for a track's options file (`<file>.json` next to it), with the same checks and rounding as for sounds. Only those four are accepted. Tracks keep their path order (§2.2), so nothing is sorted again. An id that isn't a track (including a sound id) is an `UnknownTrackError`.
 - **Additions** (§5.4). `addSound(from, name, { title, source })`, `addTrack(playlistId, from, name, options)` and `createPlaylist(title, from, name, options)` take a finished download, which sits on the same file system as the root.
   - Each one moves the file into place, in the root or the playlist's directory, under `name`. When that name, or its options file's name, is taken, ` (2)`, ` (3)`… is added before the extension, so nothing is overwritten and no old options file is taken over.
@@ -351,7 +353,7 @@ The server knows nothing about playback state.
 | GET | `/api/trash` | `{ size, playlists: [{ id, title, size, tracks: [{ id, title, size }] }], sounds: [{ id, title, size }] }`: what the trash holds (§2.5), playlists and sounds by title, tracks by path, sizes in bytes. |
 | POST | `/api/trash/restore` | Body `{ kind: "sound" \| "track" \| "playlist", id }` or `{ all: true }`. Restores it (§2.5) and answers `200 { changes }`, the `library.added` messages, which every event stream gets too. `400` for another body or a broken options file, `404` for what the trash doesn't hold. |
 | POST | `/api/trash/delete` | The same body. Deletes it for good and answers `200 { changes: [] }`, with the same errors. |
-| PATCH | `/api/playlists/<encoded id>` | The same for a playlist, with body `{ title?, gain?, crossfade?, fadeIn?, fadeOut?, order?, trackLooping?, stopMode? }` (`LibraryEditor.updatePlaylist`); returns the playlist with its tracks in the `/api/library` format. |
+| PATCH | `/api/playlists/<encoded id>` | The same for a playlist, with body `{ title?, gain?, crossfade?, fadeIn?, fadeOut?, order?, playlistLooping?, trackLooping?, stopMode? }` (`LibraryEditor.updatePlaylist`); returns the playlist with its tracks in the `/api/library` format. |
 | PATCH | `/api/tracks/<encoded id>` | The same for a track, with body `{ title?, gain?, startAt?, endAt? }` (`LibraryEditor.updateTrack`); returns the track. The id contains `/`: the rest of the path is decoded as a whole, which keeps literal slashes, so `Combat%2F1.mp3` and `Combat/1.mp3` both work. The browser sends the first. |
 | GET | `/api/waveforms` | `{ "missing": ["Boom.mp3", "Combat/1.mp3", …] }`: the ids with no current waveform, sounds first (`WaveformStore.missing`) |
 | GET | `/api/waveforms/<encoded id>` | The 2048 peak bytes as `application/octet-stream` (the header stays on the server). `404` when there is no current waveform or the id is not a sound or track. |
@@ -373,7 +375,7 @@ The server knows nothing about playback state.
 {
 	"version": 1,
 	"playlists": [
-		{ "id": "Combat", "title": "Combat", "gain": 0.8, "crossfade": 2.5, "fadeIn": 1, "fadeOut": 3, "order": "shuffle", "trackLooping": false, "stopMode": "resetPlaylist", "tracks": [
+		{ "id": "Combat", "title": "Combat", "gain": 0.8, "crossfade": 2.5, "fadeIn": 1, "fadeOut": 3, "order": "shuffle", "playlistLooping": true, "trackLooping": false, "stopMode": "resetPlaylist", "tracks": [
 			{ "id": "Combat/01 Battle.mp3", "title": "Battle", "format": "mp3", "size": 4194304, "gain": 1, "duration": 213.47,
 			  "startAt": 0, "endAt": null, "fadeIn": 0, "fadeOut": 0, "url": "/media/Combat/01%20Battle.mp3",
 			  "source": { "origin": "fileName", "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "extractor": "Youtube", "videoId": "dQw4w9WgXcQ" } }
@@ -490,7 +492,7 @@ UI layer (DOM)  ──commands──▶  Soundboard (logic facade)  ──▶  A
 - `public/app/logic/**` **never touches** `window`, `document`, audio APIs or Node APIs. Everything it needs is injected through ports, whose types live in `public/app/logic/ports.js`:
   - the `AudioEngine` (§6.3);
   - a `Clock` (`now`, `setTimeout`, `clearTimeout`, `setInterval`, `clearInterval`); `now()` is a monotonic time in milliseconds, which the voice monitor (§6.5) uses to follow fades;
-  - a `BackendApi` (`fetchLibrary()`, `fetchSettings()`, `saveVolumes(volumes, { keepalive })`, `saveSoundOptions(soundId, { title, gain, startAt, endAt, fadeIn, fadeOut }, { keepalive })`, `savePlaylistOptions(playlistId, { title, gain, crossfade, fadeIn, fadeOut, order, trackLooping, stopMode }, { keepalive })`, `saveTrackOptions(trackId, { title, gain, startAt, endAt }, { keepalive })`);
+  - a `BackendApi` (`fetchLibrary()`, `fetchSettings()`, `saveVolumes(volumes, { keepalive })`, `saveSoundOptions(soundId, { title, gain, startAt, endAt, fadeIn, fadeOut }, { keepalive })`, `savePlaylistOptions(playlistId, { title, gain, crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode }, { keepalive })`, `saveTrackOptions(trackId, { title, gain, startAt, endAt }, { keepalive })`);
   - a `WaveformDecoder` (§6.6), and the `BackendApi` methods `fetchMissingWaveforms()`, `fetchWaveform(id)` and `saveWaveform(id, peaks)`;
   - for external changes (§6.7), the `BackendApi` methods `checkExternalChanges() → Promise<boolean>` and `refresh() → Promise<RefreshResult>`, and optionally `ServerEvents` (`connect(onMessage) → disconnect`), the server's pushed messages (§5.2). `api/server-events.js` implements it with `EventSource` on `/api/events`, which reconnects by itself; the server sends its current state on every connection;
   - for downloads (§6.8), the `BackendApi` methods `fetchDownload()` (the tools and the job with its log), `probeLink(url, { playlist })`, `startDownload(request) → Promise<DownloadJob>` and `dismissDownload()`. The two that can fail because of the user's link reject with the server's message alone, ready to show;
@@ -530,7 +532,7 @@ jumpToTrack(playlistId, trackIndex, { transition })
 seek(playlistId, seconds)
 pausePlaylist(playlistId)
 resumePlaylist(playlistId)
-customizePlaylist(playlistId, { title?, gain?, crossfade?, fadeIn?, fadeOut?, order?, trackLooping?, stopMode? })  // applies at once;
+customizePlaylist(playlistId, { title?, gain?, crossfade?, fadeIn?, fadeOut?, order?, playlistLooping?, trackLooping?, stopMode? })  // applies at once;
                                           // saves 500 ms later; a new order refills the history around the current
                                           // track, track looping reaches the current track at once, and a new stop
                                           // mode trims what a stopped playlist remembers (§8.1)
@@ -817,11 +819,11 @@ This is where the race-condition risk sits. The design rules:
 - `seek` works in `loading`, `playing` and `paused`, clamped to the track, and with a crossfade coming, to the crossfade point (§8.4). While loading it is applied, and clamped, once the track has loaded.
 - Which track plays is decided by the **play history** (below). Starting a playlist starts a fresh history. `next` moves forward in it and `previous` back; `jumpTo(index)` starts a fresh history at that track.
 - `previous`: past **3 s** into the track, or at the first entry of the history, it restarts the current track (seek to 0, and resume if paused). Otherwise it goes back one entry. It never wraps from the first track to the last.
-- `next` with nothing more in the history (only without `playlistLooping`) stops the playlist.
+- `next` with nothing more in the history (only without `playlistLooping`) stops the playlist. The same happens when the last track ends by itself: the playlist goes idle and forgets its resume point (below). Without `playlistLooping`, Random's first fill is a round of every track in random order, as for Shuffle, so it too plays each track once and stops. Track looping wins over it, since a looping track never ends by itself.
 - Track ends naturally: advance to the next entry. With a crossfade the next track has usually started already (§8.4); `ended` is the fallback.
 - **Track looping.** With `trackLooping`, every new voice gets `setLooping(true)` (§6.3), so the current track starts over at its end, without a gap, and never ends by itself. The position, and with it the progress bar, jumps back at each loop. There is no crossfade timer and no crossfade marker while it loops (§8.4). Next, Previous and `jumpTo` move on as usual, and the new track loops in turn. `setRules` applies a change to the current voice at once: turned off, the track plays to its end and the playlist moves on. During a crossfade that is the incoming track; the outgoing one just finishes its fade.
 - Track error (404, decode failure, rejected `play()`), or a track in a format this browser cannot play: send `playlist.error` and skip to the next entry. Unplayable tracks get no voice at all. After `tracks.length` errors in a row (reset whenever a track loads), the playlist stops instead of looping over broken files.
-- `setRules` with a different order refills the history around the current track, which keeps playing (below), and a different `trackLooping` is applied to the current voice.
+- `setRules` with a different order refills the history around the current track, which keeps playing (below), a different `playlistLooping` changes whether the history is extended from then on (entries already queued still play, and turning it back on extends again), and a different `trackLooping` is applied to the current voice.
 - **What stopping remembers.** Stopping keeps the play history, and the `stopMode` rule decides what else the next `play` picks up. Whatever is kept is the *resume point*: a track and, for `pause`, its position.
   - `pause`: play again starts the same track and seeks to where it was. `resetTrack`: the same track, from its start point. `resetPlaylist` (the default): nothing is kept, and play starts as the order's first entry, as for a fresh playlist.
   - `'default'` and `'instant'` stops both remember. The position is the one at the moment of the stop, not where a fade-out ended, and a stop while a track is still loading remembers the position it was going to seek to. Stopping during a crossfade remembers the incoming track.
@@ -838,31 +840,32 @@ This is where the race-condition risk sits. The design rules:
 
 **Play history** (`logic/play-history.js`). Each player keeps a list of track indices and a cursor at the current one. Upcoming tracks are entries too, so the crossfade timer, the crossfade marker and the natural end of a track all agree on one next track, even in Random.
 - `start(at?)` fills a fresh history by the order (below) and returns the track to play; `at` is a track to start at, chosen in the track list or playing when the order changed.
+- `setLoop(loop)` turns the extending on or off for the rest of the session; entries already in the history stay.
 - `next()` moves the cursor forward. Past the last entry it first extends the history by the order, unless `playlistLooping` is off; then there is nothing more and the playlist stops. `upcoming()` returns the entry `next()` would move to, extending in the same way, so it can be asked for any number of times without picking again.
 - `previous()` moves the cursor back, but never before the first entry (`canGoBack`). Going back and then forward replays the same tracks.
 - `setOrder(order)` switches the order and, once started, refills the history as `start(current)` would; the current track keeps playing. While idle, the new order is simply used at the next start.
 - `setTracks(trackCount, remap)` follows tracks being added or removed: `remap` gives a track's new index, or `null` for a removed one. Once started, the history is refilled as `start(current)` would around the current track's new index; if the current track was removed, the history is emptied, as before the first start.
 - It keeps at most `MAX_HISTORY` = 2¹⁶ entries. Beyond that it drops the oldest entries, but only ones before the cursor, so the current track and the round ahead are never cut.
 
-**Orders** (`logic/order-strategies.js`). Each fills the history with `start(trackCount, random, at)` → `{ entries, cursor }` and `extend(trackCount, random, last)` → entries to append. They are pure apart from the injected `random`, so tests use a seeded generator.
+**Orders** (`logic/order-strategies.js`). Each fills the history with `start(trackCount, random, at, loop)` → `{ entries, cursor }` and `extend(trackCount, random, last)` → entries to append. They are pure apart from the injected `random`, so tests use a seeded generator.
 
 | Order | Starting | Extending |
 |---|---|---|
 | `ordered` (default) | The whole playlist in order, with the cursor at `at` (or the first track), so Previous goes to the tracks listed before it. | The whole playlist in order again, so it wraps to the first track. |
-| `random` | Just `at`, or a random track. | One random track that isn't `last`. |
+| `random` | Just `at`, or a random track; without `loop`, a shuffled round like `shuffle`. | One random track that isn't `last`. |
 | `shuffle` | A shuffled round of every track (Fisher–Yates), with `at` moved to the front. | A new shuffled round; if it would start with `last`, its first track is swapped with a random other one. |
 
 Random picks among the tracks other than `last` directly instead of retrying, and with a single track both Random and Shuffle simply repeat it, so they can never loop forever.
 
 ### 8.2 Extension points
 
-Each is a single seam that the planned features in the [roadmap](ROADMAP.md) fill in. `crossfade`, `fadeIn`, `fadeOut`, `order`, `trackLooping` and `stopMode` are read from the playlist; `playlistLooping` is always on.
+Each is a single seam that the planned features in the [roadmap](ROADMAP.md) fill in. `crossfade`, `fadeIn`, `fadeOut`, `order`, `playlistLooping`, `trackLooping` and `stopMode` are read from the playlist.
 
 ```js
 // Resolved per playlist by resolvePlaybackRules(playlist); PlaylistPlayer.setRules replaces them while playing.
 PlaybackRules {
 	order: 'ordered',      // 'ordered' | 'random' | 'shuffle' (§8.1)
-	playlistLooping: true, // false: the history is never extended, so the playlist stops after its first fill
+	playlistLooping: true, // false: the history is not extended, so the playlist stops after its first fill (§8.1)
 	trackLooping: false,   // true: the current track repeats until the user moves on (§8.1)
 	stopMode: 'resetPlaylist', // 'pause' | 'resetTrack' | 'resetPlaylist': what stopping remembers (§8.1)
 	fadeIn: 0,             // seconds, when the playlist starts
@@ -1099,7 +1102,7 @@ In the footer: Play / Stop (`playSound`, or stopping all instances; it follows `
 
 **The playlist dialog** (`ui/playlist-editor.js`), opened from the playlist menu, in blue, always on its first tab:
 - **"Playlist" tab:** cards for the **Playlist** (the title, hint: `Folder: <directory>`), the **Volume**, the **Playback order**, **When stopped**, the **Fades**: Fade in, Crossfade and Fade out as labeled rows of seconds controls (below), and **Delete** (above). Later playlist settings add their cards before Delete.
-  - **Playback order** is a radio group, sent with `customizePlaylist({ order })` and following `playlist.changed`: **Ordered** "First to last, as listed.", **Random** "Any track next, never the same one twice in a row." and **Shuffle** "Every track once in a shuffled order, then shuffled again." Below the radio buttons, after a divider, the checkbox **Repeat the current track** "It plays again until you move to another track." is sent with `customizePlaylist({ trackLooping })`.
+  - **Playback order** is a radio group, sent with `customizePlaylist({ order })` and following `playlist.changed`: **Ordered** "First to last, as listed.", **Random** "Any track next, never the same one twice in a row." and **Shuffle** "Every track once in a shuffled order, then shuffled again." Below the radio buttons, after a divider, come two checkboxes: **Repeat the playlist** "When off, it stops after the last track.", sent with `customizePlaylist({ playlistLooping })`, and **Repeat the current track** "It plays again until you move to another track.", sent with `customizePlaylist({ trackLooping })`.
   - **When stopped** is a radio group, sent with `customizePlaylist({ stopMode })` and following `playlist.changed`: **Pause** "Playing again continues where it stopped.", **Reset track** "Playing again starts the same track from its beginning." and **Reset playlist** "Playing again starts afresh, as if for the first time."
 - **"Tracks (N)" tab:** the track accordion (`ui/track-accordion.js`). The count in the tab follows `playlist.changed`.
   - The list runs edge to edge between the tab bar and the footer, with lines between the rows and no outer border. Below it, a blue **+ Add tracks** button opens the add dialog for this playlist (§9.9), in place of this dialog. This dialog comes back, on the Tracks tab, when the add dialog is closed without downloading, or when the download it started is dismissed.
