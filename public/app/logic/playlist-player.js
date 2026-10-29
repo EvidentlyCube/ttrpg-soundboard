@@ -335,29 +335,33 @@ export class PlaylistPlayer {
 	}
 
 	/**
-	 * Takes a copy of the playlist with tracks added (DESIGN.md §8.1). Tracks sort by path, so the ones already there may
-	 * move; whatever refers to them follows, and the current track keeps playing.
-	 * @param {PlaylistJson} playlist holds every track the old one did
+	 * Takes a copy of the playlist with tracks added or removed (DESIGN.md §8.1). Tracks sort by path, so the ones that
+	 * stay may move; whatever refers to them follows, and the current track keeps playing. A removed current track
+	 * stops the playlist instantly, and a resume point on a removed track is forgotten.
+	 * @param {PlaylistJson} playlist
 	 */
-	addTracks(playlist) {
+	replaceTracks(playlist) {
 		const oldIds = this.#playlist.tracks.map((track) => track.id);
 		const newIndices = new Map(playlist.tracks.map((track, index) => [track.id, index]));
-		const remap = (/** @type {number} */ index) => {
-			const moved = newIndices.get(oldIds[index]);
-			if (moved === undefined) {
-				throw new Error(`Track "${oldIds[index]}" is missing from the new track list`);
+		const remap = (/** @type {number} */ index) => newIndices.get(oldIds[index]) ?? null;
+		if (this.#current && remap(this.#current.trackIndex) === null) {
+			this.#stop('instant', true);
+		}
+		for (const retiring of [...this.#retiring]) {
+			if (remap(retiring.trackIndex) === null) {
+				this.#finishRetiring(retiring);
 			}
-			return moved;
-		};
+		}
 		this.#playlist = playlist;
 		if (this.#current) {
-			this.#current.trackIndex = remap(this.#current.trackIndex);
+			this.#current.trackIndex = /** @type {number} */ (remap(this.#current.trackIndex));
 		}
 		for (const retiring of this.#retiring) {
-			retiring.trackIndex = remap(retiring.trackIndex);
+			retiring.trackIndex = /** @type {number} */ (remap(retiring.trackIndex));
 		}
 		if (this.#resumePoint) {
-			this.#resumePoint = { ...this.#resumePoint, trackIndex: remap(this.#resumePoint.trackIndex) };
+			const trackIndex = remap(this.#resumePoint.trackIndex);
+			this.#resumePoint = trackIndex === null ? null : { ...this.#resumePoint, trackIndex };
 		}
 		this.#history.setTracks(playlist.tracks.length, remap);
 		this.#planCrossfade();

@@ -105,6 +105,20 @@
  * 	message when the link can't be used
  * @property {(request: DownloadRequest) => Promise<DownloadJob>} startDownload
  * @property {() => Promise<void>} dismissDownload cancels the running download, or forgets a finished one
+ * @property {(item: { kind: ItemKind, id: string }) => Promise<LibraryChangeMessage[]>} deleteItem moves the item into
+ * 	the server's trash; resolves with what changed and rejects with the server's message
+ * @property {(id: string, to: string | null) => Promise<LibraryChangeMessage[]>} moveItem moves a sound or track into a
+ * 	playlist, or a track out to the sounds (`to: null`); resolves with what changed and rejects with the server's message
+ */
+
+/** @typedef {'sound' | 'playlist' | 'track'} ItemKind */
+
+/**
+ * @typedef {{ type: 'library.added', sound: AudioFileJson }
+ * 	| { type: 'library.added', playlist: PlaylistJson }
+ * 	| { type: 'library.removed', soundId: string }
+ * 	| { type: 'library.removed', trackId: string, playlistId: string }
+ * 	| { type: 'library.removed', playlistId: string }} LibraryChangeMessage
  */
 
 /**
@@ -124,8 +138,7 @@
  * @typedef {{ type: 'externalChanges', pending: boolean }
  * 	| { type: 'download', job: DownloadJob | null, log?: string[] }
  * 	| { type: 'download.log', lines: string[], replaceLast: boolean }
- * 	| { type: 'library.added', sound: AudioFileJson }
- * 	| { type: 'library.added', playlist: PlaylistJson }} ServerMessage
+ * 	| LibraryChangeMessage} ServerMessage
  * 	`log` comes with the first `download` message of every connection and replaces the log; `replaceLast`: the first
  * 	line replaces the last one already received
  */

@@ -84,7 +84,7 @@ describe('PlaylistPlayer', () => {
 			advance(0.1);
 			const playing = current();
 			// A new first track moves every other one down by one.
-			player.addTracks(withAdded([-1, 0, 1, 2]));
+			player.replaceTracks(withAdded([-1, 0, 1, 2]));
 			assert.equal(current(), playing);
 			assert.equal(player.snapshot().trackIndex, 2);
 			assert.equal(player.snapshot().track?.id, 'Combat/1.mp3');
@@ -100,14 +100,14 @@ describe('PlaylistPlayer', () => {
 			player.jumpTo(2);
 			advance(0.1);
 			player.stop('instant');
-			player.addTracks(withAdded([0, -1, 1, 2]));
+			player.replaceTracks(withAdded([0, -1, 1, 2]));
 			assert.equal(player.snapshot().resume?.trackIndex, 3);
 			assert.equal(player.snapshot().resume?.track.id, 'Combat/2.mp3');
 		});
 
 		it('takes the tracks quietly while idle', () => {
 			const { player, events } = setup();
-			player.addTracks(withAdded([0, 1, 2, -1]));
+			player.replaceTracks(withAdded([0, 1, 2, -1]));
 			assert.equal(events.length, 0);
 			player.jumpTo(3);
 			assert.equal(player.snapshot().track?.id, 'Combat/new1.mp3');

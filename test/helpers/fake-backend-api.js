@@ -2,6 +2,7 @@
 /** @typedef {import('../../public/app/logic/ports.js').LibraryJson} LibraryJson */
 /** @typedef {import('../../public/app/logic/ports.js').Volumes} Volumes */
 /** @typedef {import('../../public/app/logic/ports.js').ItemOptions} ItemOptions */
+/** @typedef {import('../../public/app/logic/ports.js').LibraryChangeMessage} LibraryChangeMessage */
 
 /** What every sound and track has without start and end points or fades. */
 const NO_CLIP = { startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0 };
@@ -116,6 +117,33 @@ export class FakeBackendApi {
 
 	async dismissDownload() {
 		this.dismissals++;
+	}
+
+	/** What the next deletion or move answers with, or the error it fails with. @type {LibraryChangeMessage[] | Error} */
+	rearrangement = [];
+	/** @type {({ delete: { kind: string, id: string } } | { move: { id: string, to: string | null } })[]} */
+	rearrangements = [];
+
+	/** @param {{ kind: import('../../public/app/logic/ports.js').ItemKind, id: string }} item */
+	async deleteItem(item) {
+		this.rearrangements.push({ delete: item });
+		return this.#rearranged();
+	}
+
+	/**
+	 * @param {string} id
+	 * @param {string | null} to
+	 */
+	async moveItem(id, to) {
+		this.rearrangements.push({ move: { id, to } });
+		return this.#rearranged();
+	}
+
+	#rearranged() {
+		if (this.rearrangement instanceof Error) {
+			throw this.rearrangement;
+		}
+		return structuredClone(this.rearrangement);
 	}
 
 	async checkExternalChanges() {

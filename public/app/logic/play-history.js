@@ -106,18 +106,20 @@ export class PlayHistory {
 	}
 
 	/**
-	 * Follows tracks being added to the playlist: entries move to their tracks' new indices, and once the playlist has
-	 * started the history is refilled around the current track, as for a new order.
+	 * Follows tracks being added to or removed from the playlist: once the playlist has started, the history is refilled
+	 * around the current track at its new index, as for a new order. Without a current track it starts afresh.
 	 * @param {number} trackCount
-	 * @param {(index: number) => number} remap a track's new index from its old one
+	 * @param {(index: number) => number | null} remap a track's new index from its old one; null for a removed track
 	 */
 	setTracks(trackCount, remap) {
 		this.#trackCount = trackCount;
-		this.#entries = this.#entries.map(remap);
-		const current = this.current;
-		if (current !== null) {
-			this.start(current);
+		const current = this.current === null ? null : remap(this.current);
+		if (current === null) {
+			this.#entries = [];
+			this.#cursor = 0;
+			return;
 		}
+		this.start(current);
 	}
 
 	/** Drops the oldest entries, but only ones before the cursor, so the current and upcoming tracks are kept. */

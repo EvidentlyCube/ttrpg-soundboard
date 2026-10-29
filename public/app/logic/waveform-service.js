@@ -97,6 +97,14 @@ export class WaveformService {
 		return promise;
 	}
 
+	/**
+	 * Drops the cached peaks of a file that was deleted or moved, so a new file under its id gets its own.
+	 * @param {string} id
+	 */
+	forget(id) {
+		this.#cache.delete(id);
+	}
+
 	/** @param {number} run */
 	async #generate(run) {
 		let ids;

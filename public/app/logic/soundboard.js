@@ -61,8 +61,11 @@ import { VolumeControl } from './volume.js';
  * @typedef {{ type: 'download.changed', job: DownloadJob | null, logReset: boolean }
  * 	| { type: 'download.log', lines: string[], replaceLast: boolean }
  * 	| { type: 'sound.added', sound: AudioFileJson }
- * 	| { type: 'playlist.added', playlist: PlaylistJson }} DownloadEvent `logReset`: read the whole log again with
- * 	`getDownload()`; otherwise `download.log` brings what is new
+ * 	| { type: 'playlist.added', playlist: PlaylistJson }
+ * 	| { type: 'sound.removed', soundId: string }
+ * 	| { type: 'playlist.removed', playlistId: string }} DownloadEvent `logReset`: read the whole log again with
+ * 	`getDownload()`; otherwise `download.log` brings what is new. Additions and removals come from downloads, deletions
+ * 	and moves.
  */
 
 /** As many log lines as the server keeps (DESIGN.md §5.4). */
@@ -90,7 +93,7 @@ export class Soundboard {
 	#decoder;
 	/** @type {WaveformService | null} */
 	#waveforms = null;
-	/** @type {{ library: LibraryModel, sounds: SoundPlayer, playlists: Map<string, PlaylistPlayer> } | null} */
+	/** @type {{ library: LibraryModel, sounds: SoundPlayer, cache: BufferCache, playlists: Map<string, PlaylistPlayer> } | null} */
 	#loaded = null;
 	/** @type {Promise<void> | null} */
 	#starting = null;
@@ -622,6 +625,65 @@ export class Soundboard {
 		this.#api.dismissDownload().catch((error) => this.#logger.error('Could not cancel or close the download', error));
 	}
 
+	/**
+	 * Moves a sound into the server's trash (DESIGN.md §2). It stops at once, in every tab.
+	 * @param {string} soundId
+	 * @returns {Promise<void>} rejects with a message for the user
+	 */
+	deleteSound(soundId) {
+		return this.#rearrange(() => this.#api.deleteItem({ kind: 'sound', id: soundId }));
+	}
+
+	/**
+	 * Moves a track into the trash. A playlist's only track takes the playlist with it.
+	 * @param {string} trackId
+	 * @returns {Promise<void>} rejects with a message for the user
+	 */
+	deleteTrack(trackId) {
+		return this.#rearrange(() => this.#api.deleteItem({ kind: 'track', id: trackId }));
+	}
+
+	/**
+	 * Moves a playlist, with all its tracks, into the trash.
+	 * @param {string} playlistId
+	 * @returns {Promise<void>} rejects with a message for the user
+	 */
+	deletePlaylist(playlistId) {
+		return this.#rearrange(() => this.#api.deleteItem({ kind: 'playlist', id: playlistId }));
+	}
+
+	/**
+	 * Makes a sound a track of a playlist.
+	 * @param {string} soundId
+	 * @param {string} playlistId
+	 * @returns {Promise<void>} rejects with a message for the user
+	 */
+	moveSound(soundId, playlistId) {
+		return this.#rearrange(() => this.#api.moveItem(soundId, playlistId));
+	}
+
+	/**
+	 * Moves a track into another playlist, or out to the sounds. A playlist's only track takes the playlist with it.
+	 * @param {string} trackId
+	 * @param {string | null} playlistId null for the sounds
+	 * @returns {Promise<void>} rejects with a message for the user
+	 */
+	moveTrack(trackId, playlistId) {
+		return this.#rearrange(() => this.#api.moveItem(trackId, playlistId));
+	}
+
+	/**
+	 * Saves everything pending first, so no save can land on a file after it moved, then applies what the server did.
+	 * The event stream brings the same changes, to this tab too, and those already applied are skipped.
+	 * @param {() => Promise<import('./ports.js').LibraryChangeMessage[]>} request
+	 */
+	async #rearrange(request) {
+		await this.#optionsSync.settleAll();
+		for (const message of await request()) {
+			this.#onServerMessage(message);
+		}
+	}
+
 	/** @param {string} soundId */
 	isSoundActive(soundId) {
 		return this.#loaded?.sounds.isActive(soundId) ?? false;
@@ -647,16 +709,11 @@ export class Soundboard {
 				this.#downloadTools = download.tools;
 				this.#setDownload(download.job, download.job?.log ?? []);
 			}
-			const sounds = new SoundPlayer({
-				engine: this.#engine,
-				clock: this.#clock,
-				cache: new BufferCache({ load: (url) => this.#engine.loadBuffer(url) }),
-				emit,
-				isPlayable,
-			});
+			const cache = new BufferCache({ load: (url) => this.#engine.loadBuffer(url) });
+			const sounds = new SoundPlayer({ engine: this.#engine, clock: this.#clock, cache, emit, isPlayable });
 			const playlists = new Map(libraryJson.playlists.map((playlist) => [playlist.id, this.#createPlayer(playlist, isPlayable)]));
 
-			this.#loaded = { library, sounds, playlists };
+			this.#loaded = { library, sounds, cache, playlists };
 			const urls = this.#urls;
 			for (const file of [...libraryJson.sounds, ...libraryJson.playlists.flatMap((playlist) => playlist.tracks)]) {
 				urls.set(file.id, file.url);
@@ -710,7 +767,64 @@ export class Soundboard {
 			case 'library.added':
 				this.#onAdded(message);
 				return;
+			case 'library.removed':
+				this.#onRemoved(message);
+				return;
 		}
+	}
+
+	/**
+	 * A sound, a track or a playlist was deleted or moved away. Whatever plays it stops at once. Like additions, these
+	 * repeat in every tab, so anything already gone is skipped.
+	 * @param {Extract<import('./ports.js').ServerMessage, { type: 'library.removed' }>} message
+	 */
+	#onRemoved(message) {
+		const loaded = this.#loaded;
+		if (!loaded) {
+			return;
+		}
+		const { library } = loaded;
+		if ('soundId' in message) {
+			if (!library.hasSound(message.soundId)) {
+				return;
+			}
+			loaded.sounds.stop(message.soundId);
+			this.#forgetFile(message.soundId);
+			library.removeSound(message.soundId);
+			this.#events.emit({ type: 'sound.removed', soundId: message.soundId });
+		} else if ('trackId' in message) {
+			const playlist = library.hasPlaylist(message.playlistId) ? library.removeTrack(message.playlistId, message.trackId) : null;
+			if (!playlist) {
+				return;
+			}
+			this.#forgetFile(message.trackId);
+			loaded.playlists.get(playlist.id)?.replaceTracks(playlist);
+			this.#events.emit({ type: 'playlist.changed', playlist });
+		} else {
+			if (!library.hasPlaylist(message.playlistId)) {
+				return;
+			}
+			loaded.playlists.get(message.playlistId)?.stop('instant');
+			loaded.playlists.delete(message.playlistId);
+			for (const track of library.playlist(message.playlistId).tracks) {
+				this.#forgetFile(track.id);
+			}
+			library.removePlaylist(message.playlistId);
+			this.#events.emit({ type: 'playlist.removed', playlistId: message.playlistId });
+		}
+	}
+
+	/**
+	 * Drops what is cached for a file that is gone, since a new file may later take its id and URL.
+	 * @param {string} id
+	 */
+	#forgetFile(id) {
+		const url = this.#urls.get(id);
+		if (url !== undefined) {
+			this.#loaded?.cache.forget(url);
+		}
+		this.#urls.delete(id);
+		this.#waveforms?.forget(id);
 	}
 
 	/**
@@ -784,7 +898,7 @@ export class Soundboard {
 				if (playlist.tracks.length === before) {
 					return;
 				}
-				loaded.playlists.get(playlist.id)?.addTracks(playlist);
+				loaded.playlists.get(playlist.id)?.replaceTracks(playlist);
 				this.#events.emit({ type: 'playlist.changed', playlist });
 			}
 		}

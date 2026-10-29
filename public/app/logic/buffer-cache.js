@@ -94,6 +94,14 @@ export class BufferCache {
 		}
 	}
 
+	/**
+	 * Drops the buffer, for a file that was deleted or moved, so a new file at its URL is never played from the cache.
+	 * @param {string} url
+	 */
+	forget(url) {
+		this.#entries.delete(url);
+	}
+
 	/** @param {string} url */
 	#touch(url) {
 		const entry = this.#entries.get(url);

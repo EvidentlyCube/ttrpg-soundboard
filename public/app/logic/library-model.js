@@ -83,6 +83,46 @@ export class LibraryModel {
 		return playlist;
 	}
 
+	/**
+	 * Removes a sound the server deleted or moved away.
+	 * @param {string} id
+	 */
+	removeSound(id) {
+		this.#sounds.delete(id);
+		this.#unplayable.delete(id);
+		this.#json = { ...this.#json, sounds: this.#json.sounds.filter((entry) => entry.id !== id) };
+	}
+
+	/**
+	 * Removes a playlist the server deleted, with its tracks.
+	 * @param {string} id
+	 */
+	removePlaylist(id) {
+		for (const track of this.#playlists.get(id)?.tracks ?? []) {
+			this.#unplayable.delete(track.id);
+		}
+		this.#playlists.delete(id);
+		this.#json = { ...this.#json, playlists: this.#json.playlists.filter((entry) => entry.id !== id) };
+	}
+
+	/**
+	 * Removes a track the server deleted or moved away from a copy of its playlist.
+	 * @param {string} playlistId
+	 * @param {string} trackId
+	 * @returns {PlaylistJson | null} the playlist without it, or null when the track isn't known here
+	 */
+	removeTrack(playlistId, trackId) {
+		const current = this.#playlists.get(playlistId);
+		if (!current?.tracks.some((track) => track.id === trackId)) {
+			return null;
+		}
+		this.#unplayable.delete(trackId);
+		const playlist = { ...current, tracks: current.tracks.filter((track) => track.id !== trackId) };
+		this.#playlists.set(playlist.id, playlist);
+		this.#json = { ...this.#json, playlists: this.#json.playlists.map((entry) => (entry.id === playlist.id ? playlist : entry)) };
+		return playlist;
+	}
+
 	/** @param {AudioFileJson} file */
 	#checkPlayable(file) {
 		if (!this.#canPlay(file.format)) {

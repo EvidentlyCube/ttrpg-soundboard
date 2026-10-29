@@ -142,8 +142,20 @@ export class HttpBackendApi {
 		}
 	}
 
+	/** @type {BackendApi['deleteItem']} */
+	async deleteItem({ kind, id }) {
+		const { changes } = await this.#request('DELETE', `/api/${kind}s/${encodeURIComponent(id)}`, { plainErrors: true });
+		return changes;
+	}
+
+	/** @type {BackendApi['moveItem']} */
+	async moveItem(id, to) {
+		const { changes } = await this.#request('POST', '/api/move', { body: { id, to }, plainErrors: true });
+		return changes;
+	}
+
 	/**
-	 * @param {'GET' | 'PUT' | 'PATCH' | 'POST'} method
+	 * @param {'GET' | 'PUT' | 'PATCH' | 'POST' | 'DELETE'} method
 	 * @param {string} path
 	 * @param {{ body?: unknown, keepalive?: boolean, plainErrors?: boolean }} [options] `plainErrors`: the server's
 	 * 	message alone, for errors the page shows the user
