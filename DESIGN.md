@@ -336,6 +336,9 @@ Settings  { volumes: { master, music, sfx } }   // held by SettingsStore, saved 
   - The bytes are 1024 pairs: the lowest and the highest sample of each of 1024 equal slices of the audio, across all channels, scaled to −127..127.
   - A waveform is **stale** when the audio file's size or modified time no longer matches its header, and a file with a bad magic, count or length is unusable. Both count as missing and are overwritten when made again. Writes go through a temporary file and a rename.
   - `missing()` lists the ids that have no current waveform: sounds in library order, then tracks in playlist order. `read(id)` returns the peaks or `null`; `write(id, peaks)` takes exactly 2048 bytes (`InvalidWaveformError` otherwise). An id that is not a sound or track is an `UnknownWaveformFileError`. Deleting a `.wf` file is harmless: it is made again.
+- **Problems** (`problems.js`). `startupProblems(warnings, library)` turns what bootstrap found into a list of `{ id, kind, severity, path, message }`: the scan's warnings (§3.1 step 4: `unsupported-audio`, `orphan-options`, `symlink`, `empty-playlist`) as `warning`s, and every sound or track whose `duration` is `null` (§3.5, kind `unknown-duration`) as an `error`. The `id` is `<kind>:<path>`, so the same problem keeps its id. A `ready` outcome of bootstrap and of a refresh carries the list (`problems`); the terminal output is unchanged.
+  - `Problems` holds the list in the server, replaced by every refresh. `dismiss(id)` reports whether it knew the problem, `dismissAll()` empties it, `removeFor(path)` forgets a deleted or moved file's problems, and a directory's with everything in it. `onChange` fires only when the list really changed. Nothing is saved to disk: dismissed problems come back at the next start or refresh if the files are still wrong.
+  - Invalid options files are not problems: they stop a start (§3.1 step 3) or a refresh (§3.6), which has its own dialog (§9.1).
 - `SettingsStore` keeps the settings in memory and writes them back to `.soundboard` with the same read-merge-write and atomic rename as the options files (§2.3). Writes are **serialized**: one in flight at a time, and changes made meanwhile are written together by one follow-up write, so the file always ends with the newest values.
 
 ### 5.2 HTTP API (`src/http/`, built on `node:http`)
@@ -351,6 +354,7 @@ The server knows nothing about playback state.
 | PATCH | `/api/sounds/<encoded id>` | Body `{ title?, gain?, startAt?, endAt?, fadeIn?, fadeOut? }`. Saved through `LibraryEditor` (§5.1); returns the updated sound in the `/api/library` format. `400` for invalid JSON, a non-object, an unknown key, an empty title, an out-of-range value, or points less than 10 ms apart. `404` when the id isn't a sound. `413` for bodies over 16 KB. |
 | DELETE | `/api/sounds/<encoded id>`, `/api/tracks/<encoded id>`, `/api/playlists/<encoded id>` | Moves the item into the trash (§2.5) and answers `200 { changes }`: the `library.removed` messages below, which every event stream gets too, so the page that asked can apply them at once. `404` for an unknown id. |
 | POST | `/api/move` | Body `{ id, to }`: a sound or track id, and a playlist id or `null` for the sounds. Moves it (§2.5) and answers `200 { changes }`, a `library.removed` and a `library.added` message, as for deletions. `400` for a body without them, a sound moved to the sounds or a track to its own playlist; `404` for an unknown id or playlist. The id is in the body because a track id takes up the rest of a path. |
+| DELETE | `/api/problems/<encoded id>`, `/api/problems` | Dismisses one startup problem (§5.1), or all of them; `204`. The first answers `404` for an unknown id. Every event stream gets the new list (`problems` below). |
 | GET | `/api/trash` | `{ size, playlists: [{ id, title, size, tracks: [{ id, title, size }] }], sounds: [{ id, title, size }] }`: what the trash holds (§2.5), playlists and sounds by title, tracks by path, sizes in bytes. |
 | POST | `/api/trash/restore` | Body `{ kind: "sound" \| "track" \| "playlist", id }` or `{ all: true }`. Restores it (§2.5) and answers `200 { changes }`, the `library.added` messages, which every event stream gets too. `400` for another body or a broken options file, `404` for what the trash doesn't hold. |
 | POST | `/api/trash/delete` | The same body. Deletes it for good and answers `200 { changes: [] }`, with the same errors. |
@@ -397,7 +401,7 @@ The `415` rule above is the second line of defense: a page on another site can't
 ```
 Each path segment of a media URL is percent-encoded separately. `source` is the stored one (§2.3) with `origin` filled in, or `null` for a file bootstrap hasn't given one. The library reflects changes made through `PATCH`, downloads, deletions and moves, so a reload shows them.
 
-**Event stream messages** (`src/http/events.js`). Every connection starts with `externalChanges`, `trash` and, when downloads are available, a `download` message carrying the whole log, so a page that was away misses nothing.
+**Event stream messages** (`src/http/events.js`). Every connection starts with `externalChanges`, `problems`, `trash` and, when downloads are available, a `download` message carrying the whole log, so a page that was away misses nothing.
 
 | `type` | Payload | Sent |
 |---|---|---|
@@ -406,6 +410,7 @@ Each path segment of a media URL is percent-encoded separately. `source` is the 
 | `download.log` | `{ lines, replaceLast }` | new log lines, batched at most every 250 ms; with `replaceLast`, the first line replaces the last one already sent (§5.4) |
 | `library.added` | `{ sound }` or `{ playlist }`, in the `/api/library` format, a playlist with all its tracks | once a download has added a file, a move has put one in its new place, or a restore has brought one back |
 | `trash` | `{ size, count }`: bytes, and the listed playlists plus sounds | on connect, then whenever a deletion, move, restore or purge changed it; each of those routes reloads `Trash` (§5.1) before it answers |
+| `problems` | `{ problems }`: the whole list (§5.1) | on connect, then whenever a dismissal, a deletion, a move or a refresh changed it |
 | `library.removed` | `{ soundId }`, `{ trackId, playlistId }` or `{ playlistId }` | once a deletion or a move has taken an item away; `LibraryChanges` (`library-changes.js`) hands them from the routes to every stream |
 
 **Static files.** The path guard works on the raw request path, before any URL normalization: the path is percent-decoded, resolved against `public/`, and rejected unless it is still inside. Null bytes and malformed encoding are rejected too.
@@ -506,6 +511,7 @@ UI layer (DOM)  ──commands──▶  Soundboard (logic facade)  ──▶  A
   - for downloads (§6.8), the `BackendApi` methods `fetchDownload()` (the tools and the job with its log), `probeLink(url, { playlist })`, `startDownload(request) → Promise<DownloadJob>` and `dismissDownload()`. The two that can fail because of the user's link reject with the server's message alone, ready to show;
   - for deletions and moves (§6.8), `deleteItem({ kind, id })` and `moveItem(id, to)`, which resolve with the server's `changes` and reject with its message alone;
   - for the trash (§6.8), `fetchTrash()`, `restoreFromTrash(target)`, which resolves with the `changes` like the two above, and `deleteFromTrash(target)`, where `target` is `{ kind, id }` or `'all'`;
+  - for problems (§6.9), `dismissProblem(id)` and `dismissAllProblems()`;
   - a `Logger` (`warn`, `error`);
   - optionally a `random` function for the random playback orders (§8.1), `Math.random` unless tests pass a seeded one.
 
@@ -591,6 +597,11 @@ loadTrash() → Promise<TrashListing>       // what GET /api/trash answers
 restoreFromTrash(target) → Promise<void>  // saves everything pending first, then applies what came back
 deleteFromTrash(target) → Promise<void>   // for good
 
+// problems (§6.9): not commands either
+getProblems()                             // [{ id, kind, severity, path, message, count }], errors and warnings
+dismissProblem(id)                        // forgets one; the server forgets its own for good until the next start
+dismissAllProblems()
+
 // volume (value is the slider position, 0..1, clamped)
 setVolume(bus, value)                     // bus: 'master' | 'music' | 'sfx'
 
@@ -654,6 +665,7 @@ on(type, handler) → unsubscribe, off(type, handler)
 | `sound.removed` | `{ soundId }`, a sound deleted or moved into a playlist |
 | `playlist.removed` | `{ playlistId }`, a playlist deleted, or left by its last track. A track that leaves a playlist that stays is announced as `playlist.changed`. |
 | `trash.changed` | `{ size, count }`, whenever the server's trash summary differs from the last one (§6.8) |
+| `problems.changed` | `{ count }`: the list from `getProblems()` changed (§6.9) |
 
 ### 6.3 AudioEngine port
 
@@ -785,6 +797,18 @@ The facade follows the server's download (§5.4) and takes in what it adds, so p
   - Whatever is cached for a removed file is forgotten: its decoded buffer (`BufferCache.forget`), its waveform (`WaveformService.forget`) and its URL. A new file may later take the same id and URL, and must never play or show the old one.
 - **A move** is a removal followed by an addition, handled as above.
 - **The trash.** `trash` messages set `trashSummary()` and are announced as `trash.changed` when the size or count differs; before the first, it is `{ size: 0, count: 0 }`. `restoreFromTrash` settles pending saves and applies the answer's `library.added` messages, as deleting and moving do. `loadTrash` and `deleteFromTrash` only pass the request on, since a purge changes nothing in the library.
+
+### 6.9 Problems
+
+`getProblems()` joins two lists (`ProblemList`, `logic/problem-list.js`), and `problems.changed { count }` announces every change of either.
+
+- **The server's.** `problems` messages (§5.2) replace its list. Each has `count: 1`. `dismissProblem` takes a problem of this list out at once and tells the server (a failure is logged as a warning); `dismissAllProblems` does so for the whole list.
+- **The page's own**, recorded from the events the facade announces anyway (§6.2), one row per kind and path, errors all:
+  - `play-failed`: `sound.error`, and `playlist.error` (by track, else playlist);
+  - `save-failed`: `sound.saveFailed`, `playlist.saveFailed` and `track.saveFailed`. The next successful save of that item removes the row (`*.saved`);
+  - `download-failed`: a failed download, one row for each of its failed items, by title, once per job (`download.changed` repeats).
+  - A repeat of the same kind and path raises `count` and replaces the message. `sound.removed` and `playlist.removed` forget the rows of the item, and of everything inside a playlist. These rows live only in the page and are gone after a reload.
+- **Order.** The server's problems come first, in its order, then the page's in the order they began.
 
 ---
 
@@ -981,7 +1005,7 @@ Browsers only allow audio to start inside a user gesture, so the app starts behi
 
 ### 9.1 Layout
 
-- The page is a full-height column: header (the ☰ app menu button and the title, §9.3, then the external changes button while there are any, the waveform progress while there is any, the Trash button while the trash holds anything, volume controls and the debug button, §9.8), a scrolling main area, then the footer.
+- The page is a full-height column: header (the ☰ app menu button and the title, §9.3, then the Problems button while there are any (§9.14), the external changes button while there are any, the waveform progress while there is any, the Trash button while the trash holds anything, volume controls and the debug button, §9.8), a scrolling main area, then the footer.
 - The main area has a "Playlists" section above a "Sound Effects" section. Both are always shown, even empty, because their titles carry the add buttons: **+ Add playlist** in blue and **+ Add sound** in amber (`tileGrid`, §9.9). With no playlists and no sounds, a line above them says none were found in this folder, until a download adds one.
 - Tiles for sounds and playlists added by a download or a move (`sound.added`, `playlist.added`) appear at once in their sorted place. Tiles of sounds and playlists deleted or moved away (`sound.removed`, `playlist.removed`), in this tab or another, disappear at once, and a Customize dialog open for that item closes.
 - Tiles are `<button>`s in a grid of columns at least 10rem (160 px) wide, with titles clamped to 3 lines. The full title shows as a tooltip.
@@ -998,6 +1022,7 @@ Browsers only allow audio to start inside a user gesture, so the app starts behi
 - **Panic Stop** (`ui/panic-button.js`) has a fixed slot at the footer's right, as tall as one bar, so it never moves. It shows two lines, "Stop" and a smaller, centered "(Fade)" or "(NOW!)", following `panicState()` and `panic.changed` through a `data-state` attribute (`fade` or `now`). It is yellow (`notice`) in `fade` and a filled red in `now`, and always enabled.
   - *Fade:* a press stops every playlist the normal way and fades each sound out over its own fade-out (§7), so the players need no panic rules of their own. If anything is left fading, the state becomes `now`. If nothing is (no fade-outs), everything has stopped and the state stays `fade`.
   - *Now:* the facade checks every 100 ms. It goes back to `fade` when nothing is fading out any more, or when anything plays that is not fading out, such as a sound just started. A press stops everything at once and goes back to `fade`.
+- **Problems button** (`ui/problems-button.js`) sits left of the external changes button: an alert icon and "3 problems" ("1 problem"), outlined and colored red (`danger`) while any problem is an error and yellow (`notice`) while all are warnings, through `data-severity`. It is shown only while `getProblems()` is not empty, follows `problems.changed`, and opens the Problems dialog (§9.14).
 - **Waveform progress** (`ui/waveform-indicator.js`) sits in the header left of the volume controls: "Waveforms 12 / 87" (with ", 2 failed" and ", stopped" when they apply), a thin bar and a ■ button that stops generation, or a ▶ button that starts it again. It is shown only while generation runs, or when some waveforms are missing or failed, and follows `waveforms.progress` through text and an inline width (§6.6). Until the server has said which waveforms are missing (`total` is still `0`), it stays hidden, so a page with nothing to make never flashes it.
 - **Trash button** (`ui/trash-button.js`) sits right of the waveform progress: a trash icon and "Trash · 340 MB". The size is `formatMegabytes`: decimal megabytes, gigabytes from 1 GB on, one decimal below 10, and never less than `0.1 MB`. It is shown only while `trashSummary().count` is above `0`, follows `trash.changed`, and opens the trash dialog (§9.12).
 - **Reload guard** (`ui/app.js`). The App listens to `beforeunload` and calls `preventDefault()` while `isAnythingPlaying()` is true, so reloading or closing the page makes the browser ask for confirmation with its own generic text. A paused playlist counts, since a reload would lose its position; a stopped playlist that only remembers a resume point does not. Nothing is asked while the board is silent, and the reload after an external-changes refresh is exempt (§6.7).
@@ -1246,6 +1271,14 @@ In the footer: Play / Stop (`playSound`, or stopping all instances; it follows `
   - **Chapter:** `watch?v=<videoId>&t=<whole seconds>s` when `chapterStart` is known; otherwise the number is plain text.
 - Long values end in "…" with the full value as a tooltip, and everything can be selected and copied.
 
+### 9.14 Problems dialog
+
+`ui/problems-dialog.js`, opened by the Problems button (§9.1), titled "Problems". It lists everything `getProblems()` returns (§6.9), errors first and otherwise in that order.
+
+- **Rows** are cards with a left border in red (error) or yellow (warning), carrying `data-problem` (the id) and `data-severity`. Each shows the kind in small capitals ("Unknown duration", "Unsupported file", "Orphan options file", "Symbolic link", "Empty playlist", "Would not play", "Not saved", "Download failed"), with " ×N" when it happened more than once, then the path (ellipsis, full path as a tooltip), then the message in muted text, and a **Dismiss** button.
+- **Footer.** **Dismiss all**, at the right, below the scrolling list.
+- **Following changes.** The list is drawn again on every `problems.changed`, and the dialog closes itself once nothing is left.
+
 ---
 
 ## 10. Project structure
@@ -1259,7 +1292,7 @@ src/
 	cli/        main.js  args.js  prompter.js  reporter.js  colors.js
 	library/    bootstrap-service.js  scanner.js  classify.js  sort.js  validate.js  errors.js
 	            options-store.js  settings-store.js  library.js  library-editor.js  durations.js  waveform-store.js
-	            change-watcher.js  tree-snapshot.js  file-moves.js  trash.js  sources.js
+	            change-watcher.js  tree-snapshot.js  file-moves.js  trash.js  sources.js  problems.js
 	downloads/  download-service.js  probe.js  yt-dlp.js  ffmpeg.js  link-fetcher.js  process-runner.js  line-splitter.js
 	            tools.js  file-names.js  workspace.js  errors.js
 	metadata/   index.js  id3.js  ogg.js  mpeg.js  binary-reader.js
@@ -1272,7 +1305,7 @@ public/
 		main.js  browser-clock.js       composition root and the browser Clock
 		logic/                          no DOM, audio or Node APIs
 			ports.js  soundboard.js  commands.js  errors.js  event-emitter.js  library-model.js
-			playlist-player.js  playback-rules.js  transitions.js  order-strategies.js  play-history.js
+			playlist-player.js  playback-rules.js  transitions.js  order-strategies.js  play-history.js  problem-list.js
 			sound-player.js  buffer-cache.js  clip.js  volume.js  settings-sync.js  options-sync.js  sort.js
 			voice-monitor.js  fade-ramp.js  peaks.js  waveform-service.js
 		audio/      web-audio-engine.js  web-audio-waveform-decoder.js
@@ -1283,7 +1316,7 @@ public/
 		            dialog.js  customize-parts.js  filled-field.js  sound-editor.js  playlist-editor.js  track-accordion.js
 		            gain-control.js  gain-scale.js  debug-view.js  waveform-indicator.js  waveform-draw.js  waveform-canvas.js
 		            seconds-control.js  seconds-scale.js  range-control.js  range-scale.js  add-dialog.js  download-dialog.js
-		            hold-button.js  move-dialog.js  trash-button.js  trash-dialog.js  metadata-dialog.js  source-fields.js
+		            hold-button.js  move-dialog.js  trash-button.js  trash-dialog.js  metadata-dialog.js  source-fields.js  problems-button.js  problems-dialog.js
 test/
 	backend/    cli/  downloads/  http/  library/  metadata/
 	frontend/   logic tests, backend-api.test.js, ui/ (pure UI helpers)
