@@ -36,6 +36,7 @@ node index.js <path-to-audio-directory> [--port <number>] [--verbose]
 | Module system | ES modules everywhere (`"type": "module"`) |
 | Tests | `node --test` with `node:assert/strict`, and Playwright for the UI ([`TESTING.md`](TESTING.md)) |
 | Browsers | Current desktop Chrome, Firefox and **Safari** |
+| Trust | The server listens on the loopback address only and trusts whoever can reach it: it has no login. It protects against other web pages open in the same browser (the request guard, §5.2), not against other programs or users on the same machine. |
 | Touch | No special handling. Touch users may not be able to open the context menus. |
 | Memory/CPU | Files stream over HTTP Range requests. The server never holds audio in memory. The browser holds decoded audio only for small sound effects, within a fixed memory budget. |
 | Target machine | MacBook Neo, 8 GB RAM, macOS, Safari as the likely browser, used at the table during RPG sessions (§12) |
@@ -357,7 +358,7 @@ The server knows nothing about playback state.
 | PATCH | `/api/tracks/<encoded id>` | The same for a track, with body `{ title?, gain?, startAt?, endAt? }` (`LibraryEditor.updateTrack`); returns the track. The id contains `/`: the rest of the path is decoded as a whole, which keeps literal slashes, so `Combat%2F1.mp3` and `Combat/1.mp3` both work. The browser sends the first. |
 | GET | `/api/waveforms` | `{ "missing": ["Boom.mp3", "Combat/1.mp3", …] }`: the ids with no current waveform, sounds first (`WaveformStore.missing`) |
 | GET | `/api/waveforms/<encoded id>` | The 2048 peak bytes as `application/octet-stream` (the header stays on the server). `404` when there is no current waveform or the id is not a sound or track. |
-| PUT | `/api/waveforms/<encoded id>` | Body: exactly 2048 bytes of peaks. Stored next to the audio file; `204`. `400` for another length, `404` for an unknown id, `413` for bodies over 4 KB. Ids are decoded as for tracks. |
+| PUT | `/api/waveforms/<encoded id>` | Body: exactly 2048 bytes of peaks. Stored next to the audio file; `204`. `400` for another length, `404` for an unknown id, `413` for bodies over 4 KB. `415` unless the type is `application/octet-stream`. Ids are decoded as for tracks. |
 | GET | `/api/events` | Server-sent events (`text/event-stream`, `Cache-Control: no-store`), each a JSON object with a `type` (below). A `: keep-alive` comment every 30 s keeps the connection open. The stream stays open until the page goes away or the server stops. |
 | GET | `/api/download` | `{ "tools": { "ytDlp": "2026.08.19", "ffmpeg": "7.1.1" }, "job": null }`: the tools found at startup (`null` for a missing one) and the current download (§5.4) with its whole `log`, or `null`. Without downloads at all (tests), both tools are `null`. |
 | POST | `/api/download/probe` | Body `{ url, playlist? }`. Looks the link up and returns it with a `probeId` (§5.4). `400` without a `url`, `422 { error }` for a link that can't be used (the message is meant for the user), `503` when the tools are missing. |
@@ -369,6 +370,13 @@ The server knows nothing about playback state.
 
 - API responses are JSON with `Cache-Control: no-store`. Errors are `{ "error": "message" }`.
 - A known path with the wrong method gets `405` with an `Allow` header. Unknown `/api/…` paths get a JSON `404`.
+- Every route that reads a JSON body (`PUT`, `PATCH` and `POST` above) answers `415 { "error": "Send application/json" }` for any other `Content-Type` (parameters and case are ignored). The waveform `PUT` needs `application/octet-stream` the same way.
+
+**Request guard** (`request-guard.js`). Any web page open in the same browser can send requests to `127.0.0.1`, and a page that rebinds its DNS name to it can even read the answers. `checkRequest` runs first for every request, whatever its path (API, media and static files alike), and answers `403 { "error": "Request not allowed" }` when:
+- **`Host`** is missing or is not `127.0.0.1`, `localhost` or `[::1]` with the server's own port. This stops DNS rebinding, because the rebound page still sends its own name. The names come from one list (`LOOPBACK_HOSTS`, passed to the router in its context), so LAN access can extend it.
+- **`Origin`** is present and is not `http://` plus one of those same names. Browsers send it on every cross-site request and on every request that is not a `GET`, so this stops cross-site `POST`s, including the ones with no body (`/api/refresh`, `/api/changes/check`) that a content-type rule can't cover. A request without `Origin` (the page's own `GET`s, `curl`, the tests) passes.
+
+The `415` rule above is the second line of defense: a page on another site can't send `application/json` or `application/octet-stream` without a preflight request, and the server sends no CORS headers and gives `OPTIONS` a `405`. The 403 body doesn't repeat the header that was refused.
 
 `/api/library`
 ```json
