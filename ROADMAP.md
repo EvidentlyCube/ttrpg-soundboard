@@ -29,35 +29,7 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## Proposals
 
-### Panic Stop
-
-**Goal.** One big button in the footer that silences the whole soundboard, in a fixed place so the footer never shifts. It has two states. **Stop (Fade)** stops everything the normal way, each playlist and sound with its own fade-out. If anything is left fading, the button becomes **Stop (NOW!)**, and pressing that stops everything at once. The second line of the label is smaller and centered.
-
-**State machine** (the owner's design; the players need no panic logic of their own).
-- *Fade:* a press stops every playlist (a default stop) and fades out every sound instance over its sound's `fadeOut`. If anything is left fading, the state becomes *Now*; if nothing is (no fade-outs), it stays *Fade*.
-- *Now:* checked every 100 ms. It goes back to *Fade* when nothing is fading out any more, or when anything plays that is not fading (something was started). A press stops everything at once, voices still fading included, and goes back to *Fade*.
-
-**Design changes.**
-- §6.1 (facade): `panicStop()`, `panicState()` and the command `{ type: 'panic.stop' }`, validated by `dispatch()` (§6).
-- §6.2 (events): `panic.changed` with `{ state: 'fade' | 'now' }`.
-- §7 (`SoundPlayer`): `fadeStopAll()` fades every instance out over its sound's `fadeOut` (cut to the time left; an instance that has none, or whose length is unknown, stops at once) and removes it a second after the fade; `stopAll()` stops all instances and cancels presses waiting for a decode; `count()` tells how many instances are fading.
-- §8 (`PlaylistPlayer`): `fadingOut` (idle with voices still fading) and `silence()` (an instant stop that also cuts voices still fading, which `stop('instant')` does not do for an idle playlist).
-- §9.1 (layout): the footer gets a fixed slot on the right for the button (`ui/panic-button.js`, §10); the player bars' grid shrinks by its width. The state is shown with a `data-state` attribute.
-- `TESTING.md`: a manual check that the fade is audible and the second press cuts it.
-
-**Open questions** (all answered by the owner's design).
-1. *Fade length:* each playlist's and sound's own fade-out; no new setting.
-2. *Labels:* "Stop (Fade)" and "Stop (NOW!)". The button is always enabled; with nothing playing a press changes nothing.
-3. *End of the fading state:* when nothing is fading out any more.
-4. *Something started during the fade:* the state goes back to *Fade*.
-5. *Playlist position:* the normal stop applies, so each playlist's stop mode decides what it remembers.
-6. *Header volumes:* untouched.
-
-**Plan.** Done in the owner's lean flow: code first, the owner checks the UI, then tests and `DESIGN.md` in one sweep.
-1. Players, facade, command and button.
-2. Owner checks the UI.
-3. Tests: `SoundPlayer` fade and cut, `PlaylistPlayer.silence`, the state machine in `Soundboard`, command validation, and Playwright for the button.
-4. `TESTING.md` manual check, then `DESIGN.md` (§6.1, §6.2, §7, §8, §9.1, §10) in its own commit, and remove this proposal and the backlog entry.
+None yet.
 
 ---
 
@@ -74,13 +46,6 @@ None yet.
 In the owner's order: work from the top. Each entry becomes a proposal (above) before any code is written.
 
 **Decided for all of them.** Customization changes apply immediately and are saved with a 500 ms debounce, as the sound Customize dialog does (DESIGN.md §6.4, §9.7). Re-sorting on screen waits until the dialog closes. Playback state is never remembered across a page reload, so F5 always gives a clean start.
-
-### Panic Stop
-
-A large **Panic Stop** button with a space of its own in the footer (DESIGN.md §9.1), always in the same place so the layout never shifts.
-
-- **Behavior:** one click starts fading everything out, playlists and sound effects alike. A second click stops everything immediately, including voices still fading out.
-- **Seam:** `'instant'` transitions already cut every voice of a playlist (§6.1, §8); `stopSound` is instant (§7). The fade is new for sounds and has no per-playlist rules, so the proposal decides how long it lasts (one global duration, or each playlist's own fade-out) and what the button shows while fading.
 
 ### Live volume
 

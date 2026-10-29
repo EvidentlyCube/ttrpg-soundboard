@@ -518,6 +518,12 @@ flushSettings()                           // save pending volume, sound and play
 // sounds (no transitions; sounds have no rules)
 playSound(soundId)
 stopSound(soundId)                        // stops all instances of that sound, instantly
+
+// Panic Stop (§9.1)
+panicStop()                               // in 'fade': stop every playlist (a default stop) and fade out every sound instance
+                                          // over its sound's fadeOut (§7); if anything is left fading, move to 'now'.
+                                          // In 'now': stop everything instantly, voices still fading included, and move to 'fade'
+panicState() → 'fade' | 'now'
 customizeSound(soundId, { title?, gain?, startAt?, endAt?, fadeIn?, fadeOut? })  // applies at once, saves 500 ms later (§6.4)
                                           // points and fades only reach later presses (§7)
 flushSoundOptions(soundId)                // save that sound's pending change now (its dialog closed)
@@ -605,6 +611,7 @@ on(type, handler) → unsubscribe, off(type, handler)
 | `app.startFailed` | `{ message }`, e.g. the server isn't reachable |
 | `audio.suspended` | `{}`, sent when the audio context stops running without being asked (Safari interruption, Mac wake from sleep) |
 | `audio.resumed` | `{}`, sent when it runs again after a suspension |
+| `panic.changed` | `{ state }`, `'fade'` or `'now'`: what the next press of Panic Stop does (§6.1) |
 | `sound.activeChanged` | `{ soundId, active }`, sent when the instance count goes from 0 to ≥1 or back |
 | `sound.error` | `{ soundId, message }`: decoding or playback failed, or the browser cannot play the format |
 | `sound.changed` | `{ sound }`, the sound with its new title, gain, points or fades, right after `customizeSound` |
@@ -777,6 +784,10 @@ The facade follows the server's download (§5.4) and takes in what it adds, so p
   - With `fadeIn`, an instance starts silent and ramps up over `fadeIn` as it starts.
   - With `fadeOut`, a clock timer bound to the instance, planned once the voice has loaded, starts the ramp down `fadeOut` before the end point (or the end of the file). The fade is cut to the time the sound has, so it always ends where playback ends, and it starts from wherever a fade-in had got to.
   - **Stop All** and a ninth press replacing the oldest stay instant. Removing an instance clears its timer.
+- **Stopping everything** (for Panic Stop, §6.1).
+  - `fadeStopAll()` ramps every instance to silence over its sound's `fadeOut`, cut to the time the sound has left, and removes it a second after the fade (as a playlist's retiring voices are, §8). An instance whose sound has no fade-out, or whose length is not known yet, is removed at once, and one that is already fading out is left to finish. It also drops presses still waiting for a decode.
+  - `stopAll()` removes every instance at once and drops pending presses. Both bump an epoch that counts toward every sound's own, so they cancel starts for sounds that have no instance yet.
+  - `count()` returns how many live instances are fading (`fading` is true from the moment a ramp to silence starts, a natural fade-out included) and how many are not.
 - **Changes only reach later presses.** An instance keeps the points and fades it started with, so dragging a handle never makes a playing sound jump or cut off. Volume is the exception, as it can't make anything jump.
 - When a voice ends or fails, its instance is removed and its resources released, and `sound.activeChanged` is sent when the count reaches 0.
 - A sound that is deleted or moved away is stopped like `stopSound`, which also cancels a press still decoding (§6.8).
@@ -911,6 +922,7 @@ With a non-zero `crossfade` rule, one track gives way to the next by fading out 
 - **Fade-in.** A `'default'` start (a tile click, Play, or a jump to a track while idle) ramps the first voice from silence over `fadeIn`. `'instant'` starts at full level.
 - **Fade-out.** A `'default'` stop marks the playlist idle at once; there is no "stopping" state. The current voice, if audible, moves to the retiring set and ramps to silence over `fadeOut`, cut to the time the track has left. The ramp starts from the voice's current level (§6.3), so a fade-in that was still going turns round smoothly. A paused or still-loading voice is stopped at once.
 - **Fades carry on.** Voices already fading out, from an earlier stop or a crossfade, keep fading after a stop and after a new start, which plays over them. Only `'instant'` commands, pause, and a stop without a fade-out cut them. Their deadlines (fade + 1 s) still apply.
+- **For Panic Stop** (§6.1). `fadingOut` is true while the playlist is idle with voices still fading out. `silence()` is an `'instant'` stop that also cuts those voices, which `stop('instant')` does not do for an idle playlist. It remembers a place as any stop does.
 - **Short tracks.** The fade-in has no extra limit; a crossfade or the track's end takes over from wherever it had got to.
 
 ---
@@ -962,6 +974,9 @@ Browsers only allow audio to start inside a user gesture, so the app starts behi
 - Sound and playlist tiles show a new title as soon as `sound.changed` or `playlist.changed` arrives, but tiles are only moved into the new sorted order when the Customize dialog closes, so a tile never jumps around while it is being renamed. Player bars show a new playlist title at once, too, and keep their start order.
 - The footer shows **playlists only**. Sound effects never create a player bar.
 - The footer is **always visible**, so the layout doesn't shift when music starts or stops. It is at least one row of player bars tall; while no playlist is active, that row shows a muted "No playlist playing". Player bars sit in a three-column grid, in the order the playlists were started. The footer grows to at most two rows of bars; beyond that it scrolls vertically.
+- **Panic Stop** (`ui/panic-button.js`) has a fixed slot at the footer's right, as tall as one bar, so it never moves. It shows two lines, "Stop" and a smaller, centered "(Fade)" or "(NOW!)", following `panicState()` and `panic.changed` through a `data-state` attribute (`fade` or `now`). It is yellow (`notice`) in `fade` and a filled red in `now`, and always enabled.
+  - *Fade:* a press stops every playlist the normal way and fades each sound out over its own fade-out (§7), so the players need no panic rules of their own. If anything is left fading, the state becomes `now`. If nothing is (no fade-outs), everything has stopped and the state stays `fade`.
+  - *Now:* the facade checks every 100 ms. It goes back to `fade` when nothing is fading out any more, or when anything plays that is not fading out, such as a sound just started. A press stops everything at once and goes back to `fade`.
 - **Waveform progress** (`ui/waveform-indicator.js`) sits in the header left of the volume controls: "Waveforms 12 / 87" (with ", 2 failed" and ", stopped" when they apply), a thin bar and a ■ button that stops generation, or a ▶ button that starts it again. It is shown only while generation runs, or when some waveforms are missing or failed, and follows `waveforms.progress` through text and an inline width (§6.6). Until the server has said which waveforms are missing (`total` is still `0`), it stays hidden, so a page with nothing to make never flashes it.
 - **Trash button** (`ui/trash-button.js`) sits right of the waveform progress: a trash icon and "Trash · 340 MB". The size is `formatMegabytes`: decimal megabytes, gigabytes from 1 GB on, one decimal below 10, and never less than `0.1 MB`. It is shown only while `trashSummary().count` is above `0`, follows `trash.changed`, and opens the trash dialog (§9.12).
 - **External changes** (`ui/external-changes-button.js`, §6.7). A yellow (`bg-notice`) **External Changes – Refresh** button sits in the header left of the waveform progress, shown only while `hasExternalChanges()` is true. Its tooltip says the page will reload and playback stop. Clicking it calls `refreshLibrary()`; meanwhile it is disabled and reads "Refreshing…". On `library.refreshed` the App reloads the page. When the refresh fails, the button comes back, and a dialog titled "Could not load the changes" lists each problem with its file ("Nothing was loaded. Fix or delete these files, then refresh again:"); a missing `.soundboard` brings back the splash instead (§9.0). The App also calls `checkExternalChanges()` whenever the window gets the focus back, so a change made in another window shows up at once.
@@ -1242,7 +1257,7 @@ public/
 		api/        backend-api.js  server-events.js
 		ui/         app.js  component.js  dom.js  icons.js  format.js  menus.js  position.js  external-changes-button.js
 		            splash.js  overlay.js  context-menu.js  track-list.js  tile-grid.js
-		            playlist-tile.js  sound-tile.js  player-dock.js  player-bar.js  volume-controls.js
+		            playlist-tile.js  sound-tile.js  player-dock.js  player-bar.js  panic-button.js  volume-controls.js
 		            dialog.js  customize-parts.js  filled-field.js  sound-editor.js  playlist-editor.js  track-accordion.js
 		            gain-control.js  gain-scale.js  debug-view.js  waveform-indicator.js  waveform-draw.js  waveform-canvas.js
 		            seconds-control.js  seconds-scale.js  range-control.js  range-scale.js  add-dialog.js  download-dialog.js
