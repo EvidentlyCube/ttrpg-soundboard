@@ -131,7 +131,8 @@ export function labeledRow(label, control) {
  * @param {(title: string) => void} options.onTitle
  */
 export function titleField({ value, hint, accent = 'music', onTitle }) {
-	const hintText = h('p', { class: 'text-xs text-muted wrap-anywhere' }, hint);
+	// File names can be long, so the hint stays on one line and shows in full as a tooltip.
+	const hintText = h('p', { class: 'truncate text-xs text-muted', title: hint }, hint);
 	const { element: field, input } = filledField({
 		label: 'Title',
 		accent,
@@ -144,6 +145,7 @@ export function titleField({ value, hint, accent = 'music', onTitle }) {
 		input.setAttribute('aria-invalid', String(empty));
 		input.dataset.invalid = String(empty);
 		hintText.textContent = empty ? 'A title cannot be empty; the last one is kept.' : hint;
+		hintText.title = hintText.textContent;
 		if (!empty) {
 			onTitle(input.value);
 		}

@@ -19,9 +19,10 @@ export class Dialog {
 	 * @param {object} options
 	 * @param {string} options.title
 	 * @param {HTMLElement} options.body
+	 * @param {HTMLElement} [options.footer] stays below the body while it scrolls
 	 * @param {() => void} [options.onClose] runs once, however the dialog closes
 	 */
-	open({ title, body, onClose }) {
+	open({ title, body, footer, onClose }) {
 		this.close();
 		const close = h('button', {
 			'type': 'button',
@@ -40,7 +41,8 @@ export class Dialog {
 		h('div', { class: 'flex shrink-0 items-center justify-between gap-4 border-b border-line px-5 py-3' },
 			h('h2', { class: 'truncate text-base font-semibold' }, title), close),
 		// Long contents, such as a playlist's track list, scroll under the fixed header.
-		h('div', { 'class': 'min-h-0 overflow-y-auto px-5 py-4', 'data-dialog-body': true }, body));
+		h('div', { 'class': 'min-h-0 overflow-y-auto px-5 py-4', 'data-dialog-body': true }, body),
+		footer ? h('div', { class: 'shrink-0 border-t border-line px-5 py-3' }, footer) : null);
 		const backdrop = h('div', {
 			'class': 'fixed inset-0 z-30 grid place-items-center bg-black/50 p-4',
 			'data-dialog-backdrop': true,

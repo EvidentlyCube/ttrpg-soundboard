@@ -14,6 +14,17 @@ export function formatBytes(bytes) {
 }
 
 /**
+ * A large size in decimal megabytes, or gigabytes from 1 GB on: `340 MB`, `4.2 MB`, `1.4 GB`. Never below `0.1 MB`,
+ * so something in the trash never reads as nothing.
+ * @param {number} bytes
+ */
+export function formatMegabytes(bytes) {
+	const isGigabytes = bytes >= 1e9;
+	const value = Math.max(bytes / (isGigabytes ? 1e9 : 1e6), 0.1);
+	return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${isGigabytes ? 'GB' : 'MB'}`;
+}
+
+/**
  * `m:ss`, or `h:mm:ss` from an hour on; `--:--` while the time is unknown.
  * @param {number | null} seconds
  */

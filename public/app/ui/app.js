@@ -14,6 +14,8 @@ import { SoundEditor } from './sound-editor.js';
 import { SoundTile } from './sound-tile.js';
 import { Splash } from './splash.js';
 import { tileGrid } from './tile-grid.js';
+import { TrashButton } from './trash-button.js';
+import { TrashDialog } from './trash-dialog.js';
 import { VolumeControls } from './volume-controls.js';
 import { WaveformIndicator } from './waveform-indicator.js';
 
@@ -106,6 +108,7 @@ class Board extends Component {
 	#dialog = new Dialog();
 	/** Stacks on top of a Customize dialog. */
 	#moveDialog = new Dialog();
+	#trashDialog = new Dialog();
 	/** The item whose Customize dialog is open, so the dialog can close when the item is deleted or moved away. @type {{ kind: 'sound' | 'playlist', id: string } | null} */
 	#editing = null;
 	/** @type {Map<string, SoundTile>} */
@@ -144,6 +147,7 @@ class Board extends Component {
 			controls);
 		this.#adopt(new ExternalChangesButton(soundboard, (problems) => this.#showRefreshProblems(problems)).mount(controls));
 		this.#adopt(new WaveformIndicator(soundboard).mount(controls));
+		this.#adopt(new TrashButton(soundboard, () => this.#openTrash()).mount(controls));
 		this.#adopt(new VolumeControls(soundboard).mount(controls));
 		this.#adopt(new DebugView(soundboard).mount(controls));
 
@@ -211,7 +215,16 @@ class Board extends Component {
 		this.#adopt(new PlayerDock({ soundboard, overlay, playlists, isPlayable }).mount(root));
 		this.own(() => this.#dialog.close());
 		this.own(() => this.#moveDialog.close());
+		this.own(() => this.#trashDialog.close());
 		return root;
+	}
+
+	/** Opens the trash dialog, which closes itself once the trash is empty. */
+	#openTrash() {
+		const dialog = new TrashDialog({ soundboard: this.#soundboard, onEmpty: () => this.#trashDialog.close() });
+		const body = h('div');
+		dialog.mount(body);
+		this.#trashDialog.open({ title: 'Trash', body, footer: dialog.footer, onClose: () => dialog.destroy() });
 	}
 
 	/**

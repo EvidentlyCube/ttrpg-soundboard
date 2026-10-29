@@ -35,9 +35,9 @@ export class WaveformIndicator extends Component {
 		/** @param {WaveformStatus} status */
 		const show = (status) => {
 			const { running, done, total, failed } = status;
-			root.hidden = !running && done >= total && failed === 0;
-			const counts = total === 0 ? '…' : `${done} / ${total}`;
-			label.textContent = `Waveforms ${counts}${failed > 0 ? `, ${failed} failed` : ''}${!running && done < total ? ', stopped' : ''}`;
+			// Until the server has said what is missing, there is nothing to show: often nothing is.
+			root.hidden = total === 0 || (!running && done >= total && failed === 0);
+			label.textContent = `Waveforms ${done} / ${total}${failed > 0 ? `, ${failed} failed` : ''}${!running && done < total ? ', stopped' : ''}`;
 			fill.style.width = `${total === 0 ? 0 : (done / total) * 100}%`;
 			bar.hidden = !running && failed > 0 && done >= total;
 			button.replaceChildren(icon(running ? 'stop' : 'play', 'size-4'));
