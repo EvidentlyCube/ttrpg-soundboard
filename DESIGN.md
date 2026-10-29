@@ -168,13 +168,26 @@ Playlist options (`Combat.json`)
 
 ### 2.5 Trash and moves
 
-Deleting never removes a file. Everything deleted goes into `.trash/` in the root, which its dot hides from the scanner, the change watcher and refreshes (§2.1). What happens to the trash afterwards is left to the user for now ([roadmap](ROADMAP.md)).
+Deleting from the board never removes a file. Everything deleted goes into `.trash/` in the root, which its dot hides from the scanner, the change watcher and refreshes (§2.1). The trash dialog (§9.12) restores it, or deletes it for good.
 
 - **A sound or a track** keeps its path relative to the root inside the trash, and its options file and waveform go with it: `Boom.mp3` becomes `.trash/Boom.mp3` (+ `.json`, `.wf`), and `Combat/Boss/1.mp3` becomes `.trash/Combat/Boss/1.mp3`. Missing folders are created.
 - **A playlist** moves as a whole: its folder with everything in it, including subdirectories that aren't included and files the app doesn't show, and its options file. `Combat/` becomes `.trash/Combat/` and `Combat.json` becomes `.trash/Combat.json`.
 - **A playlist's only track** can't leave it alone: deleting it deletes the playlist, and moving it away moves the track and then puts what is left of the playlist in the trash. An empty playlist never exists.
 - **Clashes.** Folders are merged into one of the same name already in the trash, so a playlist "Duck" deleted twice, and tracks deleted from it one by one, all end up in `.trash/Duck/`. A playlist's options file replaces the one already there. Any other file whose name is taken gets ` (2)`, ` (3)`… before its extension, and its options file and waveform take the same new name, so they stay paired.
 - **Moves.** A sound can become a track of any playlist, and a track can move to another playlist or out to the sounds. A playlist can't be moved. The file keeps its name, with ` (2)` added when it, its options file or its waveform is taken, and lands in the top level of the target: a track from a nested subdirectory doesn't take the subdirectory along. The options file moves unchanged, since sounds and tracks accept the same keys (§2.3), so the title, gain, points and fades carry over. The waveform stays valid, because a rename keeps the size and modified time.
+
+**Reading the trash** (`src/library/trash.js`). Audio files at the top of `.trash/` are **sounds**. Each folder there is a **playlist**, and the audio files inside it, at any depth, are its **tracks**. Titles come from the trashed options files, else the default titles (§2.4): a playlist's from `.trash/<folder>.json`, which a folder left by deleting single tracks doesn't have, so it is named after the folder. Options files in the trash are read leniently: a broken one only loses its title. Dot files and folders without audio are not listed. The **size** counts every file under `.trash/`, listed or not.
+
+**The trash is not watched.** The server reads it at startup and after each of its own deletions, moves, restores and purges. Changes made to it by hand show up at the next start.
+
+**Restoring.** Every options file involved is validated first (§2.3), so a broken one refuses the restore before anything moves.
+- **A sound** goes back into the root with its options file and waveform. A taken name gets ` (2)`, as moves do; the title stays as it was.
+- **A track** goes into the **top level** of the playlist named after its trashed folder, wherever it sat inside that folder, with ` (2)` on a clash. When that playlist is gone, a new one is created: its folder, and a **copy** of `.trash/<folder>.json`, so the tracks still in the trash keep it. Without one, the new options file has the folder's name as its title. A name taken by a folder or options file the library doesn't show gets ` (2)`.
+- **A playlist** whose name is free moves back as it is: the folder with everything in it, subfolders included, and its options file. When a playlist of that name exists, each track is restored into it as above, its options stay as they are, and the trashed options file is dropped.
+- **Restore all** restores every playlist, then every sound.
+- A restored file is measured when its options file has no current duration, as at startup (§3.5).
+
+**Deleting for good** removes an audio file with its options file and waveform, or a playlist's folder with everything in it and its options file. **Delete all** removes `.trash/` itself. A trashed playlist that has no audio files left, after its last track was restored or deleted, leaves the trash completely, with whatever else is still in its folder and its options file.
 
 ---
 
@@ -300,6 +313,10 @@ Settings  { volumes: { master, music, sfx } }   // held by SettingsStore, saved 
   - The files are then moved through an injected `writeFiles`, the watcher's (§5.3). If that fails, the item is put back.
   - A move puts the file into `sounds` (sorted by title) or the target's `tracks` (sorted by path) under its new id, and both update `Library.files`.
   - Each returns `{ changes, removed, renamed }`. `changes` lists what happened, in order, as `library.removed` (`{ soundId }`, `{ trackId, playlistId }` or `{ playlistId }`) and `library.added` (`{ sound }` or the receiving `{ playlist }`). A playlist's last track is reported as the playlist's removal. `removed` lists the files that left the root and `renamed` the `[from, to]` pairs within it, for the watcher.
+- **The trash** (§2.5). `restoreFromTrash(item | 'all')` and `purgeFromTrash(item | 'all')`, where `item` is `{ kind: 'sound' | 'track' | 'playlist', id }` and the id is the item's path inside the trash, the id it had in the library.
+  - Both run as one task through `writeFiles`, so they take their turn with saves, additions and refreshes. Each reads the trash afresh and looks the item up in that listing (`findInTrash`), so only what the trash holds can be named, never another path; anything else is an `UnknownTrashItemError`. A broken options file is a `ValidationError`.
+  - A restore adds what came back to the library as additions do, sounds by title and tracks by path, and returns `{ changes, written }`: one `library.added` per sound or receiving playlist (sent whole), and for the watcher each restored audio file and its options file. Waveforms are left out of `written`, since the watcher never follows them and one in its baseline would count as gone.
+  - `trash.js` holds the reading (`readTrash`, with sizes), the purging helpers and `Trash`, which keeps the summary `{ size, count }` for the event streams: `count` is the listed playlists plus sounds. `reload()` reads it again and tells its listeners when the summary changed.
   - Moving a track into its own playlist is a `ValidationError`; unknown ids and target playlists are the `Unknown…Error`s.
 - `WaveformStore` (`waveform-store.js`) keeps one waveform file, `<audio file>.wf`, next to each sound and track, beside its `.json` options file. The browser makes the waveforms (§6.6); the store only holds them. A file is a 16-byte header, then 2048 signed bytes:
   - The header is the magic `SBW1`, the bucket count (u16, always 1024), two reserved bytes, the audio file's size (u32) and its modified time in whole seconds (u32). The server fills the last two in from the audio file when it stores a waveform.
@@ -321,6 +338,9 @@ The server knows nothing about playback state.
 | PATCH | `/api/sounds/<encoded id>` | Body `{ title?, gain?, startAt?, endAt?, fadeIn?, fadeOut? }`. Saved through `LibraryEditor` (§5.1); returns the updated sound in the `/api/library` format. `400` for invalid JSON, a non-object, an unknown key, an empty title, an out-of-range value, or points less than 10 ms apart. `404` when the id isn't a sound. `413` for bodies over 16 KB. |
 | DELETE | `/api/sounds/<encoded id>`, `/api/tracks/<encoded id>`, `/api/playlists/<encoded id>` | Moves the item into the trash (§2.5) and answers `200 { changes }`: the `library.removed` messages below, which every event stream gets too, so the page that asked can apply them at once. `404` for an unknown id. |
 | POST | `/api/move` | Body `{ id, to }`: a sound or track id, and a playlist id or `null` for the sounds. Moves it (§2.5) and answers `200 { changes }`, a `library.removed` and a `library.added` message, as for deletions. `400` for a body without them, a sound moved to the sounds or a track to its own playlist; `404` for an unknown id or playlist. The id is in the body because a track id takes up the rest of a path. |
+| GET | `/api/trash` | `{ size, playlists: [{ id, title, size, tracks: [{ id, title, size }] }], sounds: [{ id, title, size }] }`: what the trash holds (§2.5), playlists and sounds by title, tracks by path, sizes in bytes. |
+| POST | `/api/trash/restore` | Body `{ kind: "sound" \| "track" \| "playlist", id }` or `{ all: true }`. Restores it (§2.5) and answers `200 { changes }`, the `library.added` messages, which every event stream gets too. `400` for another body or a broken options file, `404` for what the trash doesn't hold. |
+| POST | `/api/trash/delete` | The same body. Deletes it for good and answers `200 { changes: [] }`, with the same errors. |
 | PATCH | `/api/playlists/<encoded id>` | The same for a playlist, with body `{ title?, gain?, crossfade?, fadeIn?, fadeOut?, order?, trackLooping?, stopMode? }` (`LibraryEditor.updatePlaylist`); returns the playlist with its tracks in the `/api/library` format. |
 | PATCH | `/api/tracks/<encoded id>` | The same for a track, with body `{ title?, gain?, startAt?, endAt? }` (`LibraryEditor.updateTrack`); returns the track. The id contains `/`: the rest of the path is decoded as a whole, which keeps literal slashes, so `Combat%2F1.mp3` and `Combat/1.mp3` both work. The browser sends the first. |
 | GET | `/api/waveforms` | `{ "missing": ["Boom.mp3", "Combat/1.mp3", …] }`: the ids with no current waveform, sounds first (`WaveformStore.missing`) |
@@ -356,14 +376,15 @@ The server knows nothing about playback state.
 ```
 Each path segment of a media URL is percent-encoded separately. The library reflects changes made through `PATCH`, downloads, deletions and moves, so a reload shows them.
 
-**Event stream messages** (`src/http/events.js`). Every connection starts with `externalChanges` and, when downloads are available, a `download` message carrying the whole log, so a page that was away misses nothing.
+**Event stream messages** (`src/http/events.js`). Every connection starts with `externalChanges`, `trash` and, when downloads are available, a `download` message carrying the whole log, so a page that was away misses nothing.
 
 | `type` | Payload | Sent |
 |---|---|---|
 | `externalChanges` | `{ pending }` | on connect, then whenever the value changes (§5.3) |
 | `download` | `{ job }`, with `log` (every line) on connect | whenever the job starts, moves to another item or step, or ends; `job` is `null` once dismissed |
 | `download.log` | `{ lines, replaceLast }` | new log lines, batched at most every 250 ms; with `replaceLast`, the first line replaces the last one already sent (§5.4) |
-| `library.added` | `{ sound }` or `{ playlist }`, in the `/api/library` format, a playlist with all its tracks | once a download has added a file, or a move has put one in its new place |
+| `library.added` | `{ sound }` or `{ playlist }`, in the `/api/library` format, a playlist with all its tracks | once a download has added a file, a move has put one in its new place, or a restore has brought one back |
+| `trash` | `{ size, count }`: bytes, and the listed playlists plus sounds | on connect, then whenever a deletion, move, restore or purge changed it; each of those routes reloads `Trash` (§5.1) before it answers |
 | `library.removed` | `{ soundId }`, `{ trackId, playlistId }` or `{ playlistId }` | once a deletion or a move has taken an item away; `LibraryChanges` (`library-changes.js`) hands them from the routes to every stream |
 
 **Static files.** The path guard works on the raw request path, before any URL normalization: the path is percent-decoded, resolved against `public/`, and rejected unless it is still inside. Null bytes and malformed encoding are rejected too.
@@ -395,7 +416,7 @@ Each path segment of a media URL is percent-encoded separately. The library refl
   - otherwise the file is hashed. A different SHA-1, or one the baseline doesn't know, is a **change**; the same one only updates the baseline's size and time, because the file was merely touched or copied.
 - **Quick checks** compare sizes and modified times only and never hash, so there a touched file counts as a change. The page asks for one whenever it gets the focus back (`POST /api/changes/check`). If `fs.watch` throws or reports an error (for example when Linux runs out of inotify watches), the watcher prints `Can't watch the audio directory (…); checking it every 30 seconds instead.` and runs a quick check every 30 s (`POLL_MS`).
 - **Once a change is found**, `externalChanges` becomes `true`, every listener hears about it (the event streams, §5.2), and no more comparisons run until the next refresh. A directory that can no longer be read also counts as changed, with the reason printed; the refresh then says what is wrong.
-- **Own writes.** `LibraryEditor` and `SettingsStore` save through `watcher.updateFile`, which writes the file as `updateJsonFile` does (§2.3) and then records its new size, time and SHA-1 in the baseline. Downloads add their files, and `LibraryEditor` deletes and moves them, through `watcher.writeFiles(task)`, which runs the task in turn and then follows the lists it returns (§5.1): files in `removed` leave the baseline, `renamed` pairs keep their entry under the new path (a rename changes neither content nor dates), and files in `written` are recorded afresh. Files in the trash are never in the baseline. Bootstrap writes before the baseline is taken. The app's own saves and additions therefore never count as external changes.
+- **Own writes.** `LibraryEditor` and `SettingsStore` save through `watcher.updateFile`, which writes the file as `updateJsonFile` does (§2.3) and then records its new size, time and SHA-1 in the baseline. Downloads add their files, and `LibraryEditor` deletes, moves, restores and purges them, through `watcher.writeFiles(task)`, which runs the task in turn and then follows the lists it returns (§5.1): files in `removed` leave the baseline, `renamed` pairs keep their entry under the new path (a rename changes neither content nor dates), and files in `written` are recorded afresh. Files in the trash are never in the baseline, so a restore lists what it brought back in `written`, and a purge lists nothing. Bootstrap writes before the baseline is taken. The app's own saves and additions therefore never count as external changes.
 - **Taking turns.** Comparisons, own writes, additions and refreshes run one at a time, in the order they were asked for. A comparison never sees a file the app is halfway through saving, none runs while a refresh rewrites files, and an addition never lands in a library a refresh is replacing. `watcher.refresh(rebuild)` runs the rebuild that way and, when it succeeded, takes a new baseline and sets `externalChanges` back to `false`.
 - The timers (`setTimeout`, `setInterval`) and `fs.watch` are injected, so tests run the delays on a fake clock.
 
@@ -463,6 +484,7 @@ UI layer (DOM)  ──commands──▶  Soundboard (logic facade)  ──▶  A
   - for external changes (§6.7), the `BackendApi` methods `checkExternalChanges() → Promise<boolean>` and `refresh() → Promise<RefreshResult>`, and optionally `ServerEvents` (`connect(onMessage) → disconnect`), the server's pushed messages (§5.2). `api/server-events.js` implements it with `EventSource` on `/api/events`, which reconnects by itself; the server sends its current state on every connection;
   - for downloads (§6.8), the `BackendApi` methods `fetchDownload()` (the tools and the job with its log), `probeLink(url, { playlist })`, `startDownload(request) → Promise<DownloadJob>` and `dismissDownload()`. The two that can fail because of the user's link reject with the server's message alone, ready to show;
   - for deletions and moves (§6.8), `deleteItem({ kind, id })` and `moveItem(id, to)`, which resolve with the server's `changes` and reject with its message alone;
+  - for the trash (§6.8), `fetchTrash()`, `restoreFromTrash(target)`, which resolves with the `changes` like the two above, and `deleteFromTrash(target)`, where `target` is `{ kind, id }` or `'all'`;
   - a `Logger` (`warn`, `error`);
   - optionally a `random` function for the random playback orders (§8.1), `Math.random` unless tests pass a seeded one.
 
@@ -531,6 +553,12 @@ deletePlaylist(playlistId) → Promise<void>
 moveSound(soundId, playlistId) → Promise<void>
 moveTrack(trackId, playlistId | null) → Promise<void>   // null: out to the sounds
 
+// the trash (§2.5, §6.8): not commands either; target is { kind, id } or 'all', and each rejects with a message for the user
+trashSummary()                            // { size, count }, from the server's `trash` messages
+loadTrash() → Promise<TrashListing>       // what GET /api/trash answers
+restoreFromTrash(target) → Promise<void>  // saves everything pending first, then applies what came back
+deleteFromTrash(target) → Promise<void>   // for good
+
 // volume (value is the slider position, 0..1, clamped)
 setVolume(bus, value)                     // bus: 'master' | 'music' | 'sfx'
 
@@ -586,10 +614,11 @@ on(type, handler) → unsubscribe, off(type, handler)
 | `library.refreshFailed` | `{ message, errors, restartNeeded }`: `errors` lists `{ path, message }` for invalid options files; `restartNeeded` is `true` when `.soundboard` is gone |
 | `download.changed` | `{ job, logReset }`: the server's download changed (§6.8); `job` is `null` once dismissed. With `logReset`, read the whole log again with `getDownload()`; otherwise `download.log` brings what is new. |
 | `download.log` | `{ lines, replaceLast }`: new log lines; with `replaceLast`, the first replaces the last line |
-| `sound.added` | `{ sound }`, a sound a download added |
-| `playlist.added` | `{ playlist }`, a playlist a download created. Tracks added to an existing playlist are announced as `playlist.changed`, as renames are. |
+| `sound.added` | `{ sound }`, a sound a download added, a move made or a restore brought back |
+| `playlist.added` | `{ playlist }`, a playlist a download created or a restore brought back. Tracks added to an existing playlist are announced as `playlist.changed`, as renames are. |
 | `sound.removed` | `{ soundId }`, a sound deleted or moved into a playlist |
 | `playlist.removed` | `{ playlistId }`, a playlist deleted, or left by its last track. A track that leaves a playlist that stays is announced as `playlist.changed`. |
+| `trash.changed` | `{ size, count }`, whenever the server's trash summary differs from the last one (§6.8) |
 
 ### 6.3 AudioEngine port
 
@@ -685,15 +714,15 @@ A created voice is wrapped in a `MonitoredVoice` that forwards its calls and rec
 
 ### 6.7 External changes
 
-The page changes its library while it runs only for the app's own downloads, deletions and moves (§6.8). When files change outside the app, it only learns that they did, and the user decides when to load them, by a full reload.
+The page changes its library while it runs only for the app's own downloads, deletions, moves and restores (§6.8). When files change outside the app, it only learns that they did, and the user decides when to load them, by a full reload.
 
 - **Learning about changes.** Once the library has loaded, the facade connects to `ServerEvents` and keeps `hasExternalChanges()` in step with the server's messages, announcing every change of it as `library.externalChanges`. `checkExternalChanges()` asks the server for a quick check (§5.3) and announces its answer the same way. It does nothing before the library has loaded, or while a check is still running; a failed check is logged as a warning.
 - **Refreshing.** `refreshLibrary()` emits `library.refreshing`, then waits for `SettingsSync.settle()` and `OptionsSync.settleAll()` (§6.4), so the rebuild reads the user's latest edits, and calls `BackendApi.refresh()`. It ends with `library.refreshed`, or with `library.refreshFailed` for invalid options files (with their problems), a missing `.soundboard` (`restartNeeded`) or a request that failed (logged as an error). A call while one runs is ignored.
 - **Reloading.** Logic never touches `window`, so the UI reloads the page on `library.refreshed` (§9.1). The new page starts from the splash like any other (§9.0) and loads the new library; nothing about playback survives, which is how every reload already behaves.
 
-### 6.8 Downloads, deletions and moves
+### 6.8 Downloads, deletions, moves and the trash
 
-The facade follows the server's download (§5.4) and takes in what it adds, so playback goes on undisturbed. Deletions and moves (§2.5) change the library the same way.
+The facade follows the server's download (§5.4) and takes in what it adds, so playback goes on undisturbed. Deletions, moves and restores from the trash (§2.5) change the library the same way.
 
 - **Loading.** `start()` fetches the download state together with the library and settings. If that request fails, it logs a warning and carries on without it: both tools count as missing.
 - **The job.** `download` messages from `ServerEvents` replace the job. The log starts afresh whenever the job's id changes, and is replaced when a message brings `log`, as on every new connection. Both are announced as `download.changed` with `logReset`. `download.log` messages append lines, replacing the last one first with `replaceLast`, and keep the last 1000. `startDownload` takes the job the server answers with, unless the event stream announced it first, in which case its log has already begun.
@@ -709,6 +738,7 @@ The facade follows the server's download (§5.4) and takes in what it adds, so p
   - A playlist stops instantly, its player is dropped, and it is announced as `playlist.removed`.
   - Whatever is cached for a removed file is forgotten: its decoded buffer (`BufferCache.forget`), its waveform (`WaveformService.forget`) and its URL. A new file may later take the same id and URL, and must never play or show the old one.
 - **A move** is a removal followed by an addition, handled as above.
+- **The trash.** `trash` messages set `trashSummary()` and are announced as `trash.changed` when the size or count differs; before the first, it is `{ size: 0, count: 0 }`. `restoreFromTrash` settles pending saves and applies the answer's `library.added` messages, as deleting and moving do. `loadTrash` and `deleteFromTrash` only pass the request on, since a purge changes nothing in the library.
 
 ---
 
@@ -899,7 +929,7 @@ Browsers only allow audio to start inside a user gesture, so the app starts behi
 
 ### 9.1 Layout
 
-- The page is a full-height column: header (title, the external changes button while there are any, the waveform progress while there is any, volume controls and the debug button, §9.8), a scrolling main area, then the footer.
+- The page is a full-height column: header (title, the external changes button while there are any, the waveform progress while there is any, the Trash button while the trash holds anything, volume controls and the debug button, §9.8), a scrolling main area, then the footer.
 - The main area has a "Playlists" section above a "Sound Effects" section. Both are always shown, even empty, because their titles carry the add buttons: **+ Add playlist** in blue and **+ Add sound** in amber (`tileGrid`, §9.9). With no playlists and no sounds, a line above them says none were found in this folder, until a download adds one.
 - Tiles for sounds and playlists added by a download or a move (`sound.added`, `playlist.added`) appear at once in their sorted place. Tiles of sounds and playlists deleted or moved away (`sound.removed`, `playlist.removed`), in this tab or another, disappear at once, and a Customize dialog open for that item closes.
 - Tiles are `<button>`s in a grid of columns at least 10rem (160 px) wide, with titles clamped to 3 lines. The full title shows as a tooltip.
@@ -912,7 +942,8 @@ Browsers only allow audio to start inside a user gesture, so the app starts behi
 - Sound and playlist tiles show a new title as soon as `sound.changed` or `playlist.changed` arrives, but tiles are only moved into the new sorted order when the Customize dialog closes, so a tile never jumps around while it is being renamed. Player bars show a new playlist title at once, too, and keep their start order.
 - The footer shows **playlists only**. Sound effects never create a player bar.
 - The footer is **always visible**, so the layout doesn't shift when music starts or stops. It is at least one row of player bars tall; while no playlist is active, that row shows a muted "No playlist playing". Player bars sit in a three-column grid, in the order the playlists were started. The footer grows to at most two rows of bars; beyond that it scrolls vertically.
-- **Waveform progress** (`ui/waveform-indicator.js`) sits in the header left of the volume controls: "Waveforms 12 / 87" (with ", 2 failed" and ", stopped" when they apply), a thin bar and a ■ button that stops generation, or a ▶ button that starts it again. It is shown only while generation runs, or when some waveforms are missing or failed, and follows `waveforms.progress` through text and an inline width (§6.6).
+- **Waveform progress** (`ui/waveform-indicator.js`) sits in the header left of the volume controls: "Waveforms 12 / 87" (with ", 2 failed" and ", stopped" when they apply), a thin bar and a ■ button that stops generation, or a ▶ button that starts it again. It is shown only while generation runs, or when some waveforms are missing or failed, and follows `waveforms.progress` through text and an inline width (§6.6). Until the server has said which waveforms are missing (`total` is still `0`), it stays hidden, so a page with nothing to make never flashes it.
+- **Trash button** (`ui/trash-button.js`) sits right of the waveform progress: a trash icon and "Trash · 340 MB". The size is `formatMegabytes`: decimal megabytes, gigabytes from 1 GB on, one decimal below 10, and never less than `0.1 MB`. It is shown only while `trashSummary().count` is above `0`, follows `trash.changed`, and opens the trash dialog (§9.12).
 - **External changes** (`ui/external-changes-button.js`, §6.7). A yellow (`bg-notice`) **External Changes – Refresh** button sits in the header left of the waveform progress, shown only while `hasExternalChanges()` is true. Its tooltip says the page will reload and playback stop. Clicking it calls `refreshLibrary()`; meanwhile it is disabled and reads "Refreshing…". On `library.refreshed` the App reloads the page. When the refresh fails, the button comes back, and a dialog titled "Could not load the changes" lists each problem with its file ("Nothing was loaded. Fix or delete these files, then refresh again:"); a missing `.soundboard` brings back the splash instead (§9.0). The App also calls `checkExternalChanges()` whenever the window gets the focus back, so a change made in another window shows up at once.
 - Color tokens are defined once, in Tailwind's `@theme` (§9.6).
 
@@ -994,7 +1025,7 @@ UI components extend `Component` (`ui/component.js`): `render()` builds the elem
 **Dialog** (`ui/dialog.js`) is a centered modal shared by the Customize dialogs.
 - It has a title, a body and a × button. Every change inside applies at once, so nothing can be lost by closing: the × button, Esc, and a click that both starts and ends on the backdrop all close it. Esc is left to a popup when one is open on top.
 - It sits above the board and the footer, but below popups (§9.3) and the splash (§9.0).
-- It is at most 90 % of the window high; its body scrolls under the fixed header.
+- It is at most 90 % of the window high; its body scrolls under the fixed header. An optional `footer` stays below the body, as the trash dialog's buttons do (§9.12).
 - A second `Dialog` opened while one shows stacks on top of it, as the move dialog does over a Customize dialog (§9.11). Esc closes only the top one.
 - When a Customize dialog closes, the board saves its pending changes at once (`flushSoundOptions`, or the playlist dialog's `flushEdits`, which covers the playlist and every track renamed in it) and moves that kind of tile into sorted order.
 
@@ -1005,12 +1036,12 @@ UI components extend `Component` (`ui/component.js`): `render()` builds the elem
 - **Labeled row** (`labeledRow`). Several settings in one card: a fixed-width label on the left, the control on the right.
 - **Radio group** (`radioGroup({ name, choices, value, accent, onChange })`). Native radio buttons in the accent color (`role="radiogroup"`), each with its name and a one-line description below it. Choosing one reports it at once; `update(value)` follows changes made elsewhere.
 - **Checkbox** (`checkbox({ name, label, description, checked, accent, onChange })`). One on/off setting, laid out like a radio choice: a native checkbox in the accent color, its name, and a description below. `update(checked)` follows changes made elsewhere.
-- **Title.** A filled field (below), focused on open, with the floating label "Title" and a hint below it. Every edit is sent at once. While the field is empty or only spaces, it is marked invalid (`aria-invalid` and `data-invalid`), nothing is sent, the hint explains that the last title is kept, and the tile keeps it.
+- **Title.** A filled field (below), focused on open, with the floating label "Title" and a hint below it. The hint, usually a file or folder name, stays on one line, ending in "…" when too long, with the full text as its tooltip. Every edit is sent at once. While the field is empty or only spaces, it is marked invalid (`aria-invalid` and `data-invalid`), nothing is sent, the hint explains that the last title is kept, and the tile keeps it.
 - **Volume.** The gain widget on `ITEM_SCALE`.
 - **Play / Stop.** A button showing whether the item is playing.
 - **Status.** In the corner, without text: a spinner after a change, a checkmark once saved. A failure is shown as a red message.
 - **Move or delete** (`moveOrDeleteCard`), the last card of the sound dialog, of an open track row ("Move or delete") and of the playlist's first tab ("Delete", without Move, with the note "The folder and everything in it go to the trash."). **Move…** on the left opens the move dialog (§9.11); **Hold to delete** on the right deletes (§2.5). A failure shows as a red message in the card. On success the item leaves the library, and the board closes the dialog or the accordion drops the row.
-- **Hold-to-delete button** (`ui/hold-button.js`). A red-outlined button that acts only after being held down for 1 s (`HOLD_MS`), by the pointer or by holding Enter or Space, so a slip never deletes anything. While held, a red fill sweeps across it from the left: a CSS width transition started by `data-holding`, so nothing updates during the hold (§9.6). Releasing early, leaving the button, losing the focus or `pointercancel` cancels it, and the fill snaps back; key repeats are ignored. While the request runs it is disabled and reads "Deleting…".
+- **Hold-to-delete button** (`ui/hold-button.js`). A red-outlined button that acts only after being held down for 0.5 s (`HOLD_MS`, or its `holdMs` option), by the pointer or by holding Enter or Space, so a slip never deletes anything. While held, a red fill sweeps across it from the left: a CSS width transition started by `data-holding`, so nothing updates during the hold (§9.6); its duration is an inline style, since Tailwind can't build a class from a variable. The `neutral` tone draws it grey instead, for actions that aren't deletions, such as Restore (§9.12). Releasing early, leaving the button, losing the focus or `pointercancel` cancels it, and the fill snaps back; key repeats are ignored. While the request runs it is disabled and reads "Deleting…".
 - **Tabs.** A tab bar over panels (`role="tablist"`, `tab`, `tabpanel`), the first selected. The left and right arrow keys move between tabs, and only the selected panel is shown. The bar stays at the top while the dialog scrolls.
 
 **Filled field** (`ui/filled-field.js`, `filledField({ label?, unit?, accent, align, width, attributes })`), the one style for text fields in the dialogs:
@@ -1125,6 +1156,16 @@ Below the cards: Play / Stop (`playSound`, or stopping all instances; it follows
 - **Picking** one calls `moveSound` or `moveTrack` at once, with every button disabled meanwhile. A failure shows in red below the list, and the buttons come back.
 - **Afterwards** the move dialog closes. A moved sound leaves the library, so the board closes its sound dialog too (§9.1). A moved track only leaves its row, so the playlist dialog stays as it was, ready for the next track, unless it was the playlist's only track, which removes the playlist and closes its dialog. Closing the Customize dialog closes a move dialog over it.
 
+### 9.12 Trash dialog
+
+`ui/trash-dialog.js`, opened by the header's Trash button (§9.1), titled "Trash".
+
+- **The list** comes from `loadTrash()` when the dialog opens. **Playlists** come first, as on the board, each a row with a blue stripe, its title, and its track count and size. Its tracks follow, indented beneath it, with a lighter blue stripe. **Sound effects** follow, with an amber stripe. A file's muted line shows its path inside the trash when that differs from its title, and its size; it ends in "…" when too long, with the full text as a tooltip.
+- **Each row** has **Restore** (the neutral hold button) and **Delete** (the red one), each held for 0.5 s.
+- **The footer** shows the total size, then **Restore all** and **Delete all**, each held for 2 s.
+- **One action at a time.** While one runs, every button is disabled and the one pressed reads "Restoring…" or "Deleting…". A failure shows in red in the footer. Afterwards the list is fetched again.
+- **Following changes.** Every `trash.changed`, from this tab or another, fetches the list again, and answers to older requests are dropped. The dialog closes once the trash is empty. Restored items appear on the board like any addition (§9.1).
+
 ---
 
 ## 10. Project structure
@@ -1138,7 +1179,7 @@ src/
 	cli/        main.js  args.js  prompter.js  reporter.js  colors.js
 	library/    bootstrap-service.js  scanner.js  classify.js  sort.js  validate.js  errors.js
 	            options-store.js  settings-store.js  library.js  library-editor.js  durations.js  waveform-store.js
-	            change-watcher.js  tree-snapshot.js  file-moves.js
+	            change-watcher.js  tree-snapshot.js  file-moves.js  trash.js
 	downloads/  download-service.js  probe.js  yt-dlp.js  ffmpeg.js  link-fetcher.js  process-runner.js  line-splitter.js
 	            tools.js  file-names.js  workspace.js  errors.js
 	metadata/   index.js  id3.js  ogg.js  mpeg.js  binary-reader.js
@@ -1162,7 +1203,7 @@ public/
 		            dialog.js  customize-parts.js  filled-field.js  sound-editor.js  playlist-editor.js  track-accordion.js
 		            gain-control.js  gain-scale.js  debug-view.js  waveform-indicator.js  waveform-draw.js  waveform-canvas.js
 		            seconds-control.js  seconds-scale.js  range-control.js  range-scale.js  add-dialog.js  download-dialog.js
-		            hold-button.js  move-dialog.js
+		            hold-button.js  move-dialog.js  trash-button.js  trash-dialog.js
 test/
 	backend/    cli/  downloads/  http/  library/  metadata/
 	frontend/   logic tests, backend-api.test.js, ui/ (pure UI helpers)
