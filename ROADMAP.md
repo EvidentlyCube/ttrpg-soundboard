@@ -85,12 +85,10 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 - **E. The dialog shows the source and its fields**: link, site, video, playlist and chapter, plus the origin and the file's path.
 - **F. One scrolling list**, a raised card per track.
 
-**Open questions.**
-
-- **G. The name for "no known origin".** *Recommended:* `"unknown"`, which says what we know without guessing how the file arrived. `"manual"` would also fit the files added by hand, but the future editor needs a word for "typed in by the user" (`"edited"`), and the two would read alike.
-- **H. Chapter links.** A chapter can only be linked with its start time, and the options files store just its number. *Recommended:* downloads store `chapterStart` from now on, and older chapter files show the number unlinked. The other option is to look the start up online when the dialog opens, which C rules out.
-- **I. Reading links from tags.** *Recommended:* only the tags named above, where `yt-dlp --embed-metadata` writes the page link, taking the first `http(s)` link. A YouTube link also fills in `extractor` and `videoId`. Any other site keeps only the `url`.
-- **J. Downloaded files without `origin`.** *Recommended:* treat them as `"download"` when read, without rewriting them, so no file changes just for that.
+- **G. No known origin is `"unknown"`.**
+- **H. Downloads store `chapterStart` from now on.** No chapter files exist yet, so none lack it.
+- **I. Links in tags are read from the tags named above.** The known forms of YouTube links are recognized: `youtube.com/watch?v=`, `m.` and `music.youtube.com`, `youtu.be/<id>`, `/shorts/<id>`, `/embed/<id>` and `/live/<id>`. A `list=` parameter fills in `playlistId`. More forms can be added when testing finds them.
+- **J. No downloads exist without `origin`.** A `source` without one is still read as `"download"`, which costs nothing.
 
 **Plan.** In the lean flow: code first, with the owner checking the UI, then tests and DESIGN.md in one sweep.
 1. **Source rules** (pure): finding the id in a file name, cleaning the title, building YouTube links, and validating `origin`. Downloads write `origin` and `chapterStart`.
