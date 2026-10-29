@@ -9,9 +9,10 @@
  * 	endAt?: number | null, fadeIn?: number, fadeOut?: number, source?: Source }} AudioOptions
  */
 /**
- * @typedef {{ url: string, extractor?: string, videoId?: string, playlistId?: string, chapter?: number }} Source
- * 	where a downloaded file came from
+ * @typedef {{ origin?: SourceOrigin, url?: string, extractor?: string, videoId?: string, playlistId?: string,
+ * 	chapter?: number, chapterStart?: number }} Source where a file came from (DESIGN.md §2.3); without `origin`, a download
  */
+/** @typedef {typeof SOURCE_ORIGINS[number]} SourceOrigin */
 /**
  * @typedef {{ title?: string, gain?: number, crossfade?: number, fadeIn?: number, fadeOut?: number,
  * 	order?: PlaybackOrder, trackLooping?: boolean, stopMode?: StopMode, includedSubdirectories?: string[] }} PlaylistOptions
@@ -45,6 +46,9 @@ const NOT_AN_OBJECT = 'must be a JSON object';
 
 const SOURCE_TEXT_KEYS = ['url', 'extractor', 'videoId', 'playlistId'];
 
+/** How a file's source was learned; `edited` is kept for the editor to come. */
+export const SOURCE_ORIGINS = /** @type {const} */ (['download', 'fileName', 'tags', 'unknown', 'edited']);
+
 /**
  * @param {unknown} value
  * @returns {string[]}
@@ -64,7 +68,7 @@ export function validateAudioOptions(value) {
 }
 
 /**
- * Where a downloaded file came from (DESIGN.md §2.3). Unknown keys inside are allowed, as everywhere else.
+ * Where a file came from (DESIGN.md §2.3). Unknown keys inside are allowed, as everywhere else.
  * @param {Record<string, unknown>} value
  * @returns {string[]}
  */
@@ -81,6 +85,12 @@ function checkSource(value) {
 		.map((key) => `"source.${key}" must be a string`);
 	if ('chapter' in source && !(typeof source.chapter === 'number' && Number.isInteger(source.chapter) && source.chapter >= 1)) {
 		problems.push('"source.chapter" must be a positive integer');
+	}
+	if ('chapterStart' in source && !(typeof source.chapterStart === 'number' && Number.isFinite(source.chapterStart) && source.chapterStart >= 0)) {
+		problems.push('"source.chapterStart" must be a non-negative number');
+	}
+	if ('origin' in source && !SOURCE_ORIGINS.includes(/** @type {any} */ (source.origin))) {
+		problems.push(`"source.origin" must be one of ${SOURCE_ORIGINS.map((origin) => `"${origin}"`).join(', ')}`);
 	}
 	return problems;
 }

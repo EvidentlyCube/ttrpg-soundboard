@@ -212,7 +212,7 @@ describe('DownloadService', () => {
 			assert.deepEqual(ffmpeg.conversions, [{ input: 'Me at the zoo [zoo].webm', output: 'Me at the zoo [zoo].ogg', clip: null }]);
 			const saved = await options('Me at the zoo [zoo].ogg');
 			assert.equal(saved.title, 'Me at the zoo');
-			assert.deepEqual(saved.source, { url: 'https://www.youtube.com/watch?v=zoo', extractor: 'Youtube', videoId: 'zoo' });
+			assert.deepEqual(saved.source, { origin: 'download', url: 'https://www.youtube.com/watch?v=zoo', extractor: 'Youtube', videoId: 'zoo' });
 			assert.ok(library.sounds.some((sound) => sound.id === 'Me at the zoo [zoo].ogg'));
 			assert.ok(events.some((event) => event.type === 'library.added' && 'sound' in event));
 			assert.deepEqual(await readdir(join(root, WORKSPACE_NAME)), []);
@@ -247,7 +247,7 @@ describe('DownloadService', () => {
 			assert.deepEqual(job.items[1], { title: 'Song b', state: 'failed', error: 'Video b is unavailable' });
 			const battle = library.playlists.find((playlist) => playlist.id === 'Battle');
 			assert.deepEqual(battle?.tracks.map((track) => track.id), ['Battle/Song a [a].ogg', 'Battle/Song c [c].ogg']);
-			assert.deepEqual((await options('Battle/Song c [c].ogg')).source, { url: 'https://www.youtube.com/watch?v=c', extractor: 'Youtube', videoId: 'c', playlistId: 'PL1' });
+			assert.deepEqual((await options('Battle/Song c [c].ogg')).source, { origin: 'download', url: 'https://www.youtube.com/watch?v=c', extractor: 'Youtube', videoId: 'c', playlistId: 'PL1' });
 		});
 
 		it('keeps an MP3 direct link as it is and records the link', async () => {
@@ -259,7 +259,7 @@ describe('DownloadService', () => {
 			assert.equal(job.targetTitle, 'Combat');
 			assert.equal(job.state, 'done');
 			assert.deepEqual(ffmpeg.conversions, []);
-			assert.deepEqual((await options('Combat/Rain.mp3')).source, { url: 'https://example.com/Rain.mp3' });
+			assert.deepEqual((await options('Combat/Rain.mp3')).source, { origin: 'download', url: 'https://example.com/Rain.mp3' });
 			assert.deepEqual(library.playlists.find((playlist) => playlist.id === 'Combat')?.tracks.map((track) => track.id), ['Combat/1.mp3', 'Combat/Rain.mp3']);
 			assert.match(service.current()?.log.join('\n') ?? '', /Downloaded 4 B of 4 B \(100 %\)/);
 		});

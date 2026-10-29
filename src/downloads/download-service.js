@@ -299,7 +299,12 @@ export class DownloadService {
 						const prepared = await this.#prepare(downloaded, fetch, output, directory, job, signal);
 						const options = {
 							title: titleFromFileName(prepared.name, fetch.videoId),
-							source: { ...fetch.source, ...(output.chapter ? { chapter: output.chapter.number } : {}) },
+							source: {
+								origin: /** @type {const} */ ('download'),
+								...fetch.source,
+								// The start lets the metadata dialog link to the chapter (DESIGN.md §9.13).
+								...(output.chapter ? { chapter: output.chapter.number, chapterStart: Math.round(output.chapter.chapter.start * 1000) / 1000 } : {}),
+							},
 						};
 						createdPlaylist = await this.#add(job.target, createdPlaylist, prepared.path, prepared.name, options);
 						job.items[output.item].state = 'done';
