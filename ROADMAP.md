@@ -29,35 +29,7 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## Proposals
 
-### Live volume
-
-**Goal.** A small volume bar for a temporary level, on every playlist tile and sound tile and in every footer player bar. During a session it lets the owner turn one playlist or one sound down (or back up) without opening a Customize dialog and without touching what is saved. It resets to full on a page reload.
-
-**Design changes.**
-- §6.1 (facade): `setPlaylistLevel(playlistId, level)`, `setSoundLevel(soundId, level)`, and `playlistLevel(playlistId)` / `soundLevel(soundId)` to read them. `level` runs from `0` to `1` on a slider scale, the same as the header volumes. Commands as plain objects `{ type: 'setPlaylistLevel' | 'setSoundLevel', id, level }`, validated by `dispatch()` (§6). An unknown id or a level outside `0..1` is an `InvalidCommandError`.
-- §6.2 (events): `playlist.levelChanged` `{ playlistId, level }` and `sound.levelChanged` `{ soundId, level }`, so the tile bar and the footer bar of one playlist stay in step, in this tab and with any later remote.
-- §6.4 (volume): a new "Live level" paragraph. The level is never saved (not in `.soundboard`, not in the options files, no debounce, nothing in `flushSettings`), and a reload gives full level. It is separate from the saved `gain` and multiplies with it: a voice plays at `playlist gain × track gain × level` and a sound instance at `sound gain × level`. The scale is `LEVEL_SCALE = BUS_SCALE` (gain = `level ** 2`), with no boost.
-- §7 (`SoundPlayer`): `setLevel(soundId, level)` is stored next to `#gains` and applied to every live instance and to later ones, including a press still decoding.
-- §8 (`PlaylistPlayer`): `setLevel(level)` joins `#voiceGain` and goes through `#applyGains()`, so it reaches the current voice, voices fading out and later ones. A fade is never disturbed, since fades use their own gain stage (§6.3). No engine change is needed.
-- §9.1 and §9.2 (UI): a `ui/level-bar.js` component, used by the tiles and the player bar.
-- §10 (structure): `ui/level-bar.js`, `logic/level.js` if the scale needs a home of its own.
-- `TESTING.md`: a manual check that the level is audible and that a fade in progress does not jump.
-
-**Open questions.**
-1. **Is the level kept when a playlist or sound stops?** *Recommended:* yes, until the page reloads. A sound turned down for the session should stay down on the next press, and a playlist turned down should come back quiet. It is only reset by the bar itself (double-click) or by F5.
-2. **Where do the bars appear on tiles?** *Recommended:* hidden by default and shown on hover or keyboard focus within the tile, and always while the level is below full, so a turned-down tile is visibly marked. The footer bars always show theirs. A tile's bar must not change the tile's size or its click target: the bar sits along the bottom edge and pressing it never plays the tile (it is a sibling of the tile button, as the sound tile's ■ stop button is, §9.1).
-3. **One value per sound effect?** *Recommended:* yes. One level per sound, applied to all of its instances. A level per instance would need a handle for each press, and sounds are fire-and-forget.
-4. **Which scale?** *Recommended:* the same as the header volumes (`BUS_SCALE`, 0 to full, no boost), with double-click to reset to full and the arrow, Home and End keys, as the gain widget has (§9.7). The live level is a cut for the session, not a second boost control. A reading is not shown on the tile; the footer bar shows a tooltip with the percentage.
-5. **Does the footer bar need its own space?** *Recommended:* a thin row under the progress bar in the player bar, so the bar's layout in the three-column grid does not change width. The bar grows a little taller; the footer's two-row limit is adjusted to match.
-6. **Does Panic Stop or a track change reset it?** *Recommended:* no. Neither touches levels. A playlist's level carries over from track to track.
-
-**Plan.**
-1. `logic/level.js` and `PlaylistPlayer.setLevel` — tests with the fake engine: a voice's gain is `playlist × track × level²`, a level change reaches the current voice and voices fading out and not the fade ramps (`FakeVoice.gainRamps`), a later track starts at the level, and a saved-gain change keeps the level.
-2. `SoundPlayer.setLevel` — tests: live instances and later presses follow it, a press still decoding picks up the latest level, and a gain change keeps the level.
-3. The facade commands, getters and events, validation in `dispatch()` — tests: bad ids and levels are rejected, `levelChanged` events fire only on real changes, and nothing is sent to the server or written by `flushSettings`.
-4. `ui/level-bar.js` and the footer bar, kept in step with the tile's through the events — Playwright tests: dragging, keyboard, double-click reset, tooltip, and the two bars of one playlist showing the same value.
-5. The bars on playlist and sound tiles (hover, focus and the turned-down marker) — Playwright tests: shown on hover and when below full, pressing the bar never plays the tile, and the tile's size does not change.
-6. Add the manual check to `TESTING.md`. Then update `DESIGN.md` (§6.1, §6.2, §6.4, §7, §8, §9.1, §9.2, §10) in its own commit, and remove this proposal and the backlog entry.
+None yet.
 
 ---
 
@@ -74,13 +46,6 @@ None yet.
 In the owner's order: work from the top. Each entry becomes a proposal (above) before any code is written.
 
 **Decided for all of them.** Customization changes apply immediately and are saved with a 500 ms debounce, as the sound Customize dialog does (DESIGN.md §6.4, §9.7). Re-sorting on screen waits until the dialog closes. Playback state is never remembered across a page reload, so F5 always gives a clean start.
-
-### Live volume
-
-A small volume bar for a temporary volume, on the playlist tiles and sound tiles and in the footer's player bars.
-
-- **Behavior:** the footer's bar and the playlist tile's bar are the same value, kept in step. It is temporary: never saved, back at full on a reload, and separate from the saved `gain` (DESIGN.md §6.4), which the Customize dialogs set. It multiplies with it.
-- **Seam:** voices already have a gain stage of their own next to the fade stage (§6.3). Open for the proposal: whether sound effects get one value per sound, and whether a tile's bar is always visible or appears on hover.
 
 ### Reload guard
 

@@ -524,6 +524,10 @@ panicStop()                               // in 'fade': stop every playlist (a d
                                           // over its sound's fadeOut (§7); if anything is left fading, move to 'now'.
                                           // In 'now': stop everything instantly, voices still fading included, and move to 'fade'
 panicState() → 'fade' | 'now'
+
+// live volume of a playlist (§6.4); sound effects have none
+setPlaylistLevel(playlistId, level)       // level: slider position 0..1; never saved
+getPlaylistLevel(playlistId) → number     // 1 until changed
 customizeSound(soundId, { title?, gain?, startAt?, endAt?, fadeIn?, fadeOut? })  // applies at once, saves 500 ms later (§6.4)
                                           // points and fades only reach later presses (§7)
 flushSoundOptions(soundId)                // save that sound's pending change now (its dialog closed)
@@ -612,6 +616,7 @@ on(type, handler) → unsubscribe, off(type, handler)
 | `audio.suspended` | `{}`, sent when the audio context stops running without being asked (Safari interruption, Mac wake from sleep) |
 | `audio.resumed` | `{}`, sent when it runs again after a suspension |
 | `panic.changed` | `{ state }`, `'fade'` or `'now'`: what the next press of Panic Stop does (§6.1) |
+| `playlist.levelChanged` | `{ playlistId, level }`, sent only when the live volume (§6.4) really changes |
 | `sound.activeChanged` | `{ soundId, active }`, sent when the instance count goes from 0 to ≥1 or back |
 | `sound.error` | `{ soundId, message }`: decoding or playback failed, or the browser cannot play the format |
 | `sound.changed` | `{ sound }`, the sound with its new title, gain, points or fades, right after `customizeSound` |
@@ -701,9 +706,14 @@ Volumes are saved in `.soundboard` (§2.3), so they survive reloads and restarts
 **Item volume.** Each sound, playlist and track has its own `gain` (§2.3). Sounds and playlists set it in their Customize dialogs (§9.7).
 - **Range and display.** Gain runs from `0` (silent) to `MAX_GAIN = 4` (+12.04 dB); the server enforces the same limit. People see decibels: `dB = 20 · log10(gain)`, `gain = 10^(dB / 20)`, and gain 0 is shown as `−∞ dB`. Above gain 1 a loud file can clip; that is allowed, and the widget shows it in orange.
 - **Sounds.** Every instance plays at the sound's gain.
-- **Playlists.** Every playlist voice plays at `playlist gain × track gain`, through the voice's own gain stage (§6.3), so no extra node per playlist is needed.
+- **Playlists.** Every playlist voice plays at `playlist gain × track gain × live volume`, through the voice's own gain stage (§6.3), so no extra node per playlist is needed.
 - **Applying.** `customizeSound`, `customizePlaylist` and `customizeTrack` change the browser's library at once (`LibraryModel.updateSound` / `updatePlaylist` / `updateTrack`, which keep the items sorted with the same order as the server, §2.2). `SoundPlayer.setGain` applies a sound's gain to every playing instance and to later ones; `PlaylistPlayer.setGain` applies a playlist's gain to its current voice, to voices still fading out, and to later ones. A track's new gain reaches the playlist through `PlaylistPlayer.setPlaylist` (§8.1), which applies it to the same voices at once. An empty title, a gain out of range or an unknown order is an `InvalidCommandError`.
 - **Saving.** `OptionsSync` saves per item like the volume save: 500 ms after the last change, one request per item in flight, always the item's full editable options, so a failed save is repaired by the next one. Its queues are keyed by kind (`sound`, `playlist`, `track`) and id, so items of different kinds with the same id never share one. `flushSoundOptions`, `flushPlaylistOptions` and `flushTrackOptions` send one item's pending change now (after any save of it in flight); `flushSettings` sends everything pending with `keepalive`. `SettingsSync.settle()` and `OptionsSync.settleAll()` send everything pending without `keepalive` and resolve once nothing is waiting or in flight, follow-up saves included; a failed save is reported as usual and doesn't reject. A refresh waits for them (§6.7).
+
+**Live volume.** Each playlist also has a temporary volume for the session, set from its player bar (§9.2). Sound effects have none.
+- **A slider position.** It runs from `0` to `1` on the same scale as the header volumes (gain = `level ** 2`, no boost) and starts at `1`. It multiplies with the saved gain and is separate from it.
+- **Never stored.** Not in `.soundboard`, not in the options files, not debounced and not part of `flushSettings`. A reload gives full volume. It stays across stops, track changes and Panic Stop, and only the bar or a reload resets it.
+- **Applying.** `PlaylistPlayer.setLevel` goes through the same path as `setGain`, so it reaches the current voice, voices still fading out and later ones, and never disturbs a fade. `setPlaylistLevel` is the command `{ type: 'playlist.setLevel', playlistId, level }`, validated by `dispatch()`. The level is clamped to `0..1`, and a level that is not a number or an unknown playlist is an `InvalidCommandError`. `playlist.levelChanged` (§6.2) is sent only when the value changes, so the player bar and the tile follow it.
 
 ### 6.5 Voice monitor (`VoiceMonitor`)
 
@@ -929,7 +939,7 @@ With a non-zero `crossfade` rule, one track gives way to the next by fading out 
 
 ## 9. UI
 
-Dark theme, plain and functional. Icons appear only on controls (play, pause, stop, previous, next, volume, and the track list chevron) and as the saving spinner and checkmark (§9.7), drawn as inline SVG. Sound and playlist tiles have no icons.
+Dark theme, plain and functional. Icons appear only on controls (play, pause, stop, previous, next, volume, and the track list chevron) and as the saving spinner and checkmark (§9.7), drawn as inline SVG. Sound tiles have no icons, and playlist tiles only the turned-down volume bubble (§9.1).
 
 ### 9.0 Splash screen
 
@@ -967,6 +977,7 @@ Browsers only allow audio to start inside a user gesture, so the app starts behi
 - Tiles are `<button>`s in a grid of columns at least 10rem (160 px) wide, with titles clamped to 3 lines. The full title shows as a tooltip.
 - Playlist tiles have a blue accent and sound tiles an amber one.
 - A playlist tile shows its track count when idle, following tracks added by a download, and "Loading…", "Playing" or "Paused" when active, and is highlighted while active.
+- **Turned-down volume.** While a playlist's live volume (§6.4) is below full, its tile shows a small orange (`bg-boost`) bubble with a gray speaker icon at the bottom right, level with the status text, which is cut with an ellipsis (`truncate`) before it reaches the bubble. The tooltip gives the percentage. Double-clicking the bubble sets the volume back to full, and it disappears. The bubble is a sibling of the tile button, so it never toggles the playlist; the tile follows `playlist.levelChanged`. The volume itself is set only from the player bar (§9.2).
 - A stopped playlist that remembers where it will resume (§8.1) keeps its normal idle look, except that its left border is dashed and its status, in the playlist accent, reads "Resumes at 1:23" (`pause`) or "Resumes track 3" (`resetTrack`). The tooltip names the track ("Combat: resumes "Boss Theme" at 1:23" or "… from its start").
 - A **sound with live instances** is highlighted and shows a small ■ stop button in its top-right corner. That button is a sibling of the tile, not inside it, so pressing it calls `stopSound` and never also plays the sound.
 - Tiles that can't play (an unsupported format, or a playlist with no playable track) are disabled, with a tooltip explaining why.
@@ -985,7 +996,7 @@ Browsers only allow audio to start inside a user gesture, so the app starts behi
 ### 9.2 Player bar
 
 Each bar shows:
-- The playlist title and `m:ss / m:ss` (`h:mm:ss` from an hour on), with `--:--` while the duration is unknown.
+- The playlist title and `m:ss / m:ss` (`h:mm:ss` from an hour on), with `--:--` while the duration is unknown. Between them, at the right of the title, sits the **live volume bar** (`ui/level-bar.js`, §6.4): a `GainControl` with the `mini` option on `BUS_SCALE`, which is only a thin line, 5rem wide and 1rem tall, without the bars or the dB readout. Dragging or pressing it sets the level, double-clicking resets it to full, and the keyboard works as on the header volumes. The tooltip gives the percentage.
 - The track title with a ▾ chevron. Clicking it opens the **track list popover**.
 - ⏮ previous, ⏯ pause/resume, ⏭ next, and ⏹ stop. Previous, next and stop use the `'default'` transition; the instant versions are in the context menu.
 - A progress bar over the waveform of the part of the track that plays (the stored waveform cut at the track's start and end points, §6.6; drawn on a canvas in `text-music/35`, redrawn on a track or points change, a resize or when the waveform is made). The bar is a thin line (`h-0.5`) in the middle of the waveform, in a row 2 rem tall. Pressing anywhere on that row seeks to that point. When a crossfade is coming (`crossfadeFrom`, §8.4), the stretch from that point to the end is drawn in a lighter blue (`bg-music/40`) under the playback fill, so it is clear where the next track will take over. Its width is set with an inline style, like the fill's. A looping track has no such stretch, and its fill and time go back to the start at each loop.
@@ -1257,7 +1268,7 @@ public/
 		api/        backend-api.js  server-events.js
 		ui/         app.js  component.js  dom.js  icons.js  format.js  menus.js  position.js  external-changes-button.js
 		            splash.js  overlay.js  context-menu.js  track-list.js  tile-grid.js
-		            playlist-tile.js  sound-tile.js  player-dock.js  player-bar.js  panic-button.js  volume-controls.js
+		            playlist-tile.js  sound-tile.js  player-dock.js  player-bar.js  level-bar.js  panic-button.js  volume-controls.js
 		            dialog.js  customize-parts.js  filled-field.js  sound-editor.js  playlist-editor.js  track-accordion.js
 		            gain-control.js  gain-scale.js  debug-view.js  waveform-indicator.js  waveform-draw.js  waveform-canvas.js
 		            seconds-control.js  seconds-scale.js  range-control.js  range-scale.js  add-dialog.js  download-dialog.js
