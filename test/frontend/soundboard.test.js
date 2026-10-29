@@ -809,6 +809,24 @@ describe('Soundboard', () => {
 		});
 	});
 
+	describe('regenerating waveforms', () => {
+		it('makes every sound\'s and track\'s waveform again, sounds first', async () => {
+			const { soundboard, api, advance } = await started();
+			// Each file rests a while before the next, so time moves on in steps.
+			const finish = async () => {
+				for (let step = 0; step < 20; step++) {
+					await advance(1);
+				}
+			};
+			await finish();
+			api.waveforms.clear();
+			soundboard.regenerateWaveforms();
+			await finish();
+			const library = exampleLibrary();
+			assert.deepEqual([...api.waveforms.keys()], [...library.sounds, ...library.playlists.flatMap((playlist) => playlist.tracks)].map((file) => file.id));
+		});
+	});
+
 	describe('the trash', () => {
 		it('follows the server\'s summary, announcing only real changes', async () => {
 			const { soundboard, serverEvents, eventsOf } = await started();

@@ -286,6 +286,57 @@ describe('BootstrapService', () => {
 		});
 	});
 
+	describe('sources', () => {
+		const ID = 'dQw4w9WgXcQ';
+		const FROM_NAME = { origin: 'fileName', url: `https://www.youtube.com/watch?v=${ID}`, extractor: 'Youtube', videoId: ID };
+
+		it('finds a yt-dlp id in a new file\'s name and takes it out of the title', async () => {
+			const root = await tree({ '.soundboard': SETTINGS, [`Battle [${ID}].ogg`]: 'audio' });
+			await bootstrap(root);
+			assert.deepEqual(await readOptions(root, `Battle [${ID}].ogg.json`), { title: 'Battle', source: FROM_NAME });
+		});
+
+		it('gives an existing options file without a source one, keeping a changed title apart from the id', async () => {
+			const root = await tree({
+				'.soundboard': SETTINGS,
+				[`Battle [${ID}].ogg`]: 'audio',
+				[`Battle [${ID}].ogg.json`]: JSON.stringify({ title: `Boss Fight [${ID}]`, gain: 0.5 }),
+			});
+			const { reporter } = await bootstrap(root);
+			assert.deepEqual(await readOptions(root, `Battle [${ID}].ogg.json`), { title: 'Boss Fight', gain: 0.5, source: FROM_NAME });
+			// One write for the duration measured on the way, one for the source.
+			assert.deepEqual(reporter.callsTo('optionsGenerated'), [2]);
+		});
+
+		it('takes the link from the tags when the name has no id', async () => {
+			const tag = buildId3v2({ frames: [textFrame('TXXX', 'purl\0https://example.com/song')] });
+			const root = await tree({ '.soundboard': SETTINGS, 'Song.mp3': tag });
+			await bootstrap(root);
+			assert.deepEqual((await readOptions(root, 'Song.mp3.json')).source, { origin: 'tags', url: 'https://example.com/song' });
+		});
+
+		it('leaves a recorded source alone, so each file is examined once', async () => {
+			const source = { origin: 'download', url: 'https://example.com/x' };
+			const root = await tree({
+				'.soundboard': SETTINGS,
+				[`Battle [${ID}].ogg`]: 'audio',
+				[`Battle [${ID}].ogg.json`]: JSON.stringify({ title: `Battle [${ID}]`, source }),
+			});
+			await bootstrap(root);
+			assert.deepEqual(await readOptions(root, `Battle [${ID}].ogg.json`), { title: `Battle [${ID}]`, source });
+		});
+
+		it('hands the source to the library, reading one without an origin as a download', async () => {
+			const root = await tree({
+				'.soundboard': SETTINGS,
+				'Old.mp3': 'audio',
+				'Old.mp3.json': JSON.stringify({ title: 'Old', source: { url: 'https://example.com/old' } }),
+			});
+			const library = readyLibrary((await bootstrap(root)).outcome);
+			assert.deepEqual(library.sounds[0].source, { origin: 'download', url: 'https://example.com/old' });
+		});
+	});
+
 	describe('durations', () => {
 		async function fixture() {
 			const copy = await copyFixture('example_soundboard');

@@ -218,7 +218,7 @@ describe('DownloadService', () => {
 			assert.deepEqual(await readdir(join(root, WORKSPACE_NAME)), []);
 		});
 
-		it('cuts the chosen chapters from one download, in order, each with its chapter number', async () => {
+		it('cuts the chosen chapters from one download, in order, each with its chapter number and start', async () => {
 			const { service, ytDlp, ffmpeg, finished, options } = await setup();
 			const { probeId } = await service.probe('https://www.youtube.com/watch?v=zoo');
 			service.start({ probeId, target: { kind: 'sound' }, chapters: [2, 0] });
@@ -232,6 +232,8 @@ describe('DownloadService', () => {
 			const end = await options('Me at the zoo - 003 End [zoo].ogg');
 			assert.equal(end.title, 'Me at the zoo - 003 End');
 			assert.equal(end.source.chapter, 3);
+			assert.equal(end.source.chapterStart, 17);
+			assert.equal(end.source.origin, 'download');
 		});
 
 		it('downloads the chosen playlist entries into a new playlist, carrying on past a failure', async () => {

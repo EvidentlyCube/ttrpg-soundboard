@@ -80,6 +80,34 @@ describe('WaveformService', () => {
 		assert.equal(warnings.length, 2);
 	});
 
+	it('regenerates the given files, whether or not the server lacks them', async () => {
+		const { api, decoder, service, finish } = setup();
+		api.missingWaveforms = ['Rain.ogg'];
+		service.regenerate(['Boom.mp3', 'Combat/1.mp3']);
+		await finish();
+		assert.deepEqual(decoder.decoded, ['/media/Boom.mp3', '/media/Combat/1.mp3']);
+		assert.deepEqual([...api.waveforms.keys()], ['Boom.mp3', 'Combat/1.mp3']);
+		assert.deepEqual(service.status, { running: false, done: 2, total: 2, failed: 0 });
+	});
+
+	it('takes over from a run in progress, whose result is dropped', async () => {
+		const { api, decoder, service, settle, finish } = setup();
+		api.missingWaveforms = ['Rain.ogg'];
+		/** @type {() => void} */
+		let release = () => {};
+		decoder.gate = new Promise((resolve) => {
+			release = resolve;
+		});
+		service.start();
+		await settle();
+		await settle();
+		service.regenerate(['Boom.mp3']);
+		release();
+		await finish();
+		assert.deepEqual([...api.waveforms.keys()], ['Boom.mp3']);
+		assert.deepEqual(service.status, { running: false, done: 1, total: 1, failed: 0 });
+	});
+
 	it('stops after the file being decoded and drops its result', async () => {
 		const { api, decoder, service, settle, finish } = setup();
 		api.missingWaveforms = ['Boom.mp3', 'Rain.ogg'];
