@@ -31,6 +31,21 @@ export class SoundsPage {
 		await this.#tile(title).click();
 	}
 
+	/**
+	 * Opens the tile's context menu and picks an item, such as "Customize".
+	 * @param {string} title
+	 * @param {string} item
+	 */
+	async useMenu(title, item) {
+		await this.#tile(title).click({ button: 'right' });
+		await this.#page.getByRole('menuitem', { name: item, exact: true }).click();
+	}
+
+	/** @param {string[]} titles every sound's title, in the order the tiles are laid out */
+	async expectOrder(titles) {
+		await expect(this.#page.locator('[data-sound-id] > span')).toHaveText(titles);
+	}
+
 	/** Presses the small stop button in the tile's corner. @param {string} title */
 	async stop(title) {
 		await this.#stopButton(title).click();

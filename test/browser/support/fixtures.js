@@ -1,10 +1,13 @@
 import { join } from 'node:path';
 import { test as base } from '@playwright/test';
+import { PlaylistEditorPage } from '../pages/dialogs/playlist-editor.js';
+import { SoundEditorPage } from '../pages/dialogs/sound-editor.js';
 import { FooterPage } from '../pages/footer.js';
 import { PlaylistsPage } from '../pages/playlists.js';
 import { SoundsPage } from '../pages/sounds.js';
 import { SplashPage } from '../pages/splash.js';
 import { Audio } from './audio.js';
+import { Disk } from './disk.js';
 import { startSoundboardServer } from './server.js';
 
 const SUPPORT = import.meta.dirname;
@@ -56,6 +59,8 @@ class Soundboard {
  * @property {SoundsPage} sounds
  * @property {FooterPage} footer
  * @property {Audio} audio
+ * @property {Disk} disk
+ * @property {{ soundEditor: SoundEditorPage, playlistEditor: PlaylistEditorPage }} dialogs
  * @typedef {object} Options
  * @property {string[]} unplayableFormats formats this "browser" cannot play, such as 'ogg' (Safari)
  * @property {'example' | import('../../helpers/tmp-tree.js').TreeSpec} library what the server serves: a copy of the example fixture, or a tree to build
@@ -99,6 +104,14 @@ const fixtures = {
 
 	footer: async ({ page }, use) => {
 		await use(new FooterPage(page));
+	},
+
+	disk: async ({ soundboard }, use) => {
+		await use(new Disk(soundboard.root));
+	},
+
+	dialogs: async ({ page }, use) => {
+		await use({ soundEditor: new SoundEditorPage(page), playlistEditor: new PlaylistEditorPage(page) });
 	},
 
 	audio: async ({ page }, use) => {

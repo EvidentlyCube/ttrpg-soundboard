@@ -85,6 +85,15 @@ export class Audio {
 	}
 
 	/**
+	 * A voice for this title with these settings, such as where in the file it started.
+	 * @param {string} title
+	 * @param {{ gain?: unknown, startAt?: unknown }} settings numbers, or matchers such as `expect.closeTo`
+	 */
+	async expectVoice(title, settings) {
+		await expect.poll(async () => (await this.#liveVoices()).filter((voice) => voice.label === title)).toContainEqual(expect.objectContaining(settings));
+	}
+
+	/**
 	 * @param {number} count
 	 * @param {{ title?: string, bus?: 'music' | 'sfx' }} [only] counts just the voices of that title or bus
 	 */
