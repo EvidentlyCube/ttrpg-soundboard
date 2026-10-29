@@ -157,6 +157,23 @@ describe('Soundboard', () => {
 			assert.deepEqual(eventsOf('sound.activeChanged').map((event) => event.type === 'sound.activeChanged' && event.active), [true, false]);
 		});
 
+		it('reports anything playing: a sound, or a playlist playing or paused, but not a resume point', async () => {
+			const { soundboard } = await started();
+			assert.equal(soundboard.isAnythingPlaying(), false);
+			soundboard.playSound('Rain.ogg');
+			assert.equal(soundboard.isAnythingPlaying(), true);
+			soundboard.stopSound('Rain.ogg');
+			assert.equal(soundboard.isAnythingPlaying(), false);
+
+			soundboard.playPlaylist('Combat');
+			assert.equal(soundboard.isAnythingPlaying(), true);
+			soundboard.pausePlaylist('Combat');
+			assert.equal(soundboard.isAnythingPlaying(), true);
+			soundboard.panicStop();
+			soundboard.panicStop();
+			assert.equal(soundboard.isAnythingPlaying(), false);
+		});
+
 		it('rejects unknown sounds', async () => {
 			const { soundboard } = await started();
 			assert.throws(() => soundboard.playSound('Nope'), InvalidCommandError);

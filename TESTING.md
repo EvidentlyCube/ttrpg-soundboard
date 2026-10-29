@@ -143,6 +143,11 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] Stop the playlist and play it again: it is still quiet, and the bubble stayed. After F5 it is at full.
 - [ ] A long status text on a tile is cut with an ellipsis before it reaches the bubble.
 
+**Reload guard**
+- [ ] While a playlist plays, or is paused, or a long sound plays, F5 and closing the tab show the browser's own "Leave site?" prompt; Cancel keeps everything playing.
+- [ ] With nothing playing (or after Panic Stop pressed twice), F5 and closing the tab happen without a prompt.
+- [ ] Copy a file into the audio folder while something plays and press External Changes – Refresh: the page reloads without a prompt.
+
 **Customize a sound**
 - [ ] Right-click a sound → Customize: the dialog opens with the title field focused; the menu is gone.
 - [ ] While a sound plays (use the dialog's Play button on a long sound), moving the volume changes its loudness at once, without clicks; new presses play at the new volume.
