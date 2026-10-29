@@ -42,6 +42,6 @@ test.describe('with a library of its own', () => {
 test('the page runs on the fake audio engine, which the click unlocks', async ({ page, soundboard }) => {
 	await soundboard.startAndWaitUntilLoaded();
 
-	const unlocks = await page.evaluate(() => /** @type {any} */ (globalThis).soundboardTest.engine.unlockCount);
+	const unlocks = await page.evaluate(() => soundboardTest.engine.unlockCount);
 	expect(unlocks).toBeGreaterThan(0);
 });

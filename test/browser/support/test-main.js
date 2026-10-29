@@ -10,7 +10,8 @@ import { FakeClock } from '../test-support/fake-clock.js';
 import { FakeWaveformDecoder } from '../test-support/fake-waveform-decoder.js';
 
 const clock = new FakeClock();
-const engine = new FakeAudioEngine(clock);
+// Loading takes no time unless a test scripts it, so a press needs no `advance` before its sound starts.
+const engine = new FakeAudioEngine(clock, { defaultScript: { loadDelay: 0 } });
 const decoder = new FakeWaveformDecoder();
 
 const soundboard = new Soundboard({
@@ -21,6 +22,9 @@ const soundboard = new Soundboard({
 	serverEvents: new EventSourceServerEvents(),
 	logger: console,
 });
+
+// Work that is already due (a load that takes no time) runs by itself; the clock never moves otherwise.
+setInterval(() => clock.advance(0), 10);
 
 // The only way the tests reach the fakes (test/browser/support/audio.js).
 globalThis.soundboardTest = { clock, engine, decoder };

@@ -1,7 +1,10 @@
 import { join } from 'node:path';
 import { test as base } from '@playwright/test';
+import { FooterPage } from '../pages/footer.js';
 import { PlaylistsPage } from '../pages/playlists.js';
+import { SoundsPage } from '../pages/sounds.js';
 import { SplashPage } from '../pages/splash.js';
+import { Audio } from './audio.js';
 import { startSoundboardServer } from './server.js';
 
 const SUPPORT = import.meta.dirname;
@@ -50,6 +53,9 @@ class Soundboard {
  * @property {Soundboard} soundboard
  * @property {SplashPage} splash
  * @property {PlaylistsPage} playlists
+ * @property {SoundsPage} sounds
+ * @property {FooterPage} footer
+ * @property {Audio} audio
  * @typedef {object} Options
  * @property {'example' | import('../../helpers/tmp-tree.js').TreeSpec} library what the server serves: a copy of the example fixture, or a tree to build
  */
@@ -80,6 +86,18 @@ const fixtures = {
 
 	playlists: async ({ page }, use) => {
 		await use(new PlaylistsPage(page));
+	},
+
+	sounds: async ({ page }, use) => {
+		await use(new SoundsPage(page));
+	},
+
+	footer: async ({ page }, use) => {
+		await use(new FooterPage(page));
+	},
+
+	audio: async ({ page }, use) => {
+		await use(new Audio(page));
 	},
 };
 

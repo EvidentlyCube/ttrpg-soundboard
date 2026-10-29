@@ -11,7 +11,8 @@
 	},
 	"files": [],
 	"include": [
-		"test/browser/**/*.js"
+		"test/browser/**/*.js",
+		"test/browser/**/*.d.ts"
 	],
 	"exclude": [
 		"test/browser/support/test-main.js"

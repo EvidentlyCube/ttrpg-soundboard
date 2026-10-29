@@ -33,6 +33,11 @@ export default [
 		languageOptions: { globals: globals.node },
 	},
 	{
+		// Specs and the audio driver pass functions to the page, where this global exists (support/globals.d.ts).
+		files: ['test/browser/**/*.js'],
+		languageOptions: { globals: { soundboardTest: 'readonly' } },
+	},
+	{
 		files: ['public/app/**/*.js'],
 		ignores: ['public/app/logic/**'],
 		languageOptions: { globals: globals.browser },

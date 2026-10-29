@@ -11,7 +11,7 @@ export class PlaylistsPage {
 
 	/** @param {string} title */
 	#tile(title) {
-		return this.#page.getByRole('button').filter({ has: this.#page.getByText(title, { exact: true }) });
+		return this.#page.locator('[data-playlist-id]').filter({ has: this.#page.getByText(title, { exact: true }) });
 	}
 
 	/** @param {string[]} titles */
@@ -19,5 +19,29 @@ export class PlaylistsPage {
 		for (const title of titles) {
 			await expect(this.#tile(title)).toBeVisible();
 		}
+	}
+
+	/** @param {string} title */
+	async click(title) {
+		await this.#tile(title).click();
+	}
+
+	/** @param {string} title */
+	async expectPlaying(title) {
+		await expect(this.#tile(title)).toHaveAttribute('data-active', 'true');
+	}
+
+	/** @param {string} title */
+	async expectIdle(title) {
+		await expect(this.#tile(title)).toHaveAttribute('data-active', 'false');
+	}
+
+	/**
+	 * What the tile says under the title: "Playing", "Paused", "4 tracks", "Resumes at 0:05".
+	 * @param {string} title
+	 * @param {string} status
+	 */
+	async expectStatus(title, status) {
+		await expect(this.#tile(title)).toContainText(status);
 	}
 }
