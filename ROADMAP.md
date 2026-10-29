@@ -29,7 +29,29 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## Proposals
 
-None yet.
+### Customizable playlist looping
+
+**Goal.** A playlist option lets it stop after its last track instead of starting over, for one-shot sequences such as a boss intro. The playlist dialog gets a checkbox for it, and the setting is saved with the playlist like the other options. Playlists that don't set it keep looping, as today.
+
+**Design changes.**
+- §2.3 (playlist options): new key `playlistLooping`, a boolean, `true` by default; the example and the validation list (§2.3 "Validation") name it.
+- §5.1 (domain model, `updatePlaylist`) and §5.2 (`PATCH /api/playlists/<id>` body, library JSON example): the new key.
+- §6.1 (`customizePlaylist` and the `playlist.customize` command), §6 `BackendApi.savePlaylistOptions`: the new field.
+- §8.1 (states, play history) and §8.2 (`PlaybackRules`): `playlistLooping` is read from the playlist instead of "always on"; `setRules` applies a change at once. The wording "(only without `playlistLooping`)" becomes a real case.
+- §9.7 (playlist Customize dialog): a checkbox **Repeat the playlist** next to the order and the track repeat checkbox.
+
+**Open questions.**
+1. **Random order without looping.** Random's first fill is a single track (§8.1 table), so a non-looping Random playlist would play one track and stop. *Recommended:* when `playlistLooping` is off, Random starts with a round of every track in random order, like Shuffle, then stops. Looping Random is unchanged.
+2. **Name and label.** *Recommended:* key `playlistLooping` (matches the existing rule and `trackLooping`), label **Repeat the playlist**, description "When off, it stops after the last track."
+3. **Turned off while playing.** The history may already hold entries after the current one. *Recommended:* entries already queued still play and the history is just not extended past them. Turning it back on resumes extending. The crossfade into a next track that no longer exists is dropped by the existing replanning in `setRules`.
+4. **What the end looks like.** *Recommended:* nothing new. It is the existing "stops by itself" path (§8.1): the last track ends, the playlist goes idle and forgets its resume point, with a normal (not instant) end since the voice has nothing left to fade.
+5. **With track repeat on.** *Recommended:* track repeat wins, as it never ends by itself. The two options are independent and need no special rule.
+
+**Plan.**
+1. Library and API — `playlistLooping` in `Library` defaults, `validatePlaylistOptions`, `LibraryEditor.updatePlaylist`, `toPlaylistJson`, and the PATCH route; tests for the default, the type error, saving and the JSON.
+2. Logic — `PlayHistory.setLoop`, the order strategies' non-looping start for Random (question 1), `resolvePlaybackRules` reading the playlist, `PlaylistPlayer.setRules`, `LibraryModel.updatePlaylist`, the `playlist.customize` command and `BackendApi`; tests for each order ending, toggling while playing, crossfade not planned at the last track, and command validation.
+3. UI — the checkbox in the playlist dialog and Playwright specs for it (saving, and a short playlist stopping after its last track); a manual check only if something needs a real browser.
+4. `DESIGN.md` update in its own commit, then remove this proposal and its backlog entry from this file.
 
 ---
 
