@@ -24,7 +24,7 @@ const EVENT_TYPES = /** @type {const} */ ([
 	'waveforms.progress', 'waveform.ready',
 	'library.externalChanges', 'library.refreshing', 'library.refreshed', 'library.refreshFailed',
 	'download.changed', 'download.log', 'sound.added', 'playlist.added', 'sound.removed', 'playlist.removed',
-	'trash.changed',
+	'trash.changed', 'problems.changed',
 ]);
 
 /** Stands in for the server's pushed messages; the test sends them with `push`. */
@@ -903,6 +903,75 @@ describe('Soundboard', () => {
 			await finish();
 			const library = exampleLibrary();
 			assert.deepEqual([...api.waveforms.keys()], [...library.sounds, ...library.playlists.flatMap((playlist) => playlist.tracks)].map((file) => file.id));
+		});
+	});
+
+	describe('problems', () => {
+		const serverProblem = { id: 'symlink:Link.mp3', kind: 'symlink', severity: /** @type {const} */ ('warning'), path: 'Link.mp3', message: 'Ignored.' };
+
+		it('lists the server\'s problems, announcing only real changes', async () => {
+			const { soundboard, serverEvents, eventsOf } = await started();
+			assert.deepEqual(soundboard.getProblems(), []);
+			serverEvents.send({ type: 'problems', problems: [serverProblem] });
+			serverEvents.send({ type: 'problems', problems: [serverProblem] });
+			assert.deepEqual(soundboard.getProblems(), [{ ...serverProblem, count: 1 }]);
+			assert.deepEqual(eventsOf('problems.changed'), [{ type: 'problems.changed', count: 1 }]);
+		});
+
+		it('records a failed save once per item, counts repeats, and drops it when a save succeeds', async () => {
+			const { soundboard, api, clock, settle } = await started();
+			api.saveError = new Error('disk full');
+			soundboard.customizeSound('Boom.mp3', { gain: 3 });
+			clock.advance(500);
+			await settle();
+			soundboard.customizeSound('Boom.mp3', { gain: 2 });
+			clock.advance(500);
+			await settle();
+			assert.deepEqual(soundboard.getProblems(), [{
+				id: 'save-failed:Boom.mp3', kind: 'save-failed', severity: 'error', path: 'Boom.mp3', message: 'disk full', count: 2,
+			}]);
+			api.saveError = null;
+			soundboard.customizeSound('Boom.mp3', { gain: 1 });
+			clock.advance(500);
+			await settle();
+			assert.deepEqual(soundboard.getProblems(), []);
+		});
+
+		it('records the items of a failed download once', async () => {
+			const { soundboard, serverEvents } = await started();
+			const failed = {
+				id: 'job-1', title: 'Zoo', target: /** @type {const} */ ({ kind: 'sound' }), targetTitle: 'Sound effects', state: /** @type {const} */ ('failed'),
+				items: [{ title: 'Roar', state: /** @type {const} */ ('failed'), error: 'Video unavailable' }, { title: 'Chirp', state: /** @type {const} */ ('done'), error: null }],
+				current: null, added: 1, failed: 1,
+			};
+			serverEvents.send({ type: 'download', job: failed });
+			serverEvents.send({ type: 'download', job: failed });
+			assert.deepEqual(soundboard.getProblems().map(({ kind, path, message, count }) => ({ kind, path, message, count })), [
+				{ kind: 'download-failed', path: 'Roar', message: 'Video unavailable', count: 1 },
+			]);
+		});
+
+		it('forgets the problems of a sound that is deleted', async () => {
+			const { soundboard, serverEvents, api, clock, settle } = await started();
+			api.saveError = new Error('disk full');
+			soundboard.customizeSound('Boom.mp3', { gain: 3 });
+			clock.advance(500);
+			await settle();
+			assert.equal(soundboard.getProblems().length, 1);
+			serverEvents.send({ type: 'library.removed', soundId: 'Boom.mp3' });
+			assert.deepEqual(soundboard.getProblems(), []);
+		});
+
+		it('dismisses a page problem locally and a server problem on the server', async () => {
+			const { soundboard, serverEvents, api, eventsOf } = await started();
+			serverEvents.send({ type: 'problems', problems: [serverProblem, { ...serverProblem, id: 'symlink:B.mp3', path: 'B.mp3' }] });
+			soundboard.dismissProblem('symlink:Link.mp3');
+			assert.deepEqual(soundboard.getProblems().map((problem) => problem.id), ['symlink:B.mp3']);
+			assert.deepEqual(api.dismissedProblems, ['symlink:Link.mp3']);
+			soundboard.dismissAllProblems();
+			assert.deepEqual(soundboard.getProblems(), []);
+			assert.deepEqual(api.dismissedProblems, ['symlink:Link.mp3', 'all']);
+			assert.deepEqual(eventsOf('problems.changed').at(-1), { type: 'problems.changed', count: 0 });
 		});
 	});
 

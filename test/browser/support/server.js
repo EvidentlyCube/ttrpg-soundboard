@@ -22,6 +22,7 @@ export async function startSoundboardServer(library = 'example') {
 	const server = await startServer({
 		library: outcome.library,
 		settings: outcome.settings,
+		problems: outcome.problems,
 		port: 0,
 		logError: (error) => console.error('SERVER ERROR', error),
 		watcher,

@@ -74,6 +74,19 @@ export class HeaderPage {
 		await expect(this.#page.locator('[data-trash-button]')).toBeHidden();
 	}
 
+	/** @param {string} text as shown, such as "2 problems" */
+	async expectProblems(text) {
+		await expect(this.#page.locator('[data-problems-button]')).toHaveText(text);
+	}
+
+	async expectNoProblems() {
+		await expect(this.#page.locator('[data-problems-button]')).toBeHidden();
+	}
+
+	async openProblems() {
+		await this.#page.locator('[data-problems-button]').click();
+	}
+
 	async openTrash() {
 		await this.#page.locator('[data-trash-button]').click();
 	}
