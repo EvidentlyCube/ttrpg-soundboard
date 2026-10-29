@@ -38,10 +38,10 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 - **§2.5 Trash and moves.** The trash gets a reading, and two new actions.
   - **Reading the trash.** Root-level audio files in `.trash/` are **sounds**. Each folder there is a **playlist**, and the audio files at any depth inside it are its **tracks**. Titles come from the trashed options files, falling back to the default titles (§2.4). A trashed playlist's title comes from `.trash/<name>.json` if there is one. When only single tracks were deleted, there is none, and the folder name is used. Dot files are skipped. Other files are not listed, but they count toward the size.
   - **Size.** This is the total of every file under `.trash/`.
-  - **Restoring a sound** moves it, with its options file and waveform, back to the root. On a clash it gets ` (2)` as other additions do (`moveAudioFile`). Its title stays as it was (question B).
-  - **Restoring a track**, when its playlist (a root folder of that name) exists, puts it back into its old folder. If that folder is a subdirectory the playlist doesn't include, the track goes to the playlist's top level instead (question C). Clashes get ` (2)`. When the playlist is gone, a new playlist folder is created, `.trash/<name>.json` is **copied** next to it (so the tracks still in the trash keep it), and the track goes back in as above. Without a trashed options file, the new playlist gets an options file with the folder's name as its title.
+  - **Restoring a sound** moves it, with its options file and waveform, back to the root. On a clash it gets ` (2)` as other additions do (`moveAudioFile`). Its title stays as it was (B).
+  - **Restoring a track**, when its playlist (a root folder of that name) exists, puts it into the playlist's top level, wherever it sits inside the trashed folder (C). Clashes get ` (2)`. When the playlist is gone, a new playlist folder is created, `.trash/<name>.json` is **copied** next to it (so the tracks still in the trash keep it), and the track goes back in as above. Without a trashed options file, the new playlist gets an options file with the folder's name as its title.
   - **Restoring a playlist** whose name is free moves the whole folder and its options file back, with everything in them. If a playlist of that name exists, each track is restored into it as above, and the trashed options file is ignored.
-  - **A trashed playlist with no audio files left** leaves the trash completely: its folder, anything else still in it, and its options file. This happens after its last track is restored or deleted (question D).
+  - **A trashed playlist with no audio files left** leaves the trash completely: its folder, anything else still in it, and its options file. This happens after its last track is restored or deleted (D).
   - **Deleting for good** removes the audio file, its options file and its waveform. For a playlist, it removes the folder and its options file.
   - **Everything.** "Restore all" restores every playlist, then every sound. "Delete all" removes `.trash/` itself.
 - **§5.1 `LibraryEditor`.** New `restoreSound(id)`, `restoreTrack(id)`, `restorePlaylist(id)` and `restoreAll()`, where the ids are the trashed paths (the item's old id).
@@ -50,7 +50,7 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 - **§5.2 HTTP API.**
   - `GET /api/trash` returns `{ size, playlists: [{ id, title, size, tracks: [{ id, title, size }] }], sounds: [{ id, title, size }] }`, sorted as the board sorts (§2.2).
   - `POST /api/trash/restore` and `POST /api/trash/delete` take the body `{ kind: 'sound' | 'track' | 'playlist', id }` or `{ all: true }`. They answer `200 { changes }`, plus `404` for an id that isn't in the trash and `400` for a bad body.
-  - A new event stream message, `trash`, carries `{ size, count }`. Here `count` is the number of listed entries: playlists plus sounds, with tracks counted only inside their playlist. It is sent on connect and after anything that changes the trash: deletions, moves that leave a playlist empty, restores and purges. A quick change check (window focus, §5.3) also recounts it, so a trash emptied by hand is noticed.
+  - A new event stream message, `trash`, carries `{ size, count }`. Here `count` is the number of listed entries: playlists plus sounds, with tracks counted only inside their playlist. It is sent on connect and after anything that changes the trash: deletions, moves that leave a playlist empty, restores and purges. The trash is never watched, and quick checks ignore it (F).
 - **§6.1, §6.2, §6.8 facade.**
   - `trashSummary()` returns `{ size, count }`, announced as `trash.changed`.
   - `loadTrash()` fetches the listing.
@@ -66,13 +66,14 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 - **§9.4 `holdButton`.** It gets a `holdMs` option (default 1000) and a `tone` option (`'danger'` or `'neutral'`). The fill's duration becomes an inline `transition-duration`, since Tailwind can't build a class from a variable.
 - **TESTING.md.** Manual checks for the button's visibility and size, the indentation, both hold lengths, and restores appearing on the board in two tabs.
 
-**Open questions.**
+**Answers.**
 
-- **A. Is there a confirmation beyond the hold?** *Recommended:* no. The 3 s hold on Delete all is the confirmation.
-- **B. Does a restored sound or track that is renamed to ` (2)` also get ` (2)` in its title?** *Recommended:* no. Only the file name changes. A file without a stored title shows its file name, so it shows the ` (2)` anyway. A file with a stored title keeps that title, as moves do.
-- **C. Where does a track go when it came from a subdirectory the playlist no longer includes?** *Recommended:* the playlist's top level, so it always shows up and the playlist's `includedSubdirectories` is never changed behind the user's back. The other option is to put it back into its subdirectory and add that subdirectory to `includedSubdirectories`. That could also bring in other files sitting in that subdirectory.
-- **D. Files the app doesn't show, left in a trashed playlist folder after its last track is restored.** An example is an `Artwork/` folder that went into the trash with the playlist. *Recommended:* they are deleted with the folder, so the trash never holds anything the dialog can't show. The other option is to keep them, but then the size would count files the dialog doesn't list. (Restoring a playlist whose name is free moves everything back, so this happens only after restoring into an existing playlist, or track by track.)
-- **E. The order of Restore all.** *Recommended:* playlists first, then sounds. Each item goes through the same rules as restoring it alone, so clashes between trashed items resolve the same way.
+- **A. The hold is the only confirmation.**
+- **B. A restored file renamed to ` (2)` keeps its title.** Only the file name changes.
+- **C. A restored track always goes to the playlist's top level**, wherever it sits inside the trashed folder, as if the folder were flattened. Only a whole playlist restored under a free name keeps its subdirectories, because it moves back as it is.
+- **D. Files left in a trashed playlist folder once its audio is gone are deleted** with the folder and its options file.
+- **E. Restore all restores whole playlists first, then sounds.**
+- **F. The trash is not watched.** The server reads it at startup and after its own deletions, moves, restores and purges. Changes made by hand show up at the next start. Quick checks don't look at it.
 
 **Plan.** In the lean flow: code first, with the owner checking the UI, then tests and DESIGN.md in one sweep.
 1. **Reading the trash** (`trash.js`): the listing, titles and sizes.
