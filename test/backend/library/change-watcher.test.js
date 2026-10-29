@@ -1,6 +1,6 @@
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, rm, utimes, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, utimes, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { BootstrapService } from '../../../src/library/bootstrap-service.js';
 import { ChangeWatcher, POLL_MS, QUIET_MS } from '../../../src/library/change-watcher.js';
@@ -208,6 +208,37 @@ describe('ChangeWatcher', () => {
 			await advance(QUIET_MS);
 			assert.equal(watcher.externalChanges, false);
 			assert.equal(await watcher.check(), false);
+		});
+
+		it('never counts files a task removed or renamed and listed', async () => {
+			const { root, fakeWatch, watcher, advance } = await setup();
+			await mkdir(join(root, '.trash'));
+			await watcher.writeFiles(async () => {
+				await rename(join(root, 'Boom.mp3'), join(root, '.trash', 'Boom.mp3'));
+				await rename(join(root, 'Boom.mp3.json'), join(root, '.trash', 'Boom.mp3.json'));
+				await rename(join(root, 'Combat', '1.mp3'), join(root, 'Combat', 'One.mp3'));
+				await rename(join(root, 'Combat', '1.mp3.json'), join(root, 'Combat', 'One.mp3.json'));
+				return {
+					removed: [join(root, 'Boom.mp3'), join(root, 'Boom.mp3.json')],
+					renamed: [
+						[join(root, 'Combat', '1.mp3'), join(root, 'Combat', 'One.mp3')],
+						[join(root, 'Combat', '1.mp3.json'), join(root, 'Combat', 'One.mp3.json')],
+					],
+				};
+			});
+			fakeWatch.fire();
+			await advance(QUIET_MS);
+			assert.equal(watcher.externalChanges, false);
+			assert.equal(await watcher.check(), false);
+		});
+
+		it('still counts a removal the task did not list', async () => {
+			const { root, watcher } = await setup();
+			await watcher.writeFiles(async () => {
+				await rm(join(root, 'Boom.mp3'));
+				return {};
+			});
+			assert.equal(await watcher.check(), true);
 		});
 
 		it('runs such a task only after a rebuild queued before it', async () => {

@@ -23,7 +23,7 @@ const EVENT_TYPES = /** @type {const} */ ([
 	'voices.changed',
 	'waveforms.progress', 'waveform.ready',
 	'library.externalChanges', 'library.refreshing', 'library.refreshed', 'library.refreshFailed',
-	'download.changed', 'download.log', 'sound.added', 'playlist.added',
+	'download.changed', 'download.log', 'sound.added', 'playlist.added', 'sound.removed', 'playlist.removed',
 ]);
 
 /** Stands in for the server's pushed messages; the test sends them with `push`. */
@@ -709,6 +709,102 @@ describe('Soundboard', () => {
 			assert.deepEqual(changed[0].type === 'playlist.changed' && changed[0].playlist.tracks.map((track) => track.id), ['Combat/0.mp3', 'Combat/1.mp3', 'Combat/2.ogg']);
 			assert.equal(engine.voices.at(-1), playing);
 			assert.equal(soundboard.getPlaylistSnapshot('Combat').trackIndex, 1);
+		});
+	});
+
+	describe('deleting and moving', () => {
+		const file = (/** @type {string} */ id) => ({
+			id, title: id, format: /** @type {const} */ ('mp3'), size: 1, gain: 1, duration: 5, startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0, url: `/media/${id}`,
+		});
+
+		it('saves pending changes first, then asks the server and applies its answer', async () => {
+			const { soundboard, api, eventsOf } = await started();
+			soundboard.customizeSound('Boom.mp3', { gain: 0.5 });
+			api.rearrangement = [{ type: 'library.removed', soundId: 'Boom.mp3' }];
+			await soundboard.deleteSound('Boom.mp3');
+			assert.equal(api.soundSaves.length, 1);
+			assert.deepEqual(api.rearrangements, [{ delete: { kind: 'sound', id: 'Boom.mp3' } }]);
+			assert.deepEqual(eventsOf('sound.removed'), [{ type: 'sound.removed', soundId: 'Boom.mp3' }]);
+			assert.deepEqual(soundboard.getLibrary()?.sounds.map((sound) => sound.id), ['Rain.ogg']);
+			assert.throws(() => soundboard.playSound('Boom.mp3'), InvalidCommandError);
+		});
+
+		it('passes each kind of request on', async () => {
+			const { soundboard, api } = await started();
+			await soundboard.deleteTrack('Combat/1.mp3');
+			await soundboard.deletePlaylist('Tavern');
+			await soundboard.moveSound('Boom.mp3', 'Combat');
+			await soundboard.moveTrack('Combat/1.mp3', null);
+			assert.deepEqual(api.rearrangements, [
+				{ delete: { kind: 'track', id: 'Combat/1.mp3' } },
+				{ delete: { kind: 'playlist', id: 'Tavern' } },
+				{ move: { id: 'Boom.mp3', to: 'Combat' } },
+				{ move: { id: 'Combat/1.mp3', to: null } },
+			]);
+		});
+
+		it('rejects with the server\'s message and changes nothing', async () => {
+			const { soundboard, api, eventsOf } = await started();
+			api.rearrangement = new Error('The track is already in that playlist');
+			await assert.rejects(soundboard.moveTrack('Combat/1.mp3', 'Combat'), /already in that playlist/);
+			assert.equal(eventsOf('playlist.changed').length, 0);
+		});
+
+		it('stops a removed sound at once, and applies each removal only once', async () => {
+			const { soundboard, serverEvents, engine, eventsOf } = await started();
+			soundboard.playSound('Rain.ogg');
+			assert.equal(soundboard.isSoundActive('Rain.ogg'), true);
+			serverEvents.send({ type: 'library.removed', soundId: 'Rain.ogg' });
+			serverEvents.send({ type: 'library.removed', soundId: 'Rain.ogg' });
+			assert.equal(soundboard.isSoundActive('Rain.ogg'), false);
+			assert.equal(engine.liveVoicesOn('sfx').length, 0);
+			assert.equal(eventsOf('sound.removed').length, 1);
+		});
+
+		it('takes a track out of its playlist; one that is playing stops the playlist', async () => {
+			const { soundboard, serverEvents, engine, eventsOf } = await started();
+			soundboard.playPlaylist('Combat');
+			serverEvents.send({ type: 'library.removed', trackId: 'Combat/1.mp3', playlistId: 'Combat' });
+			assert.equal(soundboard.getPlaylistSnapshot('Combat').state, 'idle');
+			assert.equal(engine.liveVoicesOn('music').length, 0);
+			const changed = eventsOf('playlist.changed').at(-1);
+			assert.deepEqual(changed?.type === 'playlist.changed' && changed.playlist.tracks.map((track) => track.id), ['Combat/2.ogg']);
+			serverEvents.send({ type: 'library.removed', trackId: 'Combat/1.mp3', playlistId: 'Combat' });
+			assert.equal(eventsOf('playlist.changed').length, 1);
+		});
+
+		it('removes a playlist, stopping it first', async () => {
+			const { soundboard, serverEvents, eventsOf } = await started();
+			soundboard.playPlaylist('Tavern');
+			serverEvents.send({ type: 'library.removed', playlistId: 'Tavern' });
+			assert.deepEqual(eventsOf('playlist.removed'), [{ type: 'playlist.removed', playlistId: 'Tavern' }]);
+			assert.equal(soundboard.getActivePlaylists().length, 0);
+			assert.deepEqual(soundboard.getLibrary()?.playlists.map((playlist) => playlist.id), ['Combat']);
+			assert.throws(() => soundboard.playPlaylist('Tavern'), InvalidCommandError);
+		});
+
+		it('follows a move as a removal and an addition', async () => {
+			const { soundboard, api, eventsOf } = await started();
+			const combat = exampleLibrary().playlists[0];
+			api.rearrangement = [
+				{ type: 'library.removed', soundId: 'Boom.mp3' },
+				{ type: 'library.added', playlist: { ...combat, tracks: [...combat.tracks, file('Combat/Boom.mp3')] } },
+			];
+			await soundboard.moveSound('Boom.mp3', 'Combat');
+			assert.equal(eventsOf('sound.removed').length, 1);
+			const changed = eventsOf('playlist.changed').at(-1);
+			assert.deepEqual(changed?.type === 'playlist.changed' && changed.playlist.tracks.map((track) => track.id), ['Combat/1.mp3', 'Combat/2.ogg', 'Combat/Boom.mp3']);
+		});
+
+		it('decodes a new file at a removed sound\'s URL afresh', async () => {
+			const { soundboard, serverEvents, engine, advance } = await started();
+			soundboard.playSound('Boom.mp3');
+			await advance(1);
+			const loads = engine.bufferLoads.length;
+			serverEvents.send({ type: 'library.removed', soundId: 'Boom.mp3' });
+			serverEvents.send({ type: 'library.added', sound: { ...file('Boom.mp3'), size: 1000 } });
+			soundboard.playSound('Boom.mp3');
+			assert.equal(engine.bufferLoads.length, loads + 1);
 		});
 	});
 

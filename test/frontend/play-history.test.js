@@ -174,6 +174,23 @@ describe('PlayHistory', () => {
 			assert.deepEqual(new Set([played.current, ...nexts(played, 4)]), new Set([0, 1, 2, 3, 4]));
 		});
 
+		it('follows the current track when a track before it is removed', () => {
+			const played = history('ordered', { trackCount: 3 });
+			played.start(2);
+			played.setTracks(2, (index) => (index === 0 ? null : index - 1));
+			assert.equal(played.current, 1);
+			assert.deepEqual(nexts(played, 2), [0, 1]);
+		});
+
+		it('starts afresh once the current track is removed', () => {
+			const played = history('ordered', { trackCount: 3 });
+			played.start(1);
+			played.setTracks(2, (index) => (index === 1 ? null : index - Number(index > 1)));
+			assert.equal(played.current, null);
+			assert.equal(played.length, 0);
+			assert.equal(played.start(), 0);
+		});
+
 		it('only counts the tracks before the playlist has started', () => {
 			const played = history('ordered', { trackCount: 1 });
 			played.setTracks(3, (index) => index);

@@ -114,6 +114,61 @@ describe('PlaylistPlayer', () => {
 		});
 	});
 
+	describe('removing tracks', () => {
+		/** @param {number[]} kept the indices of `playlistOf(3)` tracks that stay */
+		function without(kept) {
+			const base = playlistOf(3);
+			return { ...base, tracks: kept.map((index) => base.tracks[index]) };
+		}
+
+		it('keeps the current track playing when another one is removed', () => {
+			const { player, advance, current, engine } = setup();
+			player.jumpTo(2);
+			advance(0.1);
+			const playing = current();
+			player.replaceTracks(without([1, 2]));
+			assert.equal(current(), playing);
+			assert.equal(player.snapshot().trackIndex, 1);
+			player.next('instant');
+			assert.equal(engine.voices.at(-1)?.url, '/t1');
+		});
+
+		it('stops instantly when the current track is removed', () => {
+			const { player, advance, engine, states } = setup({ rules: { fadeOut: 3 } });
+			player.jumpTo(1);
+			advance(0.1);
+			player.replaceTracks(without([0, 2]));
+			assert.equal(player.snapshot().state, 'idle');
+			assert.equal(engine.liveVoicesOn('music').length, 0);
+			assert.deepEqual(states().at(-1), 'idle:null');
+		});
+
+		it('forgets a resume point on a removed track, and keeps one on a track that stays', () => {
+			const { player, advance } = setup({ rules: { stopMode: 'pause' } });
+			player.jumpTo(2);
+			advance(1);
+			player.stop('instant');
+			player.replaceTracks(without([0, 2]));
+			assert.equal(player.snapshot().resume?.track.id, 'Combat/2.mp3');
+			assert.equal(player.snapshot().resume?.trackIndex, 1);
+			player.replaceTracks(without([0]));
+			assert.equal(player.snapshot().resume, null);
+		});
+
+		it('ends a voice fading out on a removed track', () => {
+			const { player, advance, engine } = setup({ rules: { crossfade: 2 } });
+			player.jumpTo(0);
+			advance(0.1);
+			player.next();
+			advance(0.2);
+			assert.equal(engine.liveVoicesOn('music').length >= 1, true);
+			player.replaceTracks(without([1, 2]));
+			const urls = engine.voices.filter((voice) => !voice.stopped).map((voice) => voice.url);
+			assert.equal(urls.includes('/t0'), false);
+			assert.equal(player.snapshot().track?.id, 'Combat/1.mp3');
+		});
+	});
+
 	describe('playing', () => {
 		it('calls play() synchronously, so it happens inside the user gesture', () => {
 			const { player, engine } = setup();
