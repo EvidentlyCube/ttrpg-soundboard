@@ -64,6 +64,16 @@ export class SoundPlayer {
 		return (this.#instances.get(soundId)?.length ?? 0) > 0;
 	}
 
+	/** @returns {boolean} whether any sound has a live instance */
+	hasActive() {
+		for (const instances of this.#instances.values()) {
+			if (instances.length > 0) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	/** @param {AudioFileJson} sound */
 	play(sound) {
 		if (!this.#isPlayable(sound)) {

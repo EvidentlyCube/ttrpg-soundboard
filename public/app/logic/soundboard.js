@@ -847,6 +847,11 @@ export class Soundboard {
 		return this.#api.deleteFromTrash(target);
 	}
 
+	/** @returns {boolean} whether a playlist is playing or paused, or any sound has a live instance */
+	isAnythingPlaying() {
+		return this.#activeOrder.length > 0 || (this.#loaded?.sounds.hasActive() ?? false);
+	}
+
 	/** @param {string} soundId */
 	isSoundActive(soundId) {
 		return this.#loaded?.sounds.isActive(soundId) ?? false;

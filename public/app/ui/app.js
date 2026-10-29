@@ -80,7 +80,20 @@ export class App extends Component {
 		}));
 		// Coming back from another window or tab is when the user has most likely just changed files.
 		this.own(on(window, 'focus', () => soundboard.checkExternalChanges()));
-		this.own(soundboard.on('library.refreshed', () => location.reload()));
+		// The refresh reload is already confirmed by pressing Refresh, so it must not ask again.
+		let isRefreshing = false;
+		/** @param {BeforeUnloadEvent} event */
+		const guardReload = (event) => {
+			if (!isRefreshing && soundboard.isAnythingPlaying()) {
+				event.preventDefault();
+			}
+		};
+		window.addEventListener('beforeunload', guardReload);
+		this.own(() => window.removeEventListener('beforeunload', guardReload));
+		this.own(soundboard.on('library.refreshed', () => {
+			isRefreshing = true;
+			location.reload();
+		}));
 		this.own(soundboard.on('library.refreshFailed', ({ message, restartNeeded }) => {
 			if (restartNeeded) {
 				this.#phase = 'stopped';
