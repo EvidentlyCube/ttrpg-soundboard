@@ -1,4 +1,6 @@
+import { randomBytes } from 'node:crypto';
 import { stat } from 'node:fs/promises';
+import { hostname, networkInterfaces } from 'node:os';
 import { resolve } from 'node:path';
 import { runProcess } from '../downloads/process-runner.js';
 import { describeTools, findTools, missingTools } from '../downloads/tools.js';
@@ -20,6 +22,7 @@ import { ConsoleReporter } from './reporter.js';
  * @property {() => Promise<void>} waitForShutdown resolves when the server should stop, e.g. on SIGINT;
  * 	only called once the server is up, so Ctrl+C during the startup questions still ends the process immediately
  * @property {import('../downloads/process-runner.js').ProcessRunner} [run] starts yt-dlp and ffmpeg; tests pass a fake
+ * @property {() => string[]} [networkAddresses] this machine's addresses on the local network, for `--lan`; tests pass a fixed list
  */
 
 /**
@@ -28,7 +31,7 @@ import { ConsoleReporter } from './reporter.js';
  * @param {Terminal} terminal
  * @returns {Promise<number>}
  */
-export async function main(argv, { input, output, errorOutput, env, waitForShutdown, run = runProcess }) {
+export async function main(argv, { input, output, errorOutput, env, waitForShutdown, run = runProcess, networkAddresses = lanAddresses }) {
 	let args;
 	try {
 		args = parseArguments(argv);
@@ -67,6 +70,19 @@ export async function main(argv, { input, output, errorOutput, env, waitForShutd
 	const missing = missingTools(tools);
 	output.write(`${missing.length > 0 ? colors.yellow(describeTools(tools)) : describeTools(tools)}\n`);
 
+	/** @type {{ options: import('../http/server.js').LanOptions, addresses: string[] } | undefined} */
+	let lan;
+	if (args.lan) {
+		const addresses = args.lan.address ? [args.lan.address] : networkAddresses();
+		lan = {
+			addresses,
+			options: {
+				address: args.lan.address ?? '0.0.0.0',
+				names: [...addresses, ...(args.lan.address ? [] : [hostname(), `${hostname()}.local`])].map((name) => (name.includes(':') ? `[${name}]` : name)),
+				token: randomBytes(16).toString('hex'),
+			},
+		};
+	}
 	let server;
 	try {
 		await watcher.start(outcome.scan);
@@ -79,6 +95,7 @@ export async function main(argv, { input, output, errorOutput, env, waitForShutd
 			logRequest: args.verbose ? (line) => output.write(`${line}\n`) : undefined,
 			watcher,
 			downloads: { tools, run },
+			lan: lan?.options,
 			refresh: () => watcher.refresh(() => {
 				output.write('Refreshing after external changes…\n');
 				return bootstrap.refresh(root);
@@ -94,7 +111,11 @@ export async function main(argv, { input, output, errorOutput, env, waitForShutd
 		return 1;
 	}
 
-	output.write(`Soundboard running at ${server.url}\nPress Ctrl+C to stop.\n`);
+	output.write(`Soundboard running at ${server.url}\n`);
+	if (lan) {
+		writeLanLinks(output, colors, lan, args.port);
+	}
+	output.write('Press Ctrl+C to stop.\n');
 	await waitForShutdown();
 	watcher.stop();
 	await server.close();
@@ -121,4 +142,30 @@ function listenErrorMessage(error, port) {
 /** @param {string} path */
 async function isDirectory(path) {
 	return stat(path).then((stats) => stats.isDirectory(), () => false);
+}
+
+/**
+ * @param {Terminal['output']} output
+ * @param {ReturnType<typeof createColors>} colors
+ * @param {{ options: import('../http/server.js').LanOptions, addresses: string[] }} lan
+ * @param {number} port
+ */
+function writeLanLinks(output, colors, { options, addresses }, port) {
+	if (addresses.length === 0) {
+		output.write(colors.yellow('--lan: no address on the local network was found, so nothing else can reach the app.\n'));
+		return;
+	}
+	output.write('Open one of these on another device on the same network (the token keeps others out):\n');
+	for (const address of addresses) {
+		const host = address.includes(':') ? `[${address}]` : address;
+		output.write(`  http://${host}:${port}/?token=${options.token}\n`);
+	}
+}
+
+/** @returns {string[]} the IPv4 addresses of this machine's network interfaces, without the loopback one */
+function lanAddresses() {
+	return Object.values(networkInterfaces())
+		.flatMap((entries) => entries ?? [])
+		.filter((entry) => entry.family === 'IPv4' && !entry.internal)
+		.map((entry) => entry.address);
 }

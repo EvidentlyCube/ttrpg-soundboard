@@ -6,8 +6,12 @@ import { appMenuItems, playlistMenuItems, soundMenuItems } from '../../../public
 const enabledLabels = (items) => items.filter((item) => item.enabled).map((item) => item.label);
 
 describe('appMenuItems', () => {
-	it('offers regenerating the waveforms', () => {
-		assert.deepEqual(enabledLabels(appMenuItems()), ['Regenerate Waves']);
+	it('offers regenerating the waveforms, and becoming the host', () => {
+		assert.deepEqual(enabledLabels(appMenuItems({ hosting: false })), ['Regenerate Waves', 'Become host']);
+	});
+
+	it('offers to stop hosting instead while the page is the host', () => {
+		assert.deepEqual(enabledLabels(appMenuItems({ hosting: true })), ['Regenerate Waves', 'Stop hosting']);
 	});
 });
 

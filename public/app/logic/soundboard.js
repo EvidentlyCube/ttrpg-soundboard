@@ -6,6 +6,7 @@ import { LibraryModel } from './library-model.js';
 import { OptionsSync } from './options-sync.js';
 import { resolvePlaybackRules } from './playback-rules.js';
 import { PlaylistPlayer } from './playlist-player.js';
+import { buildRemoteState } from './remote-state.js';
 import { ProblemList } from './problem-list.js';
 import { SettingsSync } from './settings-sync.js';
 import { SoundPlayer } from './sound-player.js';
@@ -39,8 +40,10 @@ import { VolumeControl } from './volume.js';
  * 	| { type: 'app.startFailed', message: string }
  * 	| { type: 'audio.suspended' }
  * 	| { type: 'audio.resumed' }
- * 	| { type: 'panic.changed', state: PanicState }} AppEvent
- * `panic.changed`: Panic Stop moved between its two states (`panicState()`).
+ * 	| { type: 'panic.changed', state: PanicState }
+ * 	| { type: 'host.changed', hosting: boolean }} AppEvent
+ * `panic.changed`: Panic Stop moved between its two states (`panicState()`). `host.changed`: this page became the host that
+ * remotes control, or stopped being it (DESIGN.md §6.10).
  * @typedef {{ type: 'playlist.levelChanged', playlistId: string, level: number }} LevelEvent
  * `playlist.levelChanged`: a playlist's live level (DESIGN.md §6.4) changed; `level` is a slider position, 0..1.
  * @typedef {{ type: 'sound.changed', sound: AudioFileJson }
@@ -85,6 +88,12 @@ import { VolumeControl } from './volume.js';
 
 /** How often Panic Stop in `'now'` checks whether the fades are over or something new has started. */
 const PANIC_CHECK_MS = 100;
+
+/** How long becoming the host waits for the page's event stream to open before it gives up. */
+const STREAM_WAIT_MS = 5000;
+
+/** What `becomeHost` found: `'taken'` means another page is the host and was not asked to give way. */
+/** @typedef {'hosting' | 'taken' | 'failed'} HostResult */
 
 /** As many log lines as the server keeps (DESIGN.md §5.4). */
 const MAX_DOWNLOAD_LOG = 1000;
@@ -139,6 +148,22 @@ export class Soundboard {
 	#panic = 'fade';
 	/** @type {number | null} */
 	#panicTimer = null;
+	/** Sent with this page's event stream, so the server can reach it (DESIGN.md §5). */
+	#pageId;
+	#hosting = false;
+	/** Whether the event stream has told the page what its role is, which is when the server can reach it. */
+	#streamOpen = false;
+	/** @type {{ resolve: () => void, reject: (error: Error) => void, timer: number }[]} */
+	#streamWaiters = [];
+	/** @type {Promise<HostResult> | null} */
+	#claiming = null;
+	/** @type {number | null} */
+	#remoteStateTimer = null;
+	/** Whether a state is on its way to the server, and whether something changed since it was built. */
+	#remoteStateSending = false;
+	#remoteStateStale = false;
+	/** Sounds with a live instance, for the remotes. @type {Set<string>} */
+	#activeSounds = new Set();
 
 	/**
 	 * @param {object} ports
@@ -148,10 +173,12 @@ export class Soundboard {
 	 * @param {Logger} ports.logger
 	 * @param {() => number} [ports.random] for the random playback orders; tests pass a seeded generator
 	 * @param {WaveformDecoder} ports.decoder
+ * @param {string} [ports.pageId] tells this page's event stream from the other pages'; made up when left out
 	 * @param {ServerEvents} [ports.serverEvents] the server's pushed messages; without it external changes are only
 	 * 	found by `checkExternalChanges`
 	 */
-	constructor({ engine, clock, api, logger, decoder, serverEvents, random = Math.random }) {
+	constructor({ engine, clock, api, logger, decoder, serverEvents, random = Math.random, pageId }) {
+		this.#pageId = pageId ?? `page-${Math.floor(random() * 1e12).toString(36)}-${Math.floor(clock.now()).toString(36)}`;
 		this.#serverEvents = serverEvents;
 		this.#decoder = decoder;
 		this.#clock = clock;
@@ -195,6 +222,7 @@ export class Soundboard {
 		engine.on('suspended', () => emit({ type: 'audio.suspended' }));
 		engine.on('resumed', () => emit({ type: 'audio.resumed' }));
 		this.#listenForProblems();
+		this.#listenForRemoteState();
 	}
 
 	/** Lists what the page itself finds wrong (DESIGN.md §6.1), from the events it announces anyway. */
@@ -239,6 +267,66 @@ export class Soundboard {
 		});
 	}
 
+	/**
+	 * Sends the remotes a new state after anything they show has changed (DESIGN.md §6.10). Changes that follow each other
+	 * are sent as one.
+	 */
+	#listenForRemoteState() {
+		const events = this.#events;
+		events.on('sound.activeChanged', ({ soundId, active }) => {
+			if (active) {
+				this.#activeSounds.add(soundId);
+			} else {
+				this.#activeSounds.delete(soundId);
+			}
+		});
+		for (const type of /** @type {const} */ ([
+			'sound.activeChanged', 'playlist.stateChanged', 'panic.changed', 'sound.changed', 'playlist.changed', 'sound.added',
+			'playlist.added', 'sound.removed', 'playlist.removed',
+		])) {
+			events.on(type, () => this.#queueRemoteState());
+		}
+	}
+
+	#queueRemoteState() {
+		if (!this.#hosting || this.#remoteStateTimer !== null) {
+			return;
+		}
+		this.#remoteStateTimer = this.#clock.setTimeout(() => {
+			this.#remoteStateTimer = null;
+			this.#sendRemoteState();
+		}, 0);
+	}
+
+	#sendRemoteState() {
+		const loaded = this.#loaded;
+		if (!this.#hosting || !loaded) {
+			return;
+		}
+		// One at a time, or two requests could reach the server out of order and leave the remotes with the older state.
+		if (this.#remoteStateSending) {
+			this.#remoteStateStale = true;
+			return;
+		}
+		this.#remoteStateSending = true;
+		const state = buildRemoteState({
+			panic: this.#panic,
+			library: loaded.library.json,
+			isPlayable: (file) => loaded.library.isPlayable(file),
+			active: this.getActivePlaylists(),
+			activeSounds: [...this.#activeSounds],
+		});
+		this.#api.sendRemoteState(this.#pageId, state)
+			.catch((error) => this.#logger.warn('Could not send the state to the remotes.', error))
+			.finally(() => {
+				this.#remoteStateSending = false;
+				if (this.#remoteStateStale) {
+					this.#remoteStateStale = false;
+					this.#sendRemoteState();
+				}
+			});
+	}
+
 	/** @param {string} path */
 	#forgetProblems(path) {
 		this.#problems.forget(path);
@@ -274,6 +362,139 @@ export class Soundboard {
 			this.#api.dismissAllProblems().catch((error) => this.#logger.warn('Could not dismiss the problems on the server.', error));
 		}
 		this.#announceProblems();
+	}
+
+	/** @returns {boolean} whether remotes control this page (DESIGN.md §6.10) */
+	isHosting() {
+		return this.#hosting;
+	}
+
+	/**
+	 * Asks the server to make this page the host that remotes control. Without `replace`, another host is left alone and
+	 * the answer is `'taken'`; the page asks again with `replace` once the user has confirmed. A failure leaves the page as
+	 * it was and is listed among the problems as a warning. Needs the board to be loaded.
+	 * @param {{ replace?: boolean }} [options]
+	 * @returns {Promise<HostResult>}
+	 */
+	becomeHost({ replace = false } = {}) {
+		if (this.#hosting) {
+			return Promise.resolve('hosting');
+		}
+		this.#claiming ??= this.#claim(replace).finally(() => {
+			this.#claiming = null;
+		});
+		return this.#claiming;
+	}
+
+	/**
+	 * @param {boolean} replace
+	 * @returns {Promise<HostResult>}
+	 */
+	async #claim(replace) {
+		try {
+			await this.#waitForStream();
+			if (await this.#api.claimHost(this.#pageId, { replace }) === 'taken') {
+				return 'taken';
+			}
+		} catch (error) {
+			this.#logger.warn('Could not become the host.', error);
+			this.#problems.record({
+				kind: 'host-failed',
+				path: 'host',
+				message: error instanceof Error ? error.message : String(error),
+				severity: 'warning',
+			});
+			this.#announceProblems();
+			return 'failed';
+		}
+		this.#problems.resolve('host-failed', 'host');
+		this.#problems.resolve('host-lost', 'host');
+		this.#announceProblems();
+		this.#hosting = true;
+		this.#events.emit({ type: 'host.changed', hosting: true });
+		this.#queueRemoteState();
+		return 'hosting';
+	}
+
+	/** Resolves once the server can reach this page, which it can when the first message of the stream has arrived. */
+	#waitForStream() {
+		if (!this.#serverEvents || this.#streamOpen) {
+			return Promise.resolve();
+		}
+		return new Promise((resolve, reject) => {
+			const waiter = {
+				resolve: () => {
+					this.#clock.clearTimeout(waiter.timer);
+					resolve(undefined);
+				},
+				reject,
+				timer: this.#clock.setTimeout(() => {
+					this.#streamWaiters = this.#streamWaiters.filter((entry) => entry !== waiter);
+					reject(new Error('The page is not connected to the server'));
+				}, STREAM_WAIT_MS),
+			};
+			this.#streamWaiters.push(waiter);
+		});
+	}
+
+	/**
+	 * Gives up the host role, so the remotes see no host until a page asks again.
+	 * @param {{ keepalive?: boolean }} [options] `keepalive` lets the request finish while the page is closing
+	 */
+	stopHosting({ keepalive = false } = {}) {
+		if (!this.#hosting) {
+			return;
+		}
+		this.#hosting = false;
+		this.#events.emit({ type: 'host.changed', hosting: false });
+		this.#api.releaseHost(this.#pageId, { keepalive }).catch((error) => this.#logger.warn('Could not give up the host role.', error));
+	}
+
+	/**
+	 * The server says this page is not the host (any more): another page took over, or the connection was lost for too
+	 * long. The page carries on as it is, and the problems list says what happened.
+	 * @param {string} message
+	 */
+	#loseHost(message) {
+		this.#hosting = false;
+		this.#problems.record({ kind: 'host-lost', path: 'host', message });
+		this.#announceProblems();
+		this.#events.emit({ type: 'host.changed', hosting: false });
+	}
+
+	/** @param {import('./ports.js').ServerMessage & { type: 'remote.role' }} message */
+	#onRole(message) {
+		this.#streamOpen = true;
+		for (const waiter of this.#streamWaiters.splice(0)) {
+			waiter.resolve();
+		}
+		if (message.host) {
+			if (this.#hosting) {
+				// Back after a short disconnection: the remotes may have missed changes.
+				this.#queueRemoteState();
+			}
+			return;
+		}
+		if (this.#hosting) {
+			this.#loseHost(message.reason === 'replaced'
+				? 'Another page took over as host.'
+				: 'This page was disconnected from the server for too long, so it is not the host any more.');
+		}
+	}
+
+	/**
+	 * A command from a remote, run as if it had been given here. A command that fails (an id that is gone) is only logged.
+	 * @param {unknown} command
+	 */
+	#onRemoteCommand(command) {
+		if (!this.#hosting) {
+			return;
+		}
+		try {
+			this.dispatch(command);
+		} catch (error) {
+			this.#logger.warn('A command from a remote failed.', error);
+		}
 	}
 
 	/**
@@ -981,7 +1202,7 @@ export class Soundboard {
 			});
 			emit({ type: 'app.ready', library: libraryJson, volumes: this.#volume.volumes, unplayable: library.unplayable });
 			this.#waveforms.start();
-			this.#serverEvents?.connect((message) => this.#onServerMessage(message));
+			this.#serverEvents?.connect((message) => this.#onServerMessage(message), { page: this.#pageId });
 		} catch (error) {
 			this.#starting = null;
 			const message = error instanceof Error ? error.message : String(error);
@@ -1008,6 +1229,12 @@ export class Soundboard {
 	/** @param {import('./ports.js').ServerMessage} message */
 	#onServerMessage(message) {
 		switch (message.type) {
+			case 'remote.role':
+				this.#onRole(message);
+				return;
+			case 'command':
+				this.#onRemoteCommand(message.command);
+				return;
 			case 'externalChanges':
 				this.#setExternalChanges(message.pending);
 				return;

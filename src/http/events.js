@@ -7,6 +7,7 @@ import { toFileJson, toPlaylistJson } from './library-json.js';
 /** @typedef {import('../downloads/download-service.js').DownloadEvent} DownloadEvent */
 /** @typedef {import('../library/library-editor.js').LibraryChange} LibraryChange */
 /** @typedef {import('./library-changes.js').LibraryChanges} LibraryChanges */
+/** @typedef {import('../remote/remote-relay.js').RemoteRelay} RemoteRelay */
 
 /** Proxies and browsers may drop a stream that stays silent too long. */
 const KEEP_ALIVE_MS = 30_000;
@@ -14,13 +15,14 @@ const KEEP_ALIVE_MS = 30_000;
 /**
  * Streams typed messages as server-sent events (DESIGN.md §5.2): `externalChanges` and `problems` on connect and whenever it
  * changes, and the download's progress, log and additions while one runs. The stream stays open until the page goes
- * away or the server stops.
+ * away or the server stops. A remote's stream (`?role=remote`) carries only what the relay says about the host; a
+ * page that plays says which one it is (`?page=<id>`), so the relay can reach it (DESIGN.md §5).
  * @param {Request} request
  * @param {Response} response
  * @param {{ watcher?: ChangeWatcher, downloads?: DownloadService, libraryChanges?: LibraryChanges,
- * 	trash?: import('../library/trash.js').Trash, problems?: import('../library/problems.js').Problems }} sources without them, nothing ever changes
+ * 	trash?: import('../library/trash.js').Trash, problems?: import('../library/problems.js').Problems, relay?: RemoteRelay }} sources without them, nothing ever changes
  */
-export function serveEvents(request, response, { watcher, downloads, libraryChanges, trash, problems }) {
+export function serveEvents(request, response, { watcher, downloads, libraryChanges, trash, problems, relay }) {
 	response.writeHead(200, {
 		'Content-Type': 'text/event-stream; charset=utf-8',
 		'Cache-Control': 'no-store',
@@ -28,6 +30,19 @@ export function serveEvents(request, response, { watcher, downloads, libraryChan
 	});
 	/** @param {unknown} message */
 	const send = (message) => response.write(`data: ${JSON.stringify(message)}\n\n`);
+	const { searchParams } = new URL(request.url ?? '/', 'http://localhost');
+	const isRemote = searchParams.get('role') === 'remote';
+	const pageId = searchParams.get('page');
+	if (isRemote && relay) {
+		const detachRemote = relay.attachRemote(send);
+		const keepAliveRemote = setInterval(() => response.write(': keep-alive\n\n'), KEEP_ALIVE_MS);
+		request.on('close', () => {
+			clearInterval(keepAliveRemote);
+			detachRemote();
+		});
+		return;
+	}
+	const detachPage = relay && pageId ? relay.attachPage(pageId, send) : undefined;
 	const sendExternalChanges = () => send({ type: 'externalChanges', pending: watcher?.externalChanges ?? false });
 	sendExternalChanges();
 	if (downloads) {
@@ -56,6 +71,7 @@ export function serveEvents(request, response, { watcher, downloads, libraryChan
 	const keepAlive = setInterval(() => response.write(': keep-alive\n\n'), KEEP_ALIVE_MS);
 	request.on('close', () => {
 		clearInterval(keepAlive);
+		detachPage?.();
 		unsubscribeWatcher?.();
 		unsubscribeDownloads?.();
 		unsubscribeLibrary?.();

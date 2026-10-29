@@ -1,6 +1,6 @@
 import { expect, test } from '../support/fixtures.js';
 
-test('the page shows the splash and nothing else happens before the click', async ({ page, soundboard, splash }) => {
+test('the page shows the splash and only asks whether a host exists before the click', async ({ page, soundboard, splash }) => {
 	/** @type {string[]} */
 	const requests = [];
 	page.on('request', (request) => requests.push(new URL(request.url()).pathname));
@@ -8,7 +8,7 @@ test('the page shows the splash and nothing else happens before the click', asyn
 	await soundboard.open();
 
 	await splash.expectVisible();
-	expect(requests.filter((path) => path.startsWith('/api/'))).toEqual([]);
+	await expect.poll(() => requests.filter((path) => path.startsWith('/api/'))).toEqual(['/api/remote']);
 });
 
 test('clicking the splash loads the soundboard with the library', async ({ soundboard, splash, playlists }) => {

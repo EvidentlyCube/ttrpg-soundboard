@@ -4,6 +4,7 @@
 import { WAVEFORM_BUCKETS } from './logic/peaks.js';
 import { HttpBackendApi } from './api/backend-api.js';
 import { EventSourceServerEvents } from './api/server-events.js';
+import { RemoteController } from './logic/remote-controller.js';
 import { Soundboard } from './logic/soundboard.js';
 import { App } from './ui/app.js';
 import { FakeAudioEngine } from '../test-support/fake-audio-engine.js';
@@ -25,14 +26,17 @@ class FullSizeDecoder extends FakeWaveformDecoder {
 }
 const decoder = new FullSizeDecoder();
 
+const api = new HttpBackendApi();
+const serverEvents = new EventSourceServerEvents();
 const soundboard = new Soundboard({
 	engine,
 	clock,
-	api: new HttpBackendApi(),
+	api,
 	decoder,
-	serverEvents: new EventSourceServerEvents(),
+	serverEvents,
 	logger: console,
 });
+const remote = new RemoteController({ api, serverEvents, logger: console });
 
 // Work that is already due (a load that takes no time) runs by itself; the clock never moves otherwise.
 setInterval(() => clock.advance(0), 10);
@@ -44,4 +48,4 @@ const root = document.getElementById('app');
 if (!root) {
 	throw new Error('index.html is missing the #app element');
 }
-new App(soundboard).mount(root);
+new App(soundboard, remote).mount(root);

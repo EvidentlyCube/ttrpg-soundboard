@@ -129,6 +129,14 @@
  * @property {(target: TrashTarget) => Promise<void>} deleteFromTrash deletes for good; rejects with the server's message
  * @property {(id: string) => Promise<void>} dismissProblem makes the server forget one of its startup problems
  * @property {() => Promise<void>} dismissAllProblems the same for all of them
+ * @property {() => Promise<boolean>} fetchHostStatus whether a page is the host (DESIGN.md §5.2)
+ * @property {(pageId: string, options: { replace: boolean }) => Promise<'claimed' | 'taken'>} claimHost resolves `'taken'` when
+ * 	another page is the host and `replace` is not set; rejects for anything else that goes wrong
+ * @property {(pageId: string, options: { keepalive: boolean }) => Promise<void>} releaseHost
+ * @property {(pageId: string, state: import('./remote-state.js').RemoteState) => Promise<void>} sendRemoteState rejects
+ * 	when the page is not the host
+ * @property {(command: import('./commands.js').Command) => Promise<void>} sendRemoteCommand rejects with the server's
+ * 	message, for instance when no page is the host
  */
 
 /** @typedef {'sound' | 'playlist' | 'track'} ItemKind */
@@ -160,8 +168,9 @@
 /**
  * Messages the server pushes to the page.
  * @typedef {object} ServerEvents
- * @property {(onMessage: (message: ServerMessage) => void) => () => void} connect returns a disconnect
- * 	function; the connection is restored by itself after the server was unreachable
+ * @property {(onMessage: (message: ServerMessage) => void, params?: Record<string, string>) => () => void} connect returns a
+ * 	disconnect function; the connection is restored by itself after the server was unreachable. `params` goes into the
+ * 	address: `{ page }` for a page that plays, `{ role: 'remote' }` for a remote (DESIGN.md §5.2)
  */
 
 /**
@@ -170,6 +179,10 @@
  * 	| { type: 'download.log', lines: string[], replaceLast: boolean }
  * 	| ({ type: 'trash' } & TrashSummary)
  * 	| { type: 'problems', problems: Omit<import('./problem-list.js').ProblemJson, 'count'>[] }
+ * 	| { type: 'remote.role', host: boolean, reason?: 'replaced' }
+ * 	| { type: 'command', command: unknown }
+ * 	| { type: 'remote.host', connected: boolean }
+ * 	| { type: 'remote.state', state: import('./remote-state.js').RemoteState | null }
  * 	| LibraryChangeMessage} ServerMessage
  * 	`log` comes with the first `download` message of every connection and replaces the log; `replaceLast`: the first
  * 	line replaces the last one already received

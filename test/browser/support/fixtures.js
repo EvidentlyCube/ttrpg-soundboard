@@ -34,6 +34,11 @@ class Soundboard {
 		this.root = root;
 	}
 
+	/** Where the server is, for a second page. */
+	get url() {
+		return this.#url;
+	}
+
 	async open() {
 		await this.#page.goto(this.#url);
 	}
@@ -82,13 +87,15 @@ const fixtures = {
 	library: ['example', { option: true }],
 	unplayableFormats: [[], { option: true }],
 
-	// The real page, with the fakes from test/helpers/ where the browser's audio would be (support/test-main.js).
+	// The real page, with the fakes from test/helpers/ where the browser's audio would be (support/test-main.js). Set on
+	// the context, so a second page of a test (a remote control) gets them too.
 	page: async ({ page, unplayableFormats }, use) => {
-		await page.addInitScript((formats) => {
+		const context = page.context();
+		await context.addInitScript((formats) => {
 			globalThis.soundboardTestOptions = { unplayableFormats: formats };
 		}, unplayableFormats);
-		await page.route('**/app/main.js', (route) => route.fulfill({ path: join(SUPPORT, 'test-main.js'), contentType: 'text/javascript' }));
-		await page.route('**/test-support/*.js', (route) => {
+		await context.route('**/app/main.js', (route) => route.fulfill({ path: join(SUPPORT, 'test-main.js'), contentType: 'text/javascript' }));
+		await context.route('**/test-support/*.js', (route) => {
 			const name = new URL(route.request().url()).pathname.split('/').pop() ?? '';
 			return route.fulfill({ path: join(HELPERS, name), contentType: 'text/javascript' });
 		});

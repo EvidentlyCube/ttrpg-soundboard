@@ -36,12 +36,13 @@ export class ProblemList {
 	}
 
 	/**
-	 * @param {{ kind: string, path: string, message: string }} problem
+	 * @param {{ kind: string, path: string, message: string, severity?: ProblemJson['severity'] }} problem errors unless
+	 * 	said otherwise
 	 */
-	record({ kind, path, message }) {
+	record({ kind, path, message, severity = 'error' }) {
 		const id = `${kind}:${path}`;
 		const known = this.#page.get(id);
-		this.#page.set(id, { id, kind, severity: 'error', path, message, count: (known?.count ?? 0) + 1 });
+		this.#page.set(id, { id, kind, severity, path, message, count: (known?.count ?? 0) + 1 });
 	}
 
 	/**

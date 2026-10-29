@@ -14,8 +14,9 @@ export class EventSourceServerEvents {
 	}
 
 	/** @type {ServerEvents['connect']} */
-	connect(onMessage) {
-		const source = new EventSource(this.#url);
+	connect(onMessage, params = {}) {
+		const query = new URLSearchParams(params).toString();
+		const source = new EventSource(query === '' ? this.#url : `${this.#url}?${query}`);
 		source.addEventListener('message', (event) => onMessage(JSON.parse(event.data)));
 		return () => source.close();
 	}

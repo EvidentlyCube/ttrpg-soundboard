@@ -172,6 +172,55 @@ export class FakeBackendApi {
 		this.dismissedProblems.push(id);
 	}
 
+	/** Whether a page is the host, as the server says. */
+	hostPresent = false;
+	/** What a claim answers: `'claimed'`, `'taken'` or an error to reject with. @type {'claimed' | 'taken' | Error} */
+	claimResult = 'claimed';
+	/** @type {{ pageId: string, replace: boolean }[]} */
+	claims = [];
+	/** @type {{ pageId: string, keepalive: boolean }[]} */
+	releases = [];
+	/** @type {{ pageId: string, state: import('../../public/app/logic/remote-state.js').RemoteState }[]} */
+	remoteStates = [];
+	/** @type {import('../../public/app/logic/commands.js').Command[]} */
+	remoteCommands = [];
+	/** @type {Error | null} */
+	remoteCommandError = null;
+	/** While set, a state is recorded when it is sent but the request does not finish. @type {Promise<void> | null} */
+	remoteStateGate = null;
+
+	async fetchHostStatus() {
+		return this.hostPresent;
+	}
+
+	/** @type {BackendApi['claimHost']} */
+	async claimHost(pageId, { replace }) {
+		this.claims.push({ pageId, replace });
+		if (this.claimResult instanceof Error) {
+			throw this.claimResult;
+		}
+		return this.claimResult;
+	}
+
+	/** @type {BackendApi['releaseHost']} */
+	async releaseHost(pageId, { keepalive }) {
+		this.releases.push({ pageId, keepalive });
+	}
+
+	/** @type {BackendApi['sendRemoteState']} */
+	async sendRemoteState(pageId, state) {
+		this.remoteStates.push({ pageId, state });
+		await this.remoteStateGate;
+	}
+
+	/** @type {BackendApi['sendRemoteCommand']} */
+	async sendRemoteCommand(command) {
+		if (this.remoteCommandError) {
+			throw this.remoteCommandError;
+		}
+		this.remoteCommands.push(command);
+	}
+
 	async dismissAllProblems() {
 		this.dismissedProblems.push('all');
 	}

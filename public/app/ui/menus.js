@@ -10,11 +10,16 @@
 
 /**
  * The header's app menu (DESIGN.md §9.1).
+ * @param {{ hosting: boolean }} state whether remotes control this page, which decides whether it offers to become the
+ * 	host or to stop being it
  * @returns {MenuItem[]}
  */
-export function appMenuItems() {
+export function appMenuItems({ hosting }) {
 	return [
 		{ id: 'regenerateWaves', label: 'Regenerate Waves', enabled: true, group: 0 },
+		hosting
+			? { id: 'stopHosting', label: 'Stop hosting', enabled: true, group: 1 }
+			: { id: 'becomeHost', label: 'Become host', enabled: true, group: 1 },
 	];
 }
 

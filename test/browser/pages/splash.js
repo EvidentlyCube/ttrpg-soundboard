@@ -9,11 +9,22 @@ export class SplashPage {
 		this.#page = page;
 	}
 
+	/** Starts as standalone, or clicks the screen when it shows a message (a retry, a resume). */
 	async click() {
-		await this.#page.locator('[data-splash]').click();
+		const standalone = this.#page.locator('[data-start-mode=standalone]');
+		if (await standalone.isVisible()) {
+			await standalone.click();
+		} else {
+			await this.#page.locator('[data-splash]').click();
+		}
 	}
 
-	async expectVisible(text = 'Click anywhere to start') {
+	/** @param {'standalone' | 'host' | 'remote'} mode */
+	async choose(mode) {
+		await this.#page.locator(`[data-start-mode=${mode}]`).click();
+	}
+
+	async expectVisible(text = 'Choose how to start') {
 		await expect(this.#page.locator('[data-splash]')).toBeVisible();
 		await expect(this.#page.locator('[data-splash]')).toContainText(text);
 	}

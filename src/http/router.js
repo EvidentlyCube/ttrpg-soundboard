@@ -11,6 +11,8 @@ import { serveEvents, toMessage } from './events.js';
 import { toFileJson, toLibraryJson, toPlaylistJson } from './library-json.js';
 import { allowMethods, HttpError, sendJson } from './responses.js';
 import { serveStaticFile } from './static-files.js';
+import { checkAccess } from './lan-access.js';
+import { serveRemote } from './remote-routes.js';
 
 /** @typedef {import('node:http').IncomingMessage} Request */
 /** @typedef {import('node:http').ServerResponse} Response */
@@ -37,6 +39,8 @@ import { serveStaticFile } from './static-files.js';
  * @property {import('./library-changes.js').LibraryChanges} [libraryChanges] tells the event streams about deletions and moves
  * @property {import('../library/trash.js').Trash} [trash] the trash's summary for the event streams
  * @property {import('../library/problems.js').Problems} [problems] what startup found wrong, for the event streams
+ * @property {{ token: string }} [access] with `--lan`: what requests from other machines need (`lan-access.js`)
+ * @property {import('../remote/remote-relay.js').RemoteRelay} [relay] connects the remotes to the host page
  * @property {() => Promise<RefreshOutcome>} [refresh] rebuilds the library and swaps it into this context
  * @property {Promise<RefreshOutcome> | null} refreshing the refresh running now
  * @property {DownloadService} [downloads] without it, downloads are not available
@@ -83,10 +87,25 @@ async function route(request, response, context) {
 	const pathname = (request.url ?? '/').split('?')[0];
 
 	checkRequest(request.headers, context.guard);
+	if (context.access) {
+		const entry = checkAccess(request, pathname, context.access);
+		if (entry) {
+			response.writeHead(302, { 'Location': entry.redirectTo, 'Set-Cookie': entry.cookie, 'Cache-Control': 'no-store' });
+			response.end();
+			return;
+		}
+	}
 
 	if (pathname === '/api/events') {
 		allowMethods(request, ['GET']);
 		serveEvents(request, response, context);
+		return;
+	}
+	if (pathname === '/api/remote' || pathname.startsWith('/api/remote/')) {
+		if (!context.relay) {
+			throw new HttpError(404, 'Not found');
+		}
+		await serveRemote(request, response, pathname, context.relay, readJsonBody);
 		return;
 	}
 	if (pathname === '/api/refresh') {
@@ -476,14 +495,14 @@ function requireContentType(request, expected) {
  * @param {Request} request
  * @returns {Promise<unknown>}
  */
-async function readJsonBody(request) {
+async function readJsonBody(request, limit = MAX_BODY_BYTES) {
 	requireContentType(request, 'application/json');
 	/** @type {Buffer[]} */
 	const chunks = [];
 	let size = 0;
 	for await (const chunk of request) {
 		size += chunk.length;
-		if (size > MAX_BODY_BYTES) {
+		if (size > limit) {
 			throw new HttpError(413, 'Request body too large');
 		}
 		chunks.push(chunk);

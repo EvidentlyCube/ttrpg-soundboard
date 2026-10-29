@@ -180,6 +180,43 @@ export class HttpBackendApi {
 		await this.#delete('/api/problems');
 	}
 
+	/** @type {BackendApi['fetchHostStatus']} */
+	async fetchHostStatus() {
+		const { host } = await this.#request('GET', '/api/remote', { plainErrors: true });
+		return host;
+	}
+
+	/** @type {BackendApi['claimHost']} */
+	async claimHost(pageId, { replace }) {
+		const response = await fetch(`${this.#baseUrl}/api/remote/host`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ pageId, replace }),
+		});
+		if (response.status === 409) {
+			return 'taken';
+		}
+		if (!response.ok) {
+			throw new Error(await errorMessageOf(response));
+		}
+		return 'claimed';
+	}
+
+	/** @type {BackendApi['releaseHost']} */
+	async releaseHost(pageId, { keepalive }) {
+		await this.#request('DELETE', `/api/remote/host?page=${encodeURIComponent(pageId)}`, { keepalive, plainErrors: true });
+	}
+
+	/** @type {BackendApi['sendRemoteState']} */
+	async sendRemoteState(pageId, state) {
+		await this.#request('PUT', '/api/remote/state', { body: { pageId, state }, plainErrors: true });
+	}
+
+	/** @type {BackendApi['sendRemoteCommand']} */
+	async sendRemoteCommand(command) {
+		await this.#request('POST', '/api/remote/commands', { body: command, plainErrors: true });
+	}
+
 	/** @param {string} path */
 	async #delete(path) {
 		const response = await fetch(this.#baseUrl + path, { method: 'DELETE' });

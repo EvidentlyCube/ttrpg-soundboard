@@ -1,7 +1,15 @@
 import { Component } from './component.js';
 import { h, on } from './dom.js';
 
-/** @typedef {import('../logic/soundboard.js').Soundboard} Soundboard */
+/** @typedef {import('../logic/soundboard.js').PanicState} PanicState */
+
+/**
+ * What the button needs: the soundboard has it, and so does a remote control (DESIGN.md §9.15).
+ * @typedef {object} PanicSource
+ * @property {() => PanicState} panicState
+ * @property {() => void} panicStop
+ * @property {(type: 'panic.changed', handler: (event: { state: PanicState }) => void) => () => void} on
+ */
 
 const LABELS = { fade: '(Fade)', now: '(NOW!)' };
 
@@ -12,7 +20,7 @@ const LABELS = { fade: '(Fade)', now: '(NOW!)' };
 export class PanicButton extends Component {
 	#soundboard;
 
-	/** @param {Soundboard} soundboard */
+	/** @param {PanicSource} soundboard */
 	constructor(soundboard) {
 		super();
 		this.#soundboard = soundboard;
@@ -29,7 +37,7 @@ export class PanicButton extends Component {
 			'data-panic-button': true,
 		}, h('span', {}, 'Stop'), mode);
 
-		const show = (/** @type {import('../logic/soundboard.js').PanicState} */ state) => {
+		const show = (/** @type {PanicState} */ state) => {
 			button.dataset.state = state;
 			mode.textContent = LABELS[state];
 		};

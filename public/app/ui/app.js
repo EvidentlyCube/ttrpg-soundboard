@@ -14,6 +14,8 @@ import { Overlay } from './overlay.js';
 import { PlayerDock } from './player-dock.js';
 import { PlaylistEditor } from './playlist-editor.js';
 import { PlaylistTile } from './playlist-tile.js';
+import { RemoteView } from './remote-view.js';
+import { ReplaceHostDialog } from './replace-host-dialog.js';
 import { ProblemsButton } from './problems-button.js';
 import { ProblemsDialog } from './problems-dialog.js';
 import { SoundEditor } from './sound-editor.js';
@@ -28,13 +30,20 @@ import { WaveformIndicator } from './waveform-indicator.js';
 /** @typedef {import('../logic/ports.js').AudioFileJson} AudioFileJson */
 /** @typedef {import('../logic/ports.js').LibraryJson} LibraryJson */
 /** @typedef {import('../logic/soundboard.js').Soundboard} Soundboard */
+/** @typedef {import('../logic/remote-controller.js').RemoteController} RemoteController */
 
-/** @typedef {'start' | 'loading' | 'failed' | 'ready' | 'suspended' | 'stopped'} AppPhase */
+/** @typedef {'start' | 'loading' | 'failed' | 'ready' | 'suspended' | 'stopped' | 'remote'} AppPhase */
 
-/** The whole page: the splash until the soundboard is ready, then the board (DESIGN.md §9). */
+/**
+ * The whole page: the splash until the soundboard is ready, then the board, or, when the page was started as a remote
+ * control, the remote's page instead (DESIGN.md §9, §9.15).
+ */
 export class App extends Component {
 	#soundboard;
+	#remote;
 	#overlay = new Overlay();
+	/** Whether the page was started as the host, and should ask to become it once the board is there. */
+	#startAsHost = false;
 	/** @type {AppPhase} */
 	#phase = 'start';
 	/** @type {Splash | null} */
@@ -42,26 +51,46 @@ export class App extends Component {
 	/** @type {Board | null} */
 	#board = null;
 
-	/** @param {Soundboard} soundboard */
-	constructor(soundboard) {
+	/**
+	 * @param {Soundboard} soundboard
+	 * @param {RemoteController} remote
+	 */
+	constructor(soundboard, remote) {
 		super();
 		this.#soundboard = soundboard;
+		this.#remote = remote;
 	}
 
 	/** @override */
 	render() {
 		const soundboard = this.#soundboard;
 		const root = h('div', { class: 'h-full' });
-		const splash = new Splash(() => this.#onSplashClick()).mount(root);
-		splash.show('Click anywhere to start');
+		const splash = new Splash({ onClick: () => this.#onSplashClick(), onChoose: (mode) => this.#choose(mode, root) }).mount(root);
+		splash.showChoices();
 		this.#splash = splash;
+		// The splash is the one place that asks the server something before the page has chosen what to be.
+		this.#remote.checkHost().then((hostExists) => {
+			if (this.#phase === 'start') {
+				splash.setHostStatus(hostExists);
+			}
+		});
 
-		// Safari can suspend audio at any time; resuming is only allowed inside a gesture, so every press tries.
-		this.own(on(document, 'pointerdown', () => soundboard.unlockAudio(), { capture: true }));
+		// Safari can suspend audio at any time; resuming is only allowed inside a gesture, so every press tries. A page that
+		// has not started, or that is a remote control, has no audio to resume.
+		this.own(on(document, 'pointerdown', () => {
+			if (this.#phase !== 'start' && this.#phase !== 'remote') {
+				soundboard.unlockAudio();
+			}
+		}, { capture: true }));
 		this.own(soundboard.on('app.ready', ({ library, unplayable }) => {
 			this.#phase = 'ready';
 			splash.hide();
-			this.#board = new Board({ soundboard, overlay: this.#overlay, library, unplayable: new Set(unplayable) }).mount(root);
+			const board = new Board({ soundboard, overlay: this.#overlay, library, unplayable: new Set(unplayable) });
+			board.mount(root);
+			this.#board = board;
+			if (this.#startAsHost) {
+				board.becomeHost();
+			}
 		}));
 		this.own(soundboard.on('app.startFailed', ({ message }) => {
 			this.#phase = 'failed';
@@ -107,8 +136,31 @@ export class App extends Component {
 		return root;
 	}
 
+	/**
+	 * @param {import('./splash.js').StartMode} mode
+	 * @param {HTMLElement} root
+	 */
+	#choose(mode, root) {
+		if (this.#phase !== 'start') {
+			return;
+		}
+		if (mode === 'remote') {
+			// A remote control never starts the audio: nothing here may create or resume the audio context.
+			this.#phase = 'remote';
+			this.#splash?.hide();
+			this.own(() => this.#remote.stop());
+			new RemoteView(this.#remote).mount(root);
+			this.#remote.start();
+			return;
+		}
+		this.#startAsHost = mode === 'host';
+		this.#phase = 'loading';
+		this.#splash?.show('Loading…');
+		this.#soundboard.start();
+	}
+
 	#onSplashClick() {
-		if (this.#phase === 'start' || this.#phase === 'failed') {
+		if (this.#phase === 'failed') {
 			this.#phase = 'loading';
 			this.#splash?.show('Loading…');
 			this.#soundboard.start();
@@ -130,6 +182,7 @@ class Board extends Component {
 	#trashDialog = new Dialog();
 	#problemsDialog = new Dialog();
 	#metadataDialog = new Dialog();
+	#replaceHostDialog = new Dialog();
 	/** The item whose Customize dialog is open, so the dialog can close when the item is deleted or moved away. @type {{ kind: 'sound' | 'playlist', id: string } | null} */
 	#editing = null;
 	/** @type {Map<string, SoundTile>} */
@@ -163,6 +216,12 @@ class Board extends Component {
 		const isPlayable = (/** @type {AudioFileJson} */ file) => !this.#unplayable.has(file.id);
 
 		const controls = h('div', { class: 'flex items-center gap-5' });
+		// The header's color and label tell which of the roles this page has (DESIGN.md §9.15).
+		const roleLabel = h('span', {
+			'class': 'hidden rounded bg-host px-2 py-0.5 text-xs font-bold tracking-widest text-surface uppercase group-data-[role=host]/header:inline-block',
+			'title': 'A remote control can control this page',
+			'data-role-label': true,
+		}, 'Host');
 		const menuButton = h('button', {
 			'type': 'button',
 			'class': 'grid size-8 cursor-pointer place-items-center rounded-md text-muted hover:bg-raised-hover hover:text-text focus-visible:outline-2 focus-visible:outline-music',
@@ -172,16 +231,26 @@ class Board extends Component {
 			'data-app-menu': true,
 			'onClick': () => {
 				const { left, bottom } = menuButton.getBoundingClientRect();
-				openContextMenu(overlay, appMenuItems(), { x: left, y: bottom + 4 }, (item) => {
+				openContextMenu(overlay, appMenuItems({ hosting: soundboard.isHosting() }), { x: left, y: bottom + 4 }, (item) => {
 					if (item === 'regenerateWaves') {
 						soundboard.regenerateWaveforms();
+					} else if (item === 'becomeHost') {
+						this.becomeHost();
+					} else if (item === 'stopHosting') {
+						soundboard.stopHosting();
 					}
 				});
 			},
 		}, icon('menu', 'size-5'));
-		const header = h('header', { class: 'flex shrink-0 items-center justify-between gap-6 border-b border-line bg-panel px-5 py-3' },
-			h('div', { class: 'flex items-center gap-3' }, menuButton, h('h1', { class: 'text-lg font-semibold tracking-tight' }, 'Soundboard')),
-			controls);
+		const header = h('header', {
+			'class': 'group/header flex shrink-0 items-center justify-between gap-6 border-b border-line bg-panel px-5 py-3 data-[role=host]:border-host data-[role=host]:bg-host/15',
+			'data-role': soundboard.isHosting() ? 'host' : 'standalone',
+		},
+		h('div', { class: 'flex items-center gap-3' }, menuButton, h('h1', { class: 'text-lg font-semibold tracking-tight' }, 'Soundboard'), roleLabel),
+		controls);
+		this.own(soundboard.on('host.changed', ({ hosting }) => {
+			header.dataset.role = hosting ? 'host' : 'standalone';
+		}));
 		this.#adopt(new ProblemsButton(soundboard, () => this.#openProblems()).mount(controls));
 		this.#adopt(new ExternalChangesButton(soundboard, (problems) => this.#showRefreshProblems(problems)).mount(controls));
 		this.#adopt(new WaveformIndicator(soundboard).mount(controls));
@@ -263,7 +332,30 @@ class Board extends Component {
 		this.own(() => this.#trashDialog.close());
 		this.own(() => this.#problemsDialog.close());
 		this.own(() => this.#metadataDialog.close());
+		this.own(() => this.#replaceHostDialog.close());
 		return root;
+	}
+
+	/**
+	 * Asks the server to make this page the host. When another page is, a dialog asks first, and only holding its button
+	 * takes the role over (DESIGN.md §9.15). A failure shows in the Problems list.
+	 */
+	async becomeHost() {
+		const result = await this.#soundboard.becomeHost();
+		if (result !== 'taken') {
+			return;
+		}
+		this.#overlay.close();
+		const dialog = new ReplaceHostDialog({
+			onReplace: () => {
+				this.#replaceHostDialog.close();
+				this.#soundboard.becomeHost({ replace: true });
+			},
+			onCancel: () => this.#replaceHostDialog.close(),
+		});
+		const body = h('div');
+		dialog.mount(body);
+		this.#replaceHostDialog.open({ title: 'Replace the host?', body, footer: dialog.footer, onClose: () => dialog.destroy() });
 	}
 
 	/**
