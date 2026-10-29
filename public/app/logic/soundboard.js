@@ -50,7 +50,8 @@ import { VolumeControl } from './volume.js';
  * @typedef {{ type: 'library.externalChanges', pending: boolean }
  * 	| { type: 'library.refreshing' }
  * 	| { type: 'library.refreshed' }
- * 	| { type: 'library.refreshFailed', message: string, errors: { path: string, message: string }[], restartNeeded: boolean }} RefreshEvent
+ * 	| { type: 'library.refreshFailed', message: string, errors: { path: string, message: string }[], restartNeeded: boolean }
+ * 	| { type: 'trash.changed', size: number, count: number }} RefreshEvent
  * @typedef {AppEvent | SoundEvent | PlaylistEvent | VolumeChangedEvent | CustomizeEvent | VoicesEvent | WaveformEvent
  * 	| RefreshEvent | DownloadEvent} SoundboardEvent
  */
@@ -102,6 +103,8 @@ export class Soundboard {
 	/** @type {ServerEvents | undefined} */
 	#serverEvents;
 	#externalChanges = false;
+	/** @type {import('./ports.js').TrashSummary} */
+	#trash = { size: 0, count: 0 };
 	#checkingChanges = false;
 	#refreshing = false;
 	/** Media URLs by sound or track id, for the waveforms. @type {Map<string, string>} */
@@ -684,6 +687,36 @@ export class Soundboard {
 		}
 	}
 
+	/** What the server's trash holds, in short; `trash.changed` announces every change of it. */
+	trashSummary() {
+		return this.#trash;
+	}
+
+	/**
+	 * @returns {Promise<import('./ports.js').TrashListing>} everything in the trash; rejects with a message for the user
+	 */
+	loadTrash() {
+		return this.#api.fetchTrash();
+	}
+
+	/**
+	 * Restores an item from the trash, or everything in it (DESIGN.md §2.5). What comes back appears as additions do.
+	 * @param {import('./ports.js').TrashTarget} target
+	 * @returns {Promise<void>} rejects with a message for the user
+	 */
+	restoreFromTrash(target) {
+		return this.#rearrange(() => this.#api.restoreFromTrash(target));
+	}
+
+	/**
+	 * Deletes an item in the trash for good, or everything in it.
+	 * @param {import('./ports.js').TrashTarget} target
+	 * @returns {Promise<void>} rejects with a message for the user
+	 */
+	deleteFromTrash(target) {
+		return this.#api.deleteFromTrash(target);
+	}
+
 	/** @param {string} soundId */
 	isSoundActive(soundId) {
 		return this.#loaded?.sounds.isActive(soundId) ?? false;
@@ -770,6 +803,14 @@ export class Soundboard {
 			case 'library.removed':
 				this.#onRemoved(message);
 				return;
+			case 'trash': {
+				const { size, count } = message;
+				if (size !== this.#trash.size || count !== this.#trash.count) {
+					this.#trash = { size, count };
+					this.#events.emit({ type: 'trash.changed', size, count });
+				}
+				return;
+			}
 		}
 	}
 

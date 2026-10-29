@@ -109,9 +109,23 @@
  * 	the server's trash; resolves with what changed and rejects with the server's message
  * @property {(id: string, to: string | null) => Promise<LibraryChangeMessage[]>} moveItem moves a sound or track into a
  * 	playlist, or a track out to the sounds (`to: null`); resolves with what changed and rejects with the server's message
+ * @property {() => Promise<TrashListing>} fetchTrash
+ * @property {(target: TrashTarget) => Promise<LibraryChangeMessage[]>} restoreFromTrash resolves with what was added
+ * 	back and rejects with the server's message
+ * @property {(target: TrashTarget) => Promise<void>} deleteFromTrash deletes for good; rejects with the server's message
  */
 
 /** @typedef {'sound' | 'playlist' | 'track'} ItemKind */
+
+/** @typedef {{ kind: ItemKind, id: string } | 'all'} TrashTarget */
+/** @typedef {{ id: string, title: string, size: number }} TrashedFileJson `id` is the id it had in the library */
+/**
+ * @typedef {object} TrashListing what the server's trash holds (DESIGN.md §2.5)
+ * @property {number} size bytes
+ * @property {(TrashedFileJson & { tracks: TrashedFileJson[] })[]} playlists by title, tracks by path
+ * @property {TrashedFileJson[]} sounds by title
+ */
+/** @typedef {{ size: number, count: number }} TrashSummary `count`: the trashed playlists and sounds */
 
 /**
  * @typedef {{ type: 'library.added', sound: AudioFileJson }
@@ -138,6 +152,7 @@
  * @typedef {{ type: 'externalChanges', pending: boolean }
  * 	| { type: 'download', job: DownloadJob | null, log?: string[] }
  * 	| { type: 'download.log', lines: string[], replaceLast: boolean }
+ * 	| ({ type: 'trash' } & TrashSummary)
  * 	| LibraryChangeMessage} ServerMessage
  * 	`log` comes with the first `download` message of every connection and replaces the log; `replaceLast`: the first
  * 	line replaces the last one already received

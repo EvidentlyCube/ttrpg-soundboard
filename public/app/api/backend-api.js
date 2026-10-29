@@ -154,6 +154,22 @@ export class HttpBackendApi {
 		return changes;
 	}
 
+	/** @type {BackendApi['fetchTrash']} */
+	async fetchTrash() {
+		return this.#request('GET', '/api/trash', { plainErrors: true });
+	}
+
+	/** @type {BackendApi['restoreFromTrash']} */
+	async restoreFromTrash(target) {
+		const { changes } = await this.#request('POST', '/api/trash/restore', { body: trashBody(target), plainErrors: true });
+		return changes;
+	}
+
+	/** @type {BackendApi['deleteFromTrash']} */
+	async deleteFromTrash(target) {
+		await this.#request('POST', '/api/trash/delete', { body: trashBody(target), plainErrors: true });
+	}
+
 	/**
 	 * @param {'GET' | 'PUT' | 'PATCH' | 'POST' | 'DELETE'} method
 	 * @param {string} path
@@ -174,6 +190,11 @@ export class HttpBackendApi {
 		}
 		return response.json();
 	}
+}
+
+/** @param {import('../logic/ports.js').TrashTarget} target */
+function trashBody(target) {
+	return target === 'all' ? { all: true } : target;
 }
 
 /** @param {Response} response */

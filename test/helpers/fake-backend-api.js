@@ -139,6 +139,29 @@ export class FakeBackendApi {
 		return this.#rearranged();
 	}
 
+	/** What the trash holds. @type {import('../../public/app/logic/ports.js').TrashListing} */
+	trash = { size: 0, playlists: [], sounds: [] };
+	/** @type {({ restore: import('../../public/app/logic/ports.js').TrashTarget } | { purge: import('../../public/app/logic/ports.js').TrashTarget })[]} */
+	trashRequests = [];
+
+	async fetchTrash() {
+		return structuredClone(this.trash);
+	}
+
+	/** @param {import('../../public/app/logic/ports.js').TrashTarget} target answered with `rearrangement` */
+	async restoreFromTrash(target) {
+		this.trashRequests.push({ restore: target });
+		return this.#rearranged();
+	}
+
+	/** @param {import('../../public/app/logic/ports.js').TrashTarget} target */
+	async deleteFromTrash(target) {
+		this.trashRequests.push({ purge: target });
+		if (this.rearrangement instanceof Error) {
+			throw this.rearrangement;
+		}
+	}
+
 	#rearranged() {
 		if (this.rearrangement instanceof Error) {
 			throw this.rearrangement;
