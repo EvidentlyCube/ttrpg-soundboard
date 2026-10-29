@@ -22,6 +22,6 @@ export function toPlaylistJson({ id, title, gain, crossfade, fadeIn, fadeOut, or
 }
 
 /** @param {import('../library/library.js').AudioFile} file */
-export function toFileJson({ id, title, format, size, gain, duration, startAt, endAt, fadeIn, fadeOut }) {
-	return { id, title, format, size, gain, duration, startAt, endAt, fadeIn, fadeOut, url: mediaUrl(id) };
+export function toFileJson({ id, title, format, size, gain, duration, startAt, endAt, fadeIn, fadeOut, source }) {
+	return { id, title, format, size, gain, duration, startAt, endAt, fadeIn, fadeOut, url: mediaUrl(id), source };
 }

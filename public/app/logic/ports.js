@@ -20,6 +20,20 @@
  * @property {number} fadeIn seconds a sound takes to fade in; 0 is off
  * @property {number} fadeOut seconds of fading out before a sound's end; 0 is off
  * @property {string} url
+ * @property {SourceJson | null} [source] where the file came from; the server always sends it, null only for a file
+ * 	bootstrap hasn't seen
+ */
+
+/**
+ * Where a file came from (DESIGN.md §2.3). Every key but `origin` may be missing.
+ * @typedef {object} SourceJson
+ * @property {'download' | 'fileName' | 'tags' | 'unknown' | 'edited'} origin
+ * @property {string} [url]
+ * @property {string} [extractor]
+ * @property {string} [videoId]
+ * @property {string} [playlistId]
+ * @property {number} [chapter] counting from 1
+ * @property {number} [chapterStart] seconds into the video
  */
 
 /**

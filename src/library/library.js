@@ -17,6 +17,8 @@ import { sortBy } from './sort.js';
  * @property {number | null} endAt seconds into the file where playback ends; null is the end of the file
  * @property {number} fadeIn seconds; 0 is off
  * @property {number} fadeOut seconds, ending at the end point; 0 is off
+ * @property {(import('./validate.js').Source & { origin: import('./validate.js').SourceOrigin }) | null} source where it
+ * 	came from, with a missing `origin` read as a download (DESIGN.md §2.3); null only before bootstrap has given it one
  * @property {string} absolutePath
  */
 
@@ -108,6 +110,8 @@ export function audioFileOf({ id, name, format, size, absolutePath }, options) {
 		endAt: options?.endAt ?? null,
 		fadeIn: options?.fadeIn ?? 0,
 		fadeOut: options?.fadeOut ?? 0,
+		// Only downloads wrote a source before origins existed.
+		source: options?.source ? { origin: 'download', ...options.source } : null,
 		absolutePath,
 	};
 }

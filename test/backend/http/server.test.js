@@ -14,7 +14,8 @@ import { createTmpTree } from '../../helpers/tmp-tree.js';
 const AUDIO = Buffer.from(Array.from({ length: 1000 }, (_, i) => i % 251));
 const LARGE_AUDIO = Buffer.alloc(4 * 1024 * 1024, 7);
 /** What every sound and track has without start and end points or fades. */
-const NO_CLIP = { startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0 };
+/** A file without points or fades, whose name and tags said nothing about where it came from. */
+const FILE_DEFAULTS = { startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0, source: { origin: 'unknown' } };
 
 /** @type {import('../../helpers/tmp-tree.js').TmpDir} */
 let tree;
@@ -175,13 +176,13 @@ describe('server', () => {
 						size: 1000,
 						gain: 1,
 						duration: null,
-						...NO_CLIP,
+						...FILE_DEFAULTS,
 						url: '/media/Combat/Za%C5%BC%C3%B3%C5%82%C4%87%20%E2%99%AA%20%231.ogg',
 					}],
 				}],
 				sounds: [
-					{ id: 'Boom.mp3', title: 'Big Boom', format: 'mp3', size: 1000, gain: 0.5, duration: null, ...NO_CLIP, url: '/media/Boom.mp3' },
-					{ id: 'Long.ogg', title: 'Long.ogg', format: 'ogg', size: LARGE_AUDIO.length, gain: 1, duration: null, ...NO_CLIP, url: '/media/Long.ogg' },
+					{ id: 'Boom.mp3', title: 'Big Boom', format: 'mp3', size: 1000, gain: 0.5, duration: null, ...FILE_DEFAULTS, url: '/media/Boom.mp3' },
+					{ id: 'Long.ogg', title: 'Long.ogg', format: 'ogg', size: LARGE_AUDIO.length, gain: 1, duration: null, ...FILE_DEFAULTS, url: '/media/Long.ogg' },
 				],
 			});
 		});
@@ -251,7 +252,7 @@ describe('server', () => {
 			const response = await patchSound('Long.ogg', { title: ' Aaa Long ', gain: 2 });
 			assert.equal(response.status, 200);
 			assert.deepEqual(await response.json(), {
-				id: 'Long.ogg', title: 'Aaa Long', format: 'ogg', size: LARGE_AUDIO.length, gain: 2, duration: null, ...NO_CLIP, url: '/media/Long.ogg',
+				id: 'Long.ogg', title: 'Aaa Long', format: 'ogg', size: LARGE_AUDIO.length, gain: 2, duration: null, ...FILE_DEFAULTS, url: '/media/Long.ogg',
 			});
 			const { title, gain } = JSON.parse(await readFile(join(musicRoot, 'Long.ogg.json'), 'utf8'));
 			assert.deepEqual({ title, gain }, { title: 'Aaa Long', gain: 2 });

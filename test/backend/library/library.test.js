@@ -58,7 +58,7 @@ describe('buildLibrary', () => {
 	it('takes titles from options, falling back to the file name', () => {
 		const scan = scanOf({ sounds: [audio('Boom.mp3', true), audio('Creak.ogg')] });
 		const library = buildLibrary(scan, new Map([['/music/Boom.mp3.json', { title: 'Big Boom' }]]));
-		const defaults = { size: 100, gain: 1, duration: null, startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0 };
+		const defaults = { size: 100, gain: 1, duration: null, startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0, source: null };
 		assert.deepEqual(library.sounds, [
 			{ id: 'Boom.mp3', title: 'Big Boom', format: 'mp3', ...defaults, absolutePath: '/music/Boom.mp3' },
 			{ id: 'Creak.ogg', title: 'Creak.ogg', format: 'ogg', ...defaults, absolutePath: '/music/Creak.ogg' },
