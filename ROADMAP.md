@@ -37,16 +37,22 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 - **§2 layout, §2.1.** A new `.trash/` folder in the root. Its leading dot already hides it from the scanner, the change watcher and refreshes.
   - A deleted file keeps its path relative to the root inside `.trash/`, together with its options file and waveform: `Boom.mp3` → `.trash/Boom.mp3` (+ `.json`, `.wf`), `Combat/Boss/1.mp3` → `.trash/Combat/Boss/1.mp3`.
   - A deleted playlist moves as a whole: `Combat/` → `.trash/Combat/` and `Combat.json` → `.trash/Combat.json`. The folder goes with everything in it, including subdirectories that aren't included and files the app doesn't show.
-  - Missing folders in `.trash/` are created. Folders are **merged** into what is already there: a playlist "Duck" deleted twice ends up in one `.trash/Duck/`, and tracks deleted one by one go there too. Only a *file* that clashes gets ` (2)`, ` (3)`… before its extension, as additions do (D). That covers sounds, tracks inside a merged folder, and a second `Duck.json`. A file's options file and waveform take the same new name, so they stay paired.
+  - Missing folders in `.trash/` are created. Folders are **merged** into what is already there: a playlist "Duck" deleted twice ends up in one `.trash/Duck/`, and tracks deleted one by one go there too (D).
+  - A playlist's options file **replaces** the one already in `.trash/`: the newest `Duck.json` wins.
+  - Any other file that clashes gets ` (2)`, ` (3)`… before its extension, as additions do. That covers sounds and tracks, including tracks inside a merged folder. A file's options file and waveform take the same new name, so they stay paired.
 - **§5.1 `LibraryEditor`.** New `deleteSound(id)`, `deleteTrack(id)`, `deletePlaylist(id)`, `moveSound(id, playlistId)` and `moveTrack(id, target)`, where `target` is a playlist id or `null` for the sound effects.
-  - Each moves the audio file, its options file and its waveform with `rename` (all on one file system), then updates `Library.files`, `sounds` and the playlists. A playlist left without tracks stays, empty (C).
+  - Each moves the audio file, its options file and its waveform with `rename` (all on one file system), then updates `Library.files`, `sounds` and the playlists.
+  - **The last track takes its playlist with it** (C).
+    - `deleteTrack` on a playlist's only track is `deletePlaylist`.
+    - `moveTrack` on it moves the track first, then trashes the playlist's folder and options file as `deletePlaylist` does. Anything the app doesn't show goes with them, such as subdirectories that aren't included.
+    - So an empty playlist never exists, as today.
   - A move keeps the file name, adding ` (2)` on a clash, and lands in the top level of the target (question G). The options file moves unchanged: sounds and tracks accept the same keys (§2.3), so title, gain, points and fades all carry over. A waveform stays valid, because `rename` keeps size and modified time.
   - Each one waits for writes queued on the item's options file first, so a save can't recreate the file at its old path. Afterwards the old id is unknown, so a late save gets `UnknownSoundError` and similar errors.
   - Each returns what it removed and wrote, for the change watcher.
 - **§5.2 HTTP API.**
   - `DELETE /api/sounds/<id>`, `DELETE /api/tracks/<id>` and `DELETE /api/playlists/<id>` answer `204`, or `404` for an unknown id.
   - `POST /api/move` takes `{ id, to: playlistId | null }` and answers with the item at its new place, in the `/api/library` format. A request to move an item where it already is gets `400`. The id goes in the body because a track id already takes up the rest of the path.
-  - A new event stream message `library.removed` carries `{ soundId }`, `{ trackId, playlistId }` or `{ playlistId }`. A move is a `library.removed` followed by the existing `library.added`. For `library.added`, the playlist that receives a track is sent whole, as it is today.
+  - A new event stream message `library.removed` carries `{ soundId }`, `{ trackId, playlistId }` or `{ playlistId }`. A move is a `library.removed` followed by the existing `library.added`. For `library.added`, the playlist that receives a track is sent whole, as it is today. Removing a playlist's last track is announced as `{ playlistId }`.
 - **§5.3 Change watcher.** `writeFiles(task)` also accepts a `removed` list from the task and drops those paths from the baseline. Files inside `.trash/` are never in the baseline.
 - **§6 ports.** New `BackendApi` methods `deleteItem({ kind, id })` and `moveItem(id, to)`.
 - **§6.1, §6.2 facade and events.** New methods `deleteSound(id)`, `deleteTrack(id)`, `deletePlaylist(id)`, `moveSound(id, playlistId)` and `moveTrack(id, playlistId | null)`. Each returns a promise that rejects with a message for the user. Like downloads, these are not commands, because they are not playback.
@@ -59,28 +65,24 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
   - **Delete** is a red (`danger`) button, labeled "Hold to delete" (F).
     - Deleting a sound or a playlist closes its dialog.
     - Deleting a track removes its row and leaves the playlist dialog open. Its tab title "Tracks (N)" follows.
+    - On a playlist's only track, a note under the buttons says "This is the last track: deleting or moving it deletes the playlist too." Deleting it, or moving it, closes the playlist dialog.
     - A failure shows as a red message in the card.
   - **Move…** opens the move dialog.
 - **New §9.11 Move dialog** (`ui/move-dialog.js`), titled "Move <title>". It opens **on top of** the Customize dialog, which stays open underneath (E).
   - After moving a sound, both dialogs close.
-  - After moving a track, only the move dialog closes. The playlist dialog is still on the Tracks tab, scrolled where it was, with the moved row gone and no row open, ready for the next track. Esc and the backdrop close only the top dialog.
-  - Empty playlists are listed as destinations too.
+  - After moving a track, only the move dialog closes. The playlist dialog is still on the Tracks tab, scrolled where it was, with the moved row gone and no row open, ready for the next track. The exception is a playlist's last track, which closes both. Esc and the backdrop close only the top dialog.
   - It lists the destinations as full-width buttons. **Sound effects** always comes first, with an amber (`sfx`) accent: a colored stripe and icon, and an amber hover tint. The playlists follow, sorted by title, with the blue (`music`) accent.
   - The item's current place is greyed out and disabled, and annotated "Here now".
   - Picking a destination moves the item at once and closes the dialog. A failure shows in red and keeps the dialog open.
 - **§9.1 board.** Tiles of removed sounds and playlists disappear, and a moved sound or a new track shows like a download's addition.
-- **Empty playlists** (C). A playlist with no tracks becomes a normal part of the library, so deleting its last track and deleting the playlist stay two separate things.
-  - **§2.1 rule 7, §3.1, §5.1.** A playlist folder with no tracks that **has an options file** is loaded as an empty playlist: it is in `Library.playlists` and `/api/library`, with `tracks: []`. A folder with neither tracks nor an options file is still hidden with the "empty playlist" warning. This keeps folders like `Artwork/` off the board, while a playlist the app made or the user configured survives losing its last track, across reloads too. Bootstrap still asks nothing about an empty folder and creates no options file for it.
-  - **§8.** `PlaylistPlayer` with no tracks stays idle: `play`, `toggle` and `jumpTo` do nothing, and `next` and `previous` are ignored. Removing the last track while it plays stops the playlist first (A). The order strategies already cope with zero tracks, so only the player needs guards.
-  - **§9.** The tile reads "No tracks", is dimmed, and does nothing when clicked. Its menu still offers Customize and Add tracks. The playlist dialog works as usual. Its Tracks tab says "No tracks yet." above **+ Add tracks**, and the crossfade limit falls back to 30 s typed and 10 s on the slider, as for a playlist without known durations. A download or a move into an empty playlist fills it as any other.
 - **TESTING.md.** Manual checks for the hold button, the move dialog and the board following changes in a second tab.
 
 **Answers.**
 
 - **A. Something playing that is deleted or moved stops instantly.** That means all of a sound's instances. A playlist that is deleted, or whose current track (playing, paused or loading) leaves it, stops as `stop('instant')` does, and forgets a resume point on that track. Every tab does the same.
 - **B. A playlist can't be moved.** It only gets Delete.
-- **C. Deleting a playlist and deleting its last track are separate.** The playlist stays, empty (see "Empty playlists" above). *To confirm:* only folders with an options file count as empty playlists.
-- **D. Folders in `.trash/` merge, and only clashing files get ` (2)`.**
+- **C. Deleting a playlist's only track, or moving it out, deletes the whole playlist.** Empty playlists stay unsupported.
+- **D. Folders in `.trash/` merge.** A playlist's options file replaces the one there. Other clashing files get ` (2)`.
 - **E. Moving a sound closes its dialogs. Moving a track returns to the playlist dialog as it was**, minus the moved track, so several tracks can be moved in a row.
 - **F. The hold button** fills from left to right over 1 s, by pointer or by holding Enter or Space, with a CSS transition started by a `data-holding` attribute (§9.6). The delete runs when a 1000 ms timer fires.
   - Releasing early, leaving the button, losing focus or `pointercancel` cancels it, and the fill snaps back.
@@ -89,14 +91,13 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 - **G. A track from a nested subdirectory moves into the top level** of the target playlist folder, or into the root for the sound effects.
 
 **Plan.** In the lean flow: code first, with the owner checking the UI, then tests and DESIGN.md in one sweep.
-1. **Empty playlists on the server**: bootstrap, the library and `/api/library` keep playlists that have an options file but no tracks.
-2. **Trash and removals in `LibraryEditor`**: `deleteSound`, `deleteTrack` and `deletePlaylist`, with merged folders, ` (2)` for clashing files, the waits on queued writes, and the watcher's `removed` list.
-3. **Moves in `LibraryEditor`**: `moveSound` and `moveTrack`, with clashes and nested tracks (G).
-4. **HTTP and events**: the three `DELETE` routes, `POST /api/move` and `library.removed`.
-5. **`PlaylistPlayer`**: the empty-playlist guards, `replaceTracks` and `PlayHistory` remapping with removals, and stopping on a removed current track (A).
-6. **Facade**: the delete and move methods, `library.removed` handling, `sound.removed` and `playlist.removed`, stopping sounds and disposing players, and the `BackendApi` methods.
-7. **UI**: the empty playlist tile and Tracks tab, the hold-to-delete button, the new cards in the three places, the stacked move dialog, and the board removing tiles.
-8. **Tests** for steps 1–6, **TESTING.md** checks, then **DESIGN.md** (its own commit), and removing this proposal and the backlog entry "Moving and deleting files".
+1. **Trash and removals in `LibraryEditor`**: `deleteSound`, `deleteTrack` and `deletePlaylist`, with merged folders, the replaced playlist options file, ` (2)` for other clashing files, the last track taking its playlist (C), the waits on queued writes, and the watcher's `removed` list.
+2. **Moves in `LibraryEditor`**: `moveSound` and `moveTrack`, with clashes, nested tracks (G) and the last track.
+3. **HTTP and events**: the three `DELETE` routes, `POST /api/move` and `library.removed`.
+4. **`PlaylistPlayer.replaceTracks` and `PlayHistory` remapping with removals**, and stopping on a removed current track (A).
+5. **Facade**: the delete and move methods, `library.removed` handling, `sound.removed` and `playlist.removed`, stopping sounds and disposing players, and the `BackendApi` methods.
+6. **UI**: the hold-to-delete button, the new cards in the three places with the last-track note, the stacked move dialog, and the board removing tiles.
+7. **Tests** for steps 1–5, **TESTING.md** checks, then **DESIGN.md** (its own commit), and removing this proposal and the backlog entry "Moving and deleting files".
 
 ---
 
