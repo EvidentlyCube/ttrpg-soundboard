@@ -546,15 +546,16 @@ export class LibraryEditor {
 	async #restoreFile(from, directoryId, options) {
 		const checked = options ?? await readOptional(from, validateAudioOptions);
 		const directory = directoryId === '' ? this.#library.root : join(this.#library.root, directoryId);
-		const { path, renamed } = await moveAudioFile(from, directory);
+		const { path } = await moveAudioFile(from, directory);
 		const name = basename(path);
-		const adopted = await this.#adoptFile(path, directoryId === '' ? name : `${directoryId}/${name}`, checked);
-		return { file: adopted.file, written: [...renamed.map(([, to]) => to), ...adopted.written] };
+		return this.#adoptFile(path, directoryId === '' ? name : `${directoryId}/${name}`, checked);
 	}
 
 	/**
 	 * Builds the library's entry for an audio file back in the root, measuring it when its options file has no current
 	 * duration, as bootstrap does (DESIGN.md §3.5).
+	 * `written` names the audio file and its options file, which it always has afterwards. Its waveform is left out:
+	 * the change watcher never looks at waveforms, and one in its baseline would count as gone (DESIGN.md §5.3).
 	 * @param {string} absolutePath
 	 * @param {string} id
 	 * @param {import('./validate.js').AudioOptions | undefined} options
@@ -571,7 +572,7 @@ export class LibraryEditor {
 		const scanned = { id, name, format, size, modified: mtime.toISOString(), absolutePath, optionsPath, hasOptions: options !== undefined };
 		const measurement = await measureIfNeeded(scanned, options);
 		if (!measurement) {
-			return { file: audioFileOf(scanned, options), written: [absolutePath] };
+			return { file: audioFileOf(scanned, options), written: [absolutePath, optionsPath] };
 		}
 		/** @type {import('./validate.js').AudioOptions} */
 		const measured = { ...(options ?? { title: name }), ...measurement };
