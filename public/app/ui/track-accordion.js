@@ -1,5 +1,5 @@
 import { Component } from './component.js';
-import { card, titleField } from './customize-parts.js';
+import { card, moveOrDeleteCard, titleField } from './customize-parts.js';
 import { h } from './dom.js';
 import { icon } from './icons.js';
 import { RangeControl } from './range-control.js';
@@ -21,6 +21,7 @@ export class TrackAccordion extends Component {
 	#soundboard;
 	#playlist;
 	#onEdit;
+	#onMove;
 	/** @type {string | null} */
 	#openId = null;
 
@@ -29,19 +30,27 @@ export class TrackAccordion extends Component {
 	 * @param {Soundboard} options.soundboard
 	 * @param {PlaylistJson} options.playlist
 	 * @param {(trackId: string) => void} options.onEdit called for every change sent for a track
+	 * @param {(track: AudioFileJson) => void} options.onMove opens the move dialog for a track
 	 */
-	constructor({ soundboard, playlist, onEdit }) {
+	constructor({ soundboard, playlist, onEdit, onMove }) {
 		super();
 		this.#soundboard = soundboard;
 		this.#playlist = playlist;
 		this.#onEdit = onEdit;
+		this.#onMove = onMove;
 	}
 
 	/** @override */
 	render() {
-		/** @type {Map<string, { title: HTMLElement, toggle: HTMLButtonElement, body: HTMLElement, play: HTMLButtonElement,
-		 * 	cropped: HTMLElement, volume: HTMLElement, gain: GainControl, range: RangeControl | null, durationMs: number | null }>} */
+		/** @type {Map<string, { item: HTMLElement, number: HTMLElement, title: HTMLElement, toggle: HTMLButtonElement,
+		 * 	body: HTMLElement, play: HTMLButtonElement, cropped: HTMLElement, volume: HTMLElement, gain: GainControl,
+		 * 	range: RangeControl | null, durationMs: number | null, removal: ReturnType<typeof moveOrDeleteCard> }>} */
 		const rows = new Map();
+		// Tracks can leave while the dialog is open, so a row looks its index up instead of keeping it.
+		const indexOf = (/** @type {string} */ trackId) => this.#playlist.tracks.findIndex((track) => track.id === trackId);
+		const lastTrackNote = () => (this.#playlist.tracks.length === 1
+			? 'This is the only track: deleting or moving it deletes the playlist too.'
+			: null);
 		const playlistId = this.#playlist.id;
 		const list = h('ol', { 'class': 'divide-y divide-line', 'data-track-accordion': true });
 
@@ -76,6 +85,7 @@ export class TrackAccordion extends Component {
 				'data-track-play': track.id,
 				'data-playback': 'idle',
 				'onClick': () => {
+					const index = indexOf(track.id);
 					const action = trackAction(trackPlayback(state, currentIndex, index));
 					if (action === 'stop') {
 						this.#soundboard.stopPlaylist(playlistId, { transition: 'instant' });
@@ -98,6 +108,7 @@ export class TrackAccordion extends Component {
 				'data-track-volume': track.id,
 			});
 			showVolume(volume, track);
+			const number = h('span', { class: 'w-6 shrink-0 text-right tabular-nums text-muted' }, String(index + 1));
 			const toggle = h('button', {
 				'type': 'button',
 				'class': 'group flex min-w-0 flex-1 cursor-pointer items-center gap-3 py-2 pr-3 pl-2 text-left text-sm',
@@ -105,7 +116,7 @@ export class TrackAccordion extends Component {
 				'data-track-row': track.id,
 				'onClick': () => open(this.#openId === track.id ? null : track.id),
 			},
-			h('span', { class: 'w-6 shrink-0 text-right tabular-nums text-muted' }, String(index + 1)),
+			number,
 			title,
 			cropped,
 			volume,
@@ -148,8 +159,18 @@ export class TrackAccordion extends Component {
 			gain.mount(gainSlot);
 			body.append(card('Volume', 'music', gainSlot));
 			body.append(card('Track', 'music', this.#settings(track)));
-			rows.set(track.id, { title, toggle, body, play, cropped, volume, gain, range, durationMs });
-			list.append(h('li', {}, h('div', { class: 'flex items-center hover:bg-music/15 has-[[aria-expanded=true]]:bg-music/20' }, play, toggle), body));
+			const removal = moveOrDeleteCard({
+				title: 'Move or delete',
+				accent: 'music',
+				onMove: () => this.#onMove(track),
+				onDelete: () => this.#soundboard.deleteTrack(track.id),
+				note: lastTrackNote() ?? undefined,
+			});
+			this.own(removal.destroy);
+			body.append(removal.element);
+			const item = h('li', {}, h('div', { class: 'flex items-center hover:bg-music/15 has-[[aria-expanded=true]]:bg-music/20' }, play, toggle), body);
+			rows.set(track.id, { item, number, title, toggle, body, play, cropped, volume, gain, range, durationMs, removal });
+			list.append(item);
 		});
 
 		const showPlayback = () => {
@@ -210,6 +231,25 @@ export class TrackAccordion extends Component {
 		// follow too, unless one is being dragged.
 		this.own(this.#soundboard.on('playlist.changed', ({ playlist }) => {
 			if (playlist.id === this.#playlist.id) {
+				this.#playlist = playlist;
+				// A track moved or deleted leaves its row; the others are numbered again, and an only track says so.
+				const ids = new Set(playlist.tracks.map((track) => track.id));
+				for (const [id, row] of rows) {
+					if (!ids.has(id)) {
+						row.item.remove();
+						rows.delete(id);
+						if (this.#openId === id) {
+							this.#openId = null;
+						}
+					}
+				}
+				playlist.tracks.forEach((track, index) => {
+					const row = rows.get(track.id);
+					if (row) {
+						row.number.textContent = String(index + 1);
+						row.removal.showNote(lastTrackNote());
+					}
+				});
 				for (const track of playlist.tracks) {
 					const row = rows.get(track.id);
 					if (row) {

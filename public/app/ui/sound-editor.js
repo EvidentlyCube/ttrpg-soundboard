@@ -1,5 +1,5 @@
 import { Component } from './component.js';
-import { card, labeledRow, playToggle, saveStatus, titleField } from './customize-parts.js';
+import { card, labeledRow, moveOrDeleteCard, playToggle, saveStatus, titleField } from './customize-parts.js';
 import { h } from './dom.js';
 import { GainControl } from './gain-control.js';
 import { RangeControl } from './range-control.js';
@@ -17,16 +17,19 @@ import { SECONDS_LIMITS } from './seconds-scale.js';
 export class SoundEditor extends Component {
 	#soundboard;
 	#sound;
+	#onMove;
 
 	/**
 	 * @param {object} options
 	 * @param {Soundboard} options.soundboard
 	 * @param {AudioFileJson} options.sound
+	 * @param {() => void} options.onMove opens the move dialog for this sound
 	 */
-	constructor({ soundboard, sound }) {
+	constructor({ soundboard, sound, onMove }) {
 		super();
 		this.#soundboard = soundboard;
 		this.#sound = sound;
+		this.#onMove = onMove;
 	}
 
 	/** @override */
@@ -144,12 +147,21 @@ export class SoundEditor extends Component {
 			}
 		}));
 
+		const removal = moveOrDeleteCard({
+			title: 'Move or delete',
+			accent: 'sfx',
+			onMove: this.#onMove,
+			onDelete: () => soundboard.deleteSound(id),
+		});
+		this.own(removal.destroy);
+
 		// The cards' title pills stick out above them, so they need the extra space.
 		return h('div', { class: 'space-y-8 pt-3' },
 			card('Sound', 'sfx', title.element),
 			card('Volume', 'sfx', gainSlot),
 			range && card('Start and end', 'sfx', rangeSlot),
 			card('Fades', 'sfx', h('div', { class: 'space-y-3' }, fades.fadeIn.element, fades.fadeOut.element)),
+			removal.element,
 			h('div', { class: 'flex items-center justify-between gap-4' }, play.element, status.element));
 	}
 

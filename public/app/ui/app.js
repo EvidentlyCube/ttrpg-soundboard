@@ -5,6 +5,7 @@ import { DownloadDialog } from './download-dialog.js';
 import { ExternalChangesButton } from './external-changes-button.js';
 import { Dialog } from './dialog.js';
 import { h, on } from './dom.js';
+import { MoveDialog } from './move-dialog.js';
 import { Overlay } from './overlay.js';
 import { PlayerDock } from './player-dock.js';
 import { PlaylistEditor } from './playlist-editor.js';
@@ -103,6 +104,10 @@ class Board extends Component {
 	#library;
 	#unplayable;
 	#dialog = new Dialog();
+	/** Stacks on top of a Customize dialog. */
+	#moveDialog = new Dialog();
+	/** The item whose Customize dialog is open, so the dialog can close when the item is deleted or moved away. @type {{ kind: 'sound' | 'playlist', id: string } | null} */
+	#editing = null;
 	/** @type {Map<string, SoundTile>} */
 	#soundTiles = new Map();
 	/** @type {HTMLElement | null} */
@@ -189,6 +194,15 @@ class Board extends Component {
 			empty.hidden = true;
 			sortTiles(soundboard.getLibrary()?.playlists ?? [], this.#playlistTiles, this.#playlistGrid);
 		}));
+		// Deleted or moved away, here or in another tab.
+		this.own(soundboard.on('sound.removed', ({ soundId }) => {
+			this.#removeTile(this.#soundTiles, soundId, 'sound');
+			empty.hidden = this.#soundTiles.size > 0 || this.#playlistTiles.size > 0;
+		}));
+		this.own(soundboard.on('playlist.removed', ({ playlistId }) => {
+			this.#removeTile(this.#playlistTiles, playlistId, 'playlist');
+			empty.hidden = this.#soundTiles.size > 0 || this.#playlistTiles.size > 0;
+		}));
 
 		// The download dialog covers the header and the board, but not the footer (DESIGN.md §9.10).
 		const upper = h('div', { class: 'relative flex min-h-0 flex-1 flex-col' }, header, main);
@@ -196,7 +210,35 @@ class Board extends Component {
 		const root = h('div', { class: 'flex h-full flex-col' }, upper);
 		this.#adopt(new PlayerDock({ soundboard, overlay, playlists, isPlayable }).mount(root));
 		this.own(() => this.#dialog.close());
+		this.own(() => this.#moveDialog.close());
 		return root;
+	}
+
+	/**
+	 * @param {Map<string, Component>} tiles
+	 * @param {string} id
+	 * @param {'sound' | 'playlist'} kind
+	 */
+	#removeTile(tiles, id, kind) {
+		tiles.get(id)?.destroy();
+		tiles.delete(id);
+		if (this.#editing?.kind === kind && this.#editing.id === id) {
+			this.#dialog.close();
+		}
+	}
+
+	/**
+	 * Opens the move dialog on top of the Customize dialog. A moved sound leaves the library, which closes both; a moved
+	 * track only leaves its row, so the playlist dialog stays as it was for the next one.
+	 * @param {{ kind: 'sound', id: string } | { kind: 'track', id: string, playlistId: string }} item
+	 * @param {string} title
+	 */
+	#move(item, title) {
+		const dialog = new MoveDialog({ soundboard: this.#soundboard, item, onMoved: () => this.#moveDialog.close() });
+		const body = h('div');
+		dialog.mount(body);
+		this.#moveDialog.open({ title: `Move "${title}"`, body, onClose: () => dialog.destroy() });
+		dialog.focus();
 	}
 
 	/**
@@ -236,10 +278,11 @@ class Board extends Component {
 		const soundboard = this.#soundboard;
 		const sound = soundboard.getLibrary()?.sounds.find((entry) => entry.id === soundId);
 		if (sound) {
-			this.#openEditor('Customize sound', new SoundEditor({ soundboard, sound }), () => {
+			const editor = new SoundEditor({ soundboard, sound, onMove: () => this.#move({ kind: 'sound', id: soundId }, sound.title) });
+			this.#openEditor('Customize sound', editor, () => {
 				soundboard.flushSoundOptions(soundId);
 				sortTiles(soundboard.getLibrary()?.sounds ?? [], this.#soundTiles, this.#soundGrid);
-			});
+			}, { kind: 'sound', id: soundId });
 		}
 	}
 
@@ -248,11 +291,16 @@ class Board extends Component {
 		const soundboard = this.#soundboard;
 		const playlist = soundboard.getLibrary()?.playlists.find((entry) => entry.id === playlistId);
 		if (playlist) {
-			const editor = new PlaylistEditor({ soundboard, playlist, onAddTracks: () => this.#add({ kind: 'playlist', playlistId }) });
+			const editor = new PlaylistEditor({
+				soundboard,
+				playlist,
+				onAddTracks: () => this.#add({ kind: 'playlist', playlistId }),
+				onMoveTrack: (track) => this.#move({ kind: 'track', id: track.id, playlistId }, track.title),
+			});
 			this.#openEditor('Customize playlist', editor, () => {
 				editor.flushEdits();
 				sortTiles(soundboard.getLibrary()?.playlists ?? [], this.#playlistTiles, this.#playlistGrid);
-			});
+			}, { kind: 'playlist', id: playlistId });
 		}
 	}
 
@@ -272,8 +320,9 @@ class Board extends Component {
 	 * @param {string} title
 	 * @param {SoundEditor | PlaylistEditor | AddDialog} editor
 	 * @param {() => void} onClose
+	 * @param {{ kind: 'sound' | 'playlist', id: string }} [editing] the item the dialog customizes
 	 */
-	#openEditor(title, editor, onClose) {
+	#openEditor(title, editor, onClose, editing) {
 		this.#overlay.close();
 		const body = h('div');
 		editor.mount(body);
@@ -281,10 +330,13 @@ class Board extends Component {
 			title,
 			body,
 			onClose: () => {
+				this.#editing = null;
+				this.#moveDialog.close();
 				editor.destroy();
 				onClose();
 			},
 		});
+		this.#editing = editing ?? null;
 		editor.focus();
 	}
 }

@@ -1,7 +1,7 @@
 import { PLAYBACK_ORDERS } from '../logic/order-strategies.js';
 import { MAX_CROSSFADE, STOP_MODES } from '../logic/playback-rules.js';
 import { Component } from './component.js';
-import { card, checkbox, labeledRow, playToggle, radioGroup, saveStatus, tabs, titleField } from './customize-parts.js';
+import { card, checkbox, labeledRow, moveOrDeleteCard, playToggle, radioGroup, saveStatus, tabs, titleField } from './customize-parts.js';
 import { h } from './dom.js';
 import { GainControl } from './gain-control.js';
 import { SecondsControl } from './seconds-control.js';
@@ -40,18 +40,21 @@ export class PlaylistEditor extends Component {
 	#editedTracks = new Set();
 
 	#onAddTracks;
+	#onMoveTrack;
 
 	/**
 	 * @param {object} options
 	 * @param {Soundboard} options.soundboard
 	 * @param {PlaylistJson} options.playlist
 	 * @param {() => void} options.onAddTracks opens the add dialog for this playlist
+	 * @param {(track: import('../logic/ports.js').AudioFileJson) => void} options.onMoveTrack opens the move dialog for a track
 	 */
-	constructor({ soundboard, playlist, onAddTracks }) {
+	constructor({ soundboard, playlist, onAddTracks, onMoveTrack }) {
 		super();
 		this.#soundboard = soundboard;
 		this.#playlist = playlist;
 		this.#onAddTracks = onAddTracks;
+		this.#onMoveTrack = onMoveTrack;
 	}
 
 	/** @override */
@@ -189,6 +192,7 @@ export class PlaylistEditor extends Component {
 				this.#editedTracks.add(trackId);
 				status.show('saving');
 			},
+			onMove: this.#onMoveTrack,
 		});
 		// The track list runs edge to edge, between the tab bar and the Play row, so it cancels the dialog's padding and the gaps around it.
 		const tracksPanel = h('div', { class: '-mx-5 -mt-5 mb-0' });
@@ -211,17 +215,34 @@ export class PlaylistEditor extends Component {
 			}
 		}));
 
+		const removal = moveOrDeleteCard({
+			title: 'Delete',
+			accent: 'music',
+			onDelete: () => soundboard.deletePlaylist(id),
+			note: 'The folder and everything in it go to the trash.',
+		});
+		this.own(removal.destroy);
+
 		// The cards' title pills stick out above them, so they need the extra space.
 		const settingsPanel = h('div', { class: 'space-y-8 pt-3' },
 			card('Playlist', 'music', title.element),
 			card('Volume', 'music', gainSlot),
 			card('Playback order', 'music', order.element, h('div', { class: 'mt-4 border-t border-line pt-4' }, looping.element)),
 			card('When stopped', 'music', stopMode.element),
-			card('Fades', 'music', h('div', { class: 'space-y-3' }, timings.fadeIn.element, timings.crossfade.element, timings.fadeOut.element)));
+			card('Fades', 'music', h('div', { class: 'space-y-3' }, timings.fadeIn.element, timings.crossfade.element, timings.fadeOut.element)),
+			removal.element);
+		const tracksLabel = (/** @type {number} */ count) => `Tracks (${count})`;
 		const { bar, panels } = tabs([
 			{ id: 'playlist', label: 'Playlist', panel: settingsPanel },
-			{ id: 'tracks', label: `Tracks (${this.#playlist.tracks.length})`, panel: tracksPanel },
+			{ id: 'tracks', label: tracksLabel(this.#playlist.tracks.length), panel: tracksPanel },
 		]);
+		// Tracks moved or deleted from the open dialog leave it.
+		this.own(soundboard.on('playlist.changed', (event) => {
+			const tab = bar.querySelector('[data-tab="tracks"]');
+			if (event.playlist.id === id && tab) {
+				tab.textContent = tracksLabel(event.playlist.tracks.length);
+			}
+		}));
 		return h('div', { class: 'space-y-5' },
 			bar,
 			...panels,

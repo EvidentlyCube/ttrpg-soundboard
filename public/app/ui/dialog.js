@@ -3,7 +3,8 @@ import { h, on } from './dom.js';
 /**
  * A centered modal shared by the Customize dialogs. Every change in them applies at once, so closing never loses
  * anything: the × button, Esc and a click on the backdrop all close it. It sits below the splash, so a system audio
- * suspension covers it instead of closing it, and below popups, so a menu can still open on top of it.
+ * suspension covers it instead of closing it, and below popups, so a menu can still open on top of it. A second
+ * `Dialog` opened while one is showing stacks on top of it.
  */
 export class Dialog {
 	/** @type {(() => void) | null} */
@@ -58,7 +59,13 @@ export class Dialog {
 				}
 			}),
 			on(document, 'keydown', (event) => {
-				if (event.key === 'Escape' && !document.querySelector('[data-overlay-backdrop]')) {
+				// A dialog opened on top of this one, such as the move dialog over a Customize dialog, takes Esc first.
+				const backdrops = document.querySelectorAll('[data-dialog-backdrop]');
+				if (
+					event.key === 'Escape'
+					&& !document.querySelector('[data-overlay-backdrop]')
+					&& backdrops[backdrops.length - 1] === backdrop
+				) {
 					this.close();
 				}
 			}),

@@ -1,5 +1,6 @@
 import { h } from './dom.js';
 import { filledField } from './filled-field.js';
+import { holdButton } from './hold-button.js';
 import { icon } from './icons.js';
 
 /** @typedef {import('./dom.js').Child} Child */
@@ -214,6 +215,55 @@ export function tabs(tabs) {
 	select(0);
 	const bar = h('div', { class: 'sticky -top-4 z-10 -mx-5 -mt-4 flex gap-5 border-b border-line bg-panel px-5 pt-3', role: 'tablist' }, buttons);
 	return { bar, panels };
+}
+
+/**
+ * The last card of a Customize dialog: Move… and the hold-to-delete button. Once deleted or moved, the item leaves the
+ * library and the board closes or updates the dialog, so only failures are shown here.
+ * @param {object} options
+ * @param {string} options.title
+ * @param {keyof typeof CARD_ACCENTS} options.accent
+ * @param {() => void} [options.onMove] opens the move dialog; without it there is no Move button
+ * @param {() => Promise<void>} options.onDelete rejects with a message for the user
+ * @param {string} [options.note] shown below the buttons
+ * @returns {{ element: HTMLElement, showNote: (note: string | null) => void, destroy: () => void }}
+ */
+export function moveOrDeleteCard({ title, accent, onMove, onDelete, note }) {
+	const error = h('p', { 'class': 'text-sm text-danger', 'hidden': true, 'data-delete-error': true });
+	const noteText = h('p', { class: 'text-xs text-muted' });
+	const remove = holdButton({
+		label: 'Hold to delete',
+		busyLabel: 'Deleting…',
+		onHold: () => {
+			error.hidden = true;
+			remove.setBusy(true);
+			onDelete().catch((/** @type {unknown} */ reason) => {
+				remove.setBusy(false);
+				error.textContent = `Could not delete: ${reason instanceof Error ? reason.message : String(reason)}`;
+				error.hidden = false;
+			});
+		},
+	});
+	const move = onMove && h('button', {
+		'type': 'button',
+		'class': 'cursor-pointer rounded-md border border-line px-3 py-1.5 text-sm hover:bg-raised-hover',
+		'data-move-item': true,
+		'onClick': onMove,
+	}, 'Move…');
+	/** @param {string | null} text */
+	const showNote = (text) => {
+		noteText.textContent = text ?? '';
+		noteText.hidden = text === null;
+	};
+	showNote(note ?? null);
+	return {
+		element: card(title, accent, h('div', { class: 'space-y-3' },
+			h('div', { class: 'flex items-center justify-between gap-3' }, move ?? h('span'), remove.element),
+			noteText,
+			error)),
+		showNote,
+		destroy: remove.destroy,
+	};
 }
 
 /** The save indicator: a spinner while saving, a checkmark once saved, a red message when saving failed. */
