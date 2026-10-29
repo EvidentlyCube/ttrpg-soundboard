@@ -1,4 +1,4 @@
-import { mkdir, rename, stat } from 'node:fs/promises';
+import { mkdir, rename, rm, stat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { safeFileName, uniqueName } from '../downloads/file-names.js';
 import { audioFormatOf } from './classify.js';
@@ -6,8 +6,9 @@ import { measureIfNeeded } from './durations.js';
 import { ValidationError } from './errors.js';
 import { exists, mergeDirectory, moveAudioFile, TRASH_DIRECTORY, trashDirectoryFor } from './file-moves.js';
 import { audioFileOf, playlistOf } from './library.js';
-import { updateJsonFile, writeJsonAtomic } from './options-store.js';
+import { readValidatedJson, updateJsonFile, writeJsonAtomic } from './options-store.js';
 import { sortBy } from './sort.js';
+import { findInTrash, purgeAudioFile, purgeIfEmpty, purgePlaylistFolder, readTrash } from './trash.js';
 import { checkClip, isPlainObject, validateAudioOptions, validatePlaylistOptions } from './validate.js';
 
 /** @typedef {import('./library.js').Library} Library */
@@ -35,6 +36,9 @@ import { checkClip, isPlainObject, validateAudioOptions, validatePlaylistOptions
  * @property {string[]} removed files that left the root, for the change watcher's baseline
  * @property {[string, string][]} renamed files moved within the root
  */
+/** @typedef {import('./trash.js').TrashItem} TrashItem */
+/** @typedef {import('./trash.js').TrashedFile} TrashedFile */
+/** @typedef {import('./trash.js').TrashedPlaylist} TrashedPlaylist */
 /** @typedef {<T extends import('./change-watcher.js').FileChanges>(task: () => Promise<T>) => Promise<T>} FilesWriter */
 
 /** @type {readonly ('crossfade' | 'fadeIn' | 'fadeOut')[]} */
@@ -359,6 +363,227 @@ export class LibraryEditor {
 	}
 
 	/**
+	 * Restores an item from the trash (DESIGN.md §2.5), or everything in it: whole playlists first, then sounds.
+	 * @param {TrashItem | 'all'} item
+	 * @returns {Promise<{ changes: LibraryChange[], written: string[] }>}
+	 */
+	restoreFromTrash(item) {
+		return this.#writeFiles(async () => {
+			const listing = await readTrash(this.#library.root);
+			/** @type {{ changes: LibraryChange[], written: string[] }} */
+			const result = { changes: [], written: [] };
+			/** @param {{ change: LibraryChange, written: string[] }} restored */
+			const collect = ({ change, written }) => {
+				result.changes.push(change);
+				result.written.push(...written);
+			};
+			if (item === 'all') {
+				for (const playlist of listing.playlists) {
+					collect(await this.#restorePlaylist(playlist));
+				}
+				for (const sound of listing.sounds) {
+					collect(await this.#restoreSound(sound));
+				}
+				return result;
+			}
+			const found = findInTrash(listing, item);
+			if (item.kind === 'sound') {
+				collect(await this.#restoreSound(/** @type {TrashedFile} */ (found)));
+			} else if (item.kind === 'track') {
+				collect(await this.#restoreTrack(/** @type {TrashedFile} */ (found)));
+			} else {
+				collect(await this.#restorePlaylist(/** @type {TrashedPlaylist} */ (found)));
+			}
+			return result;
+		});
+	}
+
+	/**
+	 * Deletes an item in the trash for good, or the whole trash. A trashed playlist that has no audio files left goes
+	 * with its last track.
+	 * @param {TrashItem | 'all'} item
+	 * @returns {Promise<void>}
+	 */
+	async purgeFromTrash(item) {
+		const root = this.#library.root;
+		// Nothing here is in the change watcher's baseline; going through it only makes this take its turn.
+		await this.#writeFiles(async () => {
+			if (item === 'all') {
+				await rm(join(root, TRASH_DIRECTORY), { recursive: true, force: true });
+				return {};
+			}
+			const found = findInTrash(await readTrash(root), item);
+			if (item.kind === 'playlist') {
+				await purgePlaylistFolder(/** @type {TrashedPlaylist} */ (found));
+			} else {
+				await purgeAudioFile(found.absolutePath);
+			}
+			if (item.kind === 'track') {
+				await purgeIfEmpty(root, playlistIdOf(item.id));
+			}
+			return {};
+		});
+	}
+
+	/** @param {TrashedFile} sound */
+	async #restoreSound(sound) {
+		const { file, written } = await this.#restoreFile(sound.absolutePath, '');
+		this.#putSound(file);
+		return { change: /** @type {LibraryChange} */ ({ type: 'library.added', sound: file }), written };
+	}
+
+	/**
+	 * Puts a track into the top level of its playlist, which is created from the trashed options file when it is gone.
+	 * @param {TrashedFile} track
+	 */
+	async #restoreTrack(track) {
+		const trashedId = playlistIdOf(track.id);
+		const trashedOptionsPath = join(this.#library.root, TRASH_DIRECTORY, `${trashedId}.json`);
+		const options = await readOptional(track.absolutePath, validateAudioOptions);
+		const target = await this.#restoreTarget(trashedId, trashedOptionsPath);
+		const { file, written } = await this.#restoreFile(track.absolutePath, target.playlist.id, options);
+		this.#adoptTracks(target, [file]);
+		await purgeIfEmpty(this.#library.root, trashedId);
+		return { change: /** @type {LibraryChange} */ ({ type: 'library.added', playlist: target.playlist }), written: [...target.written, ...written] };
+	}
+
+	/**
+	 * Moves a playlist back whole when its name is free. Otherwise its tracks go into the playlist of that name, whose
+	 * options stay as they are, and the rest of the trashed folder is deleted.
+	 * @param {TrashedPlaylist} trashed
+	 */
+	async #restorePlaylist(trashed) {
+		const root = this.#library.root;
+		const options = await readOptional(trashed.optionsPath.slice(0, -'.json'.length), validatePlaylistOptions);
+		// Every options file is checked before anything moves, so a broken one can't leave the playlist half restored.
+		/** @type {(import('./validate.js').AudioOptions | undefined)[]} */
+		const trackOptions = [];
+		for (const track of trashed.tracks) {
+			trackOptions.push(await readOptional(track.absolutePath, validateAudioOptions));
+		}
+		const isFree = !this.playlist(trashed.id)
+			&& !(await exists(join(root, trashed.id)))
+			&& !(await exists(join(root, `${trashed.id}.json`)));
+		if (isFree) {
+			const written = [];
+			await rename(trashed.absolutePath, join(root, trashed.id));
+			if (options) {
+				await rename(trashed.optionsPath, join(root, `${trashed.id}.json`));
+				written.push(join(root, `${trashed.id}.json`));
+			}
+			/** @type {AudioFile[]} */
+			const tracks = [];
+			for (const [index, track] of trashed.tracks.entries()) {
+				const adopted = await this.#adoptFile(join(root, ...track.id.split('/')), track.id, trackOptions[index]);
+				tracks.push(adopted.file);
+				written.push(...adopted.written);
+			}
+			const playlist = playlistOf(trashed.id, options, tracks);
+			this.#putPlaylist(playlist);
+			return { change: /** @type {LibraryChange} */ ({ type: 'library.added', playlist }), written };
+		}
+		const target = await this.#restoreTarget(trashed.id, trashed.optionsPath);
+		const written = [...target.written];
+		/** @type {AudioFile[]} */
+		const files = [];
+		for (const [index, track] of trashed.tracks.entries()) {
+			const restored = await this.#restoreFile(track.absolutePath, target.playlist.id, trackOptions[index]);
+			files.push(restored.file);
+			written.push(...restored.written);
+		}
+		this.#adoptTracks(target, files);
+		await purgePlaylistFolder(trashed);
+		return { change: /** @type {LibraryChange} */ ({ type: 'library.added', playlist: target.playlist }), written };
+	}
+
+	/**
+	 * The playlist a trashed track goes back into: the one of that name, or a new one with a copy of the trashed
+	 * options file, so tracks still in the trash keep it. A name taken by a folder or file the library doesn't show gets
+	 * ` (2)`.
+	 * @param {string} trashedId
+	 * @param {string} trashedOptionsPath
+	 * @returns {Promise<{ playlist: Playlist, isNew: boolean, written: string[] }>}
+	 */
+	async #restoreTarget(trashedId, trashedOptionsPath) {
+		const existing = this.playlist(trashedId);
+		if (existing) {
+			return { playlist: existing, isNew: false, written: [] };
+		}
+		const root = this.#library.root;
+		const trashed = await readOptional(trashedOptionsPath.slice(0, -'.json'.length), validatePlaylistOptions);
+		const id = await uniqueName(trashedId, async (candidate) => (
+			await exists(join(root, candidate)) || exists(join(root, `${candidate}.json`))
+		));
+		await mkdir(join(root, id));
+		const optionsPath = join(root, `${id}.json`);
+		/** @type {import('./validate.js').PlaylistOptions} */
+		const options = trashed ?? { title: trashedId, includedSubdirectories: [] };
+		await writeJsonAtomic(optionsPath, options);
+		return { playlist: playlistOf(id, options, []), isNew: true, written: [optionsPath] };
+	}
+
+	/**
+	 * @param {{ playlist: Playlist, isNew: boolean }} target
+	 * @param {AudioFile[]} files
+	 */
+	#adoptTracks({ playlist, isNew }, files) {
+		if (isNew) {
+			playlist.tracks = sortBy(files, (entry) => entry.id);
+			this.#putPlaylist(playlist);
+			return;
+		}
+		for (const file of files) {
+			this.#putTrack(playlist, file);
+		}
+	}
+
+	/**
+	 * Moves a trashed audio file, with its companions, into the root or a playlist's top level under a free name.
+	 * @param {string} from
+	 * @param {string} directoryId '' for the root, otherwise a playlist id
+	 * @param {import('./validate.js').AudioOptions} [options] read beforehand; read here when not given
+	 */
+	async #restoreFile(from, directoryId, options) {
+		const checked = options ?? await readOptional(from, validateAudioOptions);
+		const directory = directoryId === '' ? this.#library.root : join(this.#library.root, directoryId);
+		const { path, renamed } = await moveAudioFile(from, directory);
+		const name = basename(path);
+		const adopted = await this.#adoptFile(path, directoryId === '' ? name : `${directoryId}/${name}`, checked);
+		return { file: adopted.file, written: [...renamed.map(([, to]) => to), ...adopted.written] };
+	}
+
+	/**
+	 * Builds the library's entry for an audio file back in the root, measuring it when its options file has no current
+	 * duration, as bootstrap does (DESIGN.md §3.5).
+	 * @param {string} absolutePath
+	 * @param {string} id
+	 * @param {import('./validate.js').AudioOptions | undefined} options
+	 * @returns {Promise<{ file: AudioFile, written: string[] }>}
+	 */
+	async #adoptFile(absolutePath, id, options) {
+		const name = basename(absolutePath);
+		const format = audioFormatOf(name);
+		if (format === null) {
+			throw new Error(`Not a supported audio file: ${name}`);
+		}
+		const { size, mtime } = await stat(absolutePath);
+		const optionsPath = `${absolutePath}.json`;
+		const scanned = { id, name, format, size, modified: mtime.toISOString(), absolutePath, optionsPath, hasOptions: options !== undefined };
+		const measurement = await measureIfNeeded(scanned, options);
+		if (!measurement) {
+			return { file: audioFileOf(scanned, options), written: [absolutePath] };
+		}
+		/** @type {import('./validate.js').AudioOptions} */
+		const measured = { ...(options ?? { title: name }), ...measurement };
+		if (options) {
+			await updateJsonFile(optionsPath, (current) => ({ ...current, ...measurement }));
+		} else {
+			await writeJsonAtomic(optionsPath, measured);
+		}
+		return { file: audioFileOf(scanned, measured), written: [absolutePath, optionsPath] };
+	}
+
+	/**
 	 * The item is already out of the library, so late saves fail as unknown; saves queued before wait to finish, so none
 	 * can recreate an options file at the old path. A failure puts the item back.
 	 * Waiting happens before the task is handed to `writeFiles`, because the change watcher runs saves and tasks in turn.
@@ -517,6 +742,29 @@ export class LibraryEditor {
 		write.then(forget, forget);
 		return write;
 	}
+}
+
+/**
+ * Reads the options file next to a file or folder (`<path>.json`) when there is one.
+ * @template T
+ * @param {string} path
+ * @param {(value: unknown) => string[]} validate
+ * @returns {Promise<T | undefined>}
+ */
+async function readOptional(path, validate) {
+	const optionsPath = `${path}.json`;
+	if (!(await exists(optionsPath))) {
+		return undefined;
+	}
+	return /** @type {T} */ (await readValidatedJson(optionsPath, validate));
+}
+
+/**
+ * A track's id inside the trash starts with its playlist's folder.
+ * @param {string} trackId
+ */
+function playlistIdOf(trackId) {
+	return trackId.split('/')[0];
 }
 
 /**
