@@ -11,13 +11,16 @@
  */
 
 /**
- * `fadeOutTimer` starts the fade-out so that it ends where playback does.
- * @typedef {{ sound: AudioFileJson, voice: Voice, streamed: boolean, fadeOutTimer: number | null }} Instance
+ * `fadeOutTimer` starts the fade-out so that it ends where playback does; after `fadeStop` it removes the instance
+ * instead. `fading` is true from the moment the ramp to silence has started.
+ * @typedef {{ sound: AudioFileJson, voice: Voice, streamed: boolean, fadeOutTimer: number | null, fading: boolean }} Instance
  */
 
 const MAX_INSTANCES_PER_SOUND = 8;
 const MAX_STREAMED_INSTANCES = 24;
 const BUFFERED_SIZE_LIMIT = 256 * 1024;
+/** After a stop's fade is over, an instance that is still there is removed anyway, as a playlist's retiring voices are. */
+const FADE_GRACE_MS = 1000;
 
 /**
  * Plays sound effects (DESIGN.md §7). Every press starts a new, overlapping instance. Small files play from decoded
@@ -35,6 +38,8 @@ export class SoundPlayer {
 	#streamed = [];
 	/** Incremented by `stop`, so starts still waiting for a decode can tell they were cancelled. @type {Map<string, number>} */
 	#epochs = new Map();
+	/** Incremented by `stopAll` and `fadeStopAll`; it counts toward every sound's epoch. */
+	#allEpoch = 0;
 	/** Gains changed since the library was loaded; they win over the gain in a sound object. @type {Map<string, number>} */
 	#gains = new Map();
 
@@ -126,7 +131,7 @@ export class SoundPlayer {
 
 		const wasActive = this.isActive(sound.id);
 		/** @type {Instance} */
-		const instance = { sound, voice, streamed, fadeOutTimer: null };
+		const instance = { sound, voice, streamed, fadeOutTimer: null, fading: false };
 		this.#instances.set(sound.id, [...(this.#instances.get(sound.id) ?? []), instance]);
 		if (streamed) {
 			this.#streamed.push(instance);
@@ -197,13 +202,66 @@ export class SoundPlayer {
 		const seconds = Math.min(sound.fadeOut, left);
 		instance.fadeOutTimer = this.#clock.setTimeout(() => {
 			instance.fadeOutTimer = null;
+			instance.fading = true;
 			voice.rampGain(0, seconds);
 		}, (left - seconds) * 1000);
 	}
 
+	/**
+	 * Ends every instance of every sound by fading it out over its sound's own `fadeOut` (an instance already fading
+	 * out is left to finish), including presses still waiting for their buffer. Instances whose sound has no fade-out,
+	 * or whose length is not known yet, stop at once.
+	 */
+	fadeStopAll() {
+		this.#cancelPending();
+		for (const instance of [...this.#instances.values()].flat()) {
+			this.#fadeStop(instance);
+		}
+	}
+
+	/** Stops every instance of every sound at once, including presses still waiting for their buffer. */
+	stopAll() {
+		this.#cancelPending();
+		for (const instance of [...this.#instances.values()].flat()) {
+			this.#remove(instance);
+		}
+	}
+
+	/** @returns {{ fading: number, steady: number }} the live instances that are fading out and those that are not */
+	count() {
+		const instances = [...this.#instances.values()].flat();
+		const fading = instances.filter((instance) => instance.fading).length;
+		return { fading, steady: instances.length - fading };
+	}
+
+	/** @param {Instance} instance */
+	#fadeStop(instance) {
+		if (instance.fading) {
+			return;
+		}
+		const { sound, voice } = instance;
+		const end = Math.min(voice.duration, sound.endAt ?? Number.POSITIVE_INFINITY);
+		const seconds = Number.isFinite(end) ? Math.min(sound.fadeOut, Math.max(0, end - voice.position)) : 0;
+		if (seconds <= 0) {
+			this.#remove(instance);
+			return;
+		}
+		if (instance.fadeOutTimer !== null) {
+			this.#clock.clearTimeout(instance.fadeOutTimer);
+		}
+		instance.fading = true;
+		voice.rampGain(0, seconds);
+		instance.fadeOutTimer = this.#clock.setTimeout(() => this.#remove(instance), seconds * 1000 + FADE_GRACE_MS);
+	}
+
+	/** Presses still waiting for a decode are dropped, whichever sound they belong to. */
+	#cancelPending() {
+		this.#allEpoch++;
+	}
+
 	/** @param {string} soundId */
 	#epochOf(soundId) {
-		return this.#epochs.get(soundId) ?? 0;
+		return (this.#epochs.get(soundId) ?? 0) + this.#allEpoch;
 	}
 }
 

@@ -19,6 +19,18 @@ export class FooterPage {
 		await this.expectPlayersCount(0);
 	}
 
+	/** The Panic Stop button (DESIGN.md §9.1). */
+	async pressPanic() {
+		await this.#page.locator('[data-panic-button]').click();
+	}
+
+	/** @param {'fade' | 'now'} state */
+	async expectPanic(state) {
+		const button = this.#page.locator('[data-panic-button]');
+		await expect(button).toHaveAttribute('data-state', state);
+		await expect(button).toHaveText(state === 'fade' ? 'Stop(Fade)' : 'Stop(NOW!)');
+	}
+
 	/** @param {string} playlistTitle */
 	player(playlistTitle) {
 		return new PlayerBarPage(this.#page, playlistTitle);

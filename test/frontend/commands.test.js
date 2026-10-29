@@ -6,6 +6,7 @@ import { InvalidCommandError } from '../../public/app/logic/errors.js';
 describe('validateCommand', () => {
 	it('accepts every well-formed command', () => {
 		const commands = [
+			{ type: 'panic.stop' },
 			{ type: 'sound.play', soundId: 'a' },
 			{ type: 'sound.stop', soundId: 'a' },
 			{ type: 'playlist.toggle', playlistId: 'p' },

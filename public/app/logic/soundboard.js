@@ -37,7 +37,9 @@ import { VolumeControl } from './volume.js';
  * @typedef {{ type: 'app.ready', library: LibraryJson, volumes: Volumes, unplayable: string[] }
  * 	| { type: 'app.startFailed', message: string }
  * 	| { type: 'audio.suspended' }
- * 	| { type: 'audio.resumed' }} AppEvent
+ * 	| { type: 'audio.resumed' }
+ * 	| { type: 'panic.changed', state: PanicState }} AppEvent
+ * `panic.changed`: Panic Stop moved between its two states (`panicState()`).
  * @typedef {{ type: 'sound.changed', sound: AudioFileJson }
  * 	| { type: 'sound.saved', soundId: string }
  * 	| { type: 'sound.saveFailed', soundId: string, message: string }
@@ -69,6 +71,17 @@ import { VolumeControl } from './volume.js';
  * 	and moves.
  */
 
+/**
+ * What the next press of Panic Stop does: `'fade'` fades everything out with its own fade-out, `'now'` (only while
+ * everything playing is fading out) stops it all at once.
+ * @typedef {'fade' | 'now'} PanicState
+ */
+
+/** @typedef {{ library: LibraryModel, sounds: SoundPlayer, cache: BufferCache, playlists: Map<string, PlaylistPlayer> }} Loaded */
+
+/** How often Panic Stop in `'now'` checks whether the fades are over or something new has started. */
+const PANIC_CHECK_MS = 100;
+
 /** As many log lines as the server keeps (DESIGN.md §5.4). */
 const MAX_DOWNLOAD_LOG = 1000;
 
@@ -94,7 +107,7 @@ export class Soundboard {
 	#decoder;
 	/** @type {WaveformService | null} */
 	#waveforms = null;
-	/** @type {{ library: LibraryModel, sounds: SoundPlayer, cache: BufferCache, playlists: Map<string, PlaylistPlayer> } | null} */
+	/** @type {Loaded | null} */
 	#loaded = null;
 	/** @type {Promise<void> | null} */
 	#starting = null;
@@ -115,6 +128,10 @@ export class Soundboard {
 	#download = null;
 	/** @type {string[]} */
 	#downloadLog = [];
+	/** @type {PanicState} */
+	#panic = 'fade';
+	/** @type {number | null} */
+	#panicTimer = null;
 
 	/**
 	 * @param {object} ports
@@ -248,6 +265,9 @@ export class Soundboard {
 			throw new NotReadyError();
 		}
 		switch (command.type) {
+			case 'panic.stop':
+				this.#panicStop(loaded);
+				return;
 			case 'sound.play':
 				loaded.sounds.play(loaded.library.sound(command.soundId));
 				return;
@@ -345,6 +365,76 @@ export class Soundboard {
 				return;
 			}
 		}
+	}
+
+	/**
+	 * The Panic Stop button. In `'fade'` it stops everything the way a normal stop does, each playlist and sound with
+	 * its own fade-out, and moves to `'now'` if anything is left fading. In `'now'` it stops everything at once.
+	 */
+	panicStop() {
+		this.dispatch({ type: 'panic.stop' });
+	}
+
+	/** @returns {PanicState} */
+	panicState() {
+		return this.#panic;
+	}
+
+	/** @param {Loaded} loaded */
+	#panicStop(loaded) {
+		if (this.#panic === 'now') {
+			for (const player of loaded.playlists.values()) {
+				player.silence();
+			}
+			loaded.sounds.stopAll();
+			this.#setPanic('fade');
+			return;
+		}
+		for (const player of loaded.playlists.values()) {
+			player.stop();
+		}
+		loaded.sounds.fadeStopAll();
+		this.#checkPanic();
+	}
+
+	/**
+	 * In `'now'`, back to `'fade'` as soon as nothing is fading out any more, or anything is playing that is not.
+	 * Checked on a timer, since the players do not announce when a fade ends.
+	 */
+	#checkPanic() {
+		const loaded = this.#loaded;
+		if (!loaded) {
+			return;
+		}
+		const players = [...loaded.playlists.values()];
+		const sounds = loaded.sounds.count();
+		const fading = players.some((player) => player.fadingOut) || sounds.fading > 0;
+		const steady = players.some((player) => player.state !== 'idle') || sounds.steady > 0;
+		if (fading && !steady) {
+			if (this.#panicTimer === null) {
+				this.#panicTimer = this.#clock.setInterval(() => this.#checkPanic(), PANIC_CHECK_MS);
+			}
+			this.#setPanic('now');
+			return;
+		}
+		if (this.#panicTimer !== null) {
+			this.#clock.clearInterval(this.#panicTimer);
+			this.#panicTimer = null;
+		}
+		this.#setPanic('fade');
+	}
+
+	/** @param {PanicState} state */
+	#setPanic(state) {
+		if (state === this.#panic) {
+			return;
+		}
+		this.#panic = state;
+		if (state === 'fade' && this.#panicTimer !== null) {
+			this.#clock.clearInterval(this.#panicTimer);
+			this.#panicTimer = null;
+		}
+		this.#events.emit({ type: 'panic.changed', state });
 	}
 
 	/** @param {string} soundId */

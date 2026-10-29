@@ -31,31 +31,33 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ### Panic Stop
 
-**Goal.** One big button in the footer that silences the whole soundboard. The first click fades everything out, playlists and sound effects alike. A second click while it is fading stops everything at once, including voices still fading out. The button has a space of its own at a fixed place, so the footer never shifts.
+**Goal.** One big button in the footer that silences the whole soundboard, in a fixed place so the footer never shifts. It has two states. **Stop (Fade)** stops everything the normal way, each playlist and sound with its own fade-out. If anything is left fading, the button becomes **Stop (NOW!)**, and pressing that stops everything at once. The second line of the label is smaller and centered.
+
+**State machine** (the owner's design; the players need no panic logic of their own).
+- *Fade:* a press stops every playlist (a default stop) and fades out every sound instance over its sound's `fadeOut`. If anything is left fading, the state becomes *Now*; if nothing is (no fade-outs), it stays *Fade*.
+- *Now:* checked every 100 ms. It goes back to *Fade* when nothing is fading out any more, or when anything plays that is not fading (something was started). A press stops everything at once, voices still fading included, and goes back to *Fade*.
 
 **Design changes.**
-- §6.1 (facade): a new command `panicStop()` and the command object `{ type: 'panicStop' }`, validated by `dispatch()` like the others (§6). The facade holds a small state, `'idle'` or `'fading'`, and `getPanicState()` returns it.
-- §6.2 (events): `app.panicChanged` with `{ state }`, so the UI follows the state without polling.
-- §7 (`SoundPlayer`): a new `fadeOutAll(seconds)` that ramps every live instance to silence and removes it when the ramp is over, and a way to cut them at once (the existing `stop` per sound, applied to all). Per-instance fade-out timers (§7, Fades) are cleared, since the panic ramp takes over.
-- §8.5 (`PlaylistPlayer`): `stop('default')` accepts an optional fade-out length that replaces the playlist's own `fadeOut` for that one stop. Everything else about a default stop stays: the playlist is idle at once, paused and loading voices are stopped immediately, and the stop mode (§8.1) decides what it remembers.
-- §9.1 (layout): the footer gets a fixed slot, on the right, for the **Panic Stop** button. The player bars' grid shrinks by that slot's width.
-- §10 (structure): `ui/panic-button.js`.
-- `TESTING.md`: a manual check that the fade is audible and the second click cuts it.
+- §6.1 (facade): `panicStop()`, `panicState()` and the command `{ type: 'panic.stop' }`, validated by `dispatch()` (§6).
+- §6.2 (events): `panic.changed` with `{ state: 'fade' | 'now' }`.
+- §7 (`SoundPlayer`): `fadeStopAll()` fades every instance out over its sound's `fadeOut` (cut to the time left; an instance that has none, or whose length is unknown, stops at once) and removes it a second after the fade; `stopAll()` stops all instances and cancels presses waiting for a decode; `count()` tells how many instances are fading.
+- §8 (`PlaylistPlayer`): `fadingOut` (idle with voices still fading) and `silence()` (an instant stop that also cuts voices still fading, which `stop('instant')` does not do for an idle playlist).
+- §9.1 (layout): the footer gets a fixed slot on the right for the button (`ui/panic-button.js`, §10); the player bars' grid shrinks by its width. The state is shown with a `data-state` attribute.
+- `TESTING.md`: a manual check that the fade is audible and the second press cuts it.
 
-**Open questions.**
-1. **How long is the fade?** Options: one global duration, or each playlist's own `fadeOut`. *Recommended:* one fixed constant for everything, `PANIC_FADE_SECONDS = 2`. A panic button must act the same every time, and a playlist with `fadeOut` 0 or 10 s would make it unpredictable. Sound effects have no rule of their own that fits anyway. It is not a setting (see "Decided against": more saved preferences).
-2. **What does the button show?** *Recommended:* red "Panic Stop" at rest, and "Stop now" (still red, with a pulsing `data-*` state, no class changes several times a second) while fading. It is disabled when nothing plays and nothing is fading, so a stray click does nothing.
-3. **When does the fading state end?** *Recommended:* when the fade time has passed (a clock timer), or on the second click, whichever is first. The timer, not the voices, ends it, so the button never gets stuck.
-4. **What if something is started during the fade?** *Recommended:* it plays normally and is not faded. The state ends on schedule, and a second click still cuts it, since the second click stops everything that exists at that moment.
-5. **Do playlists remember their place?** *Recommended:* yes. The fade is a default stop, so each playlist's stop mode applies ("Resumes at 1:23" and so on, §9.1). An instant cut on the second click keeps the same memory, since the position was fixed when the fade began.
-6. **Does it touch the header volumes?** *Recommended:* no. Panic Stop only stops voices and never changes a volume.
+**Open questions** (all answered by the owner's design).
+1. *Fade length:* each playlist's and sound's own fade-out; no new setting.
+2. *Labels:* "Stop (Fade)" and "Stop (NOW!)". The button is always enabled; with nothing playing a press changes nothing.
+3. *End of the fading state:* when nothing is fading out any more.
+4. *Something started during the fade:* the state goes back to *Fade*.
+5. *Playlist position:* the normal stop applies, so each playlist's stop mode decides what it remembers.
+6. *Header volumes:* untouched.
 
-**Plan.**
-1. `SoundPlayer.fadeOutAll(seconds)` and an all-sounds instant cut — tests with the fake engine and clock: every instance ramps to 0 over the given time and is then removed, `sound.activeChanged` fires once per sound, pending decodes are cancelled through the epoch, fade-out timers are cleared, and nothing is left behind.
-2. `PlaylistPlayer.stop('default', { fadeOut })` override — tests: the override replaces the playlist's `fadeOut`, a paused or loading voice is still stopped at once, retiring-voice deadlines follow the override, and the stop mode is unchanged.
-3. The `panicStop` command, the state and `app.panicChanged` in `Soundboard` — tests: first call fades every playlist and sound and enters `'fading'`, the second cuts everything including retiring voices, the timer returns the state to `'idle'`, calling it with nothing playing does nothing, and a start during the fade is not faded.
-4. The footer button (`ui/panic-button.js`) — Playwright tests: disabled at rest, enabled while anything plays, the label changes while fading, the second click silences all, and the footer layout does not shift.
-5. Add the manual check to `TESTING.md`. Then update `DESIGN.md` (§6.1, §6.2, §7, §8.5, §9.1, §10) in its own commit, and remove this proposal and the backlog entry.
+**Plan.** Done in the owner's lean flow: code first, the owner checks the UI, then tests and `DESIGN.md` in one sweep.
+1. Players, facade, command and button.
+2. Owner checks the UI.
+3. Tests: `SoundPlayer` fade and cut, `PlaylistPlayer.silence`, the state machine in `Soundboard`, command validation, and Playwright for the button.
+4. `TESTING.md` manual check, then `DESIGN.md` (§6.1, §6.2, §7, §8, §9.1, §10) in its own commit, and remove this proposal and the backlog entry.
 
 ---
 

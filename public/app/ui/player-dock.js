@@ -1,5 +1,6 @@
 import { Component } from './component.js';
 import { h } from './dom.js';
+import { PanicButton } from './panic-button.js';
 import { PlayerBar } from './player-bar.js';
 
 /** @typedef {import('../logic/ports.js').AudioFileJson} AudioFileJson */
@@ -16,6 +17,7 @@ export class PlayerDock extends Component {
 	#overlay;
 	#playlists;
 	#isPlayable;
+	#panic;
 	/** @type {Map<string, PlayerBar>} */
 	#bars = new Map();
 
@@ -32,6 +34,7 @@ export class PlayerDock extends Component {
 		this.#overlay = overlay;
 		this.#playlists = new Map(playlists.map((playlist) => [playlist.id, playlist]));
 		this.#isPlayable = isPlayable;
+		this.#panic = new PanicButton(soundboard);
 	}
 
 	/** @override */
@@ -43,7 +46,10 @@ export class PlayerDock extends Component {
 		}, 'No playlist playing');
 		// Bars are h-28 (7rem): two rows plus the gap and padding is 16.25rem.
 		const grid = h('div', { class: 'grid max-h-[16.25rem] grid-cols-3 gap-3 overflow-y-auto p-3' }, placeholder);
-		const footer = h('footer', { 'class': 'shrink-0 border-t border-line bg-panel', 'data-player-dock': true }, grid);
+		// The button's slot is as tall as one bar and stays at the top right, so it never moves.
+		const panicSlot = h('div', { class: 'h-28 w-32 shrink-0 self-start py-0 pt-3 pr-3' });
+		const footer = h('footer', { 'class': 'flex shrink-0 border-t border-line bg-panel', 'data-player-dock': true }, h('div', { class: 'min-w-0 flex-1' }, grid), panicSlot);
+		this.#panic.mount(panicSlot);
 
 		this.own(this.#soundboard.on('playlist.stateChanged', ({ playlistId, state }) => {
 			const bar = this.#bars.get(playlistId);
@@ -64,6 +70,7 @@ export class PlayerDock extends Component {
 		// Bars opened later must show the newest title.
 		this.own(this.#soundboard.on('playlist.changed', ({ playlist }) => this.#playlists.set(playlist.id, playlist)));
 		this.own(this.#soundboard.on('playlist.added', ({ playlist }) => this.#playlists.set(playlist.id, playlist)));
+		this.own(() => this.#panic.destroy());
 		this.own(() => {
 			for (const bar of this.#bars.values()) {
 				bar.destroy();

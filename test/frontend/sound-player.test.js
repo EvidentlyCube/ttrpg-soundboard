@@ -328,4 +328,65 @@ describe('SoundPlayer', () => {
 			assert.equal(engine.liveVoices.length, 0);
 		});
 	});
+
+	describe('stopping everything', () => {
+		const slow = sound('Rain.mp3', LARGE.size, { fadeOut: 0.5 });
+		const abrupt = sound('Hit.mp3', LARGE.size);
+
+		it('fades every instance out over its own sound\'s fade-out, then removes it', async () => {
+			const { player, engine, advance, activity } = setup();
+			player.play(slow);
+			player.play(abrupt);
+			await advance(0.05);
+			player.fadeStopAll();
+			// The sound without a fade-out stops at once.
+			assert.deepEqual(engine.voices.map((voice) => [voice.gainRamps, voice.stopped]), [[[[0, 0.5]], false], [[], true]]);
+			assert.deepEqual(player.count(), { fading: 1, steady: 0 });
+			await advance(1.5);
+			assert.equal(engine.liveVoices.length, 0);
+			assert.deepEqual(player.count(), { fading: 0, steady: 0 });
+			assert.equal(activity().filter((event) => event.active === false).length, 2);
+		});
+
+		it('leaves an instance that is already fading out to finish, and counts it as fading', async () => {
+			const { player, engine, advance } = setup();
+			player.play(slow);
+			await advance(0.05 + 1.5);
+			assert.deepEqual(player.count(), { fading: 1, steady: 0 });
+			player.fadeStopAll();
+			assert.deepEqual(engine.voices[0].gainRamps, [[0, 0.5]]);
+		});
+
+		it('cancels presses still waiting for their decode', async () => {
+			const { player, engine, advance } = setup();
+			player.play(SMALL);
+			player.fadeStopAll();
+			await advance(0.05);
+			assert.equal(engine.voices.length, 0);
+			player.play(SMALL);
+			await advance(0.05);
+			assert.equal(engine.voices.length, 1);
+		});
+
+		it('stops everything at once, fading instances included, and leaves no timer', async () => {
+			const { player, engine, clock, advance, activity } = setup();
+			player.play(slow);
+			player.play(abrupt);
+			await advance(0.05);
+			player.fadeStopAll();
+			player.stopAll();
+			assert.equal(engine.liveVoices.length, 0);
+			assert.deepEqual(player.count(), { fading: 0, steady: 0 });
+			assert.equal(clock.pendingTimerCount, 0);
+			assert.equal(activity().filter((event) => event.active === false).length, 2);
+		});
+
+		it('cancels presses waiting for a decode when stopping at once', async () => {
+			const { player, engine, advance } = setup();
+			player.play(SMALL);
+			player.stopAll();
+			await advance(0.05);
+			assert.equal(engine.voices.length, 0);
+		});
+	});
 });

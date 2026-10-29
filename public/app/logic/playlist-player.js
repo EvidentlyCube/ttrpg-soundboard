@@ -121,6 +121,17 @@ export class PlaylistPlayer {
 		return this.#state;
 	}
 
+	/** True while a stopped playlist still has voices fading out (§8.5). */
+	get fadingOut() {
+		return this.#state === 'idle' && this.#retiring.length > 0;
+	}
+
+	/** Stops the playlist at once, like an `'instant'` stop, and cuts voices that were still fading out as well. */
+	silence() {
+		this.#stop('instant', true);
+		this.#finishAllRetiring();
+	}
+
 	/** @returns {PlaylistSnapshot} */
 	snapshot() {
 		const current = this.#current;

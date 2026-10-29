@@ -13,7 +13,7 @@ import { FakeWaveformDecoder } from '../helpers/fake-waveform-decoder.js';
 const NO_CLIP = { startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0 };
 
 const EVENT_TYPES = /** @type {const} */ ([
-	'app.ready', 'app.startFailed', 'audio.suspended', 'audio.resumed',
+	'app.ready', 'app.startFailed', 'audio.suspended', 'audio.resumed', 'panic.changed',
 	'sound.activeChanged', 'sound.error',
 	'playlist.stateChanged', 'playlist.progress', 'playlist.error',
 	'volume.changed',
@@ -987,6 +987,98 @@ describe('Soundboard', () => {
 			assert.equal(api.refreshRequests, 1);
 			await soundboard.refreshLibrary();
 			assert.equal(api.refreshRequests, 2);
+		});
+	});
+
+	describe('Panic Stop', () => {
+		/** Combat and Rain fade out over 2 s; the Tavern playlist and Boom have no fade-out. */
+		async function playing() {
+			const context = await started();
+			const { soundboard, advance } = context;
+			soundboard.customizePlaylist('Combat', { fadeOut: 2 });
+			soundboard.customizeSound('Rain.ogg', { fadeOut: 2 });
+			soundboard.playPlaylist('Combat');
+			soundboard.playSound('Rain.ogg');
+			await advance(1);
+			context.events.length = 0;
+			return context;
+		}
+
+		it('starts in the fade state', async () => {
+			const { soundboard } = await started();
+			assert.equal(soundboard.panicState(), 'fade');
+		});
+
+		it('fades everything out with its own fade-out and then waits for the cut', async () => {
+			const { soundboard, engine, eventsOf } = await playing();
+			soundboard.panicStop();
+			assert.equal(soundboard.getPlaylistSnapshot('Combat').state, 'idle');
+			assert.equal(engine.liveVoices.length, 2);
+			assert.deepEqual(engine.liveVoices.map((voice) => voice.gainRamps.at(-1)), [[0, 2], [0, 2]]);
+			assert.equal(soundboard.panicState(), 'now');
+			assert.deepEqual(eventsOf('panic.changed'), [{ type: 'panic.changed', state: 'now' }]);
+		});
+
+		it('stops at once when pressed again, fading voices included', async () => {
+			const { soundboard, engine, eventsOf } = await playing();
+			soundboard.panicStop();
+			soundboard.panicStop();
+			assert.equal(engine.liveVoices.length, 0);
+			assert.equal(soundboard.isSoundActive('Rain.ogg'), false);
+			assert.equal(soundboard.panicState(), 'fade');
+			assert.deepEqual(eventsOf('panic.changed'), [{ type: 'panic.changed', state: 'now' }, { type: 'panic.changed', state: 'fade' }]);
+		});
+
+		it('goes back to the fade state once everything has faded out', async () => {
+			const { soundboard, advance, engine } = await playing();
+			soundboard.panicStop();
+			await advance(1);
+			assert.equal(soundboard.panicState(), 'now');
+			await advance(2.2);
+			assert.equal(soundboard.panicState(), 'fade');
+			assert.equal(engine.liveVoices.length, 0);
+		});
+
+		it('goes back to the fade state when something new starts playing', async () => {
+			const { soundboard, advance } = await playing();
+			soundboard.panicStop();
+			soundboard.playPlaylist('Tavern');
+			await advance(0.2);
+			assert.equal(soundboard.panicState(), 'fade');
+			// The next press fades the new playlist as well.
+			soundboard.panicStop();
+			assert.equal(soundboard.getPlaylistSnapshot('Tavern').state, 'idle');
+		});
+
+		it('stays in the fade state when nothing has a fade-out', async () => {
+			const { soundboard, engine, eventsOf } = await started();
+			soundboard.playPlaylist('Tavern');
+			soundboard.playSound('Rain.ogg');
+			soundboard.panicStop();
+			assert.equal(engine.liveVoices.length, 0);
+			assert.equal(soundboard.panicState(), 'fade');
+			assert.deepEqual(eventsOf('panic.changed'), []);
+		});
+
+		it('does nothing when nothing plays', async () => {
+			const { soundboard, eventsOf } = await started();
+			soundboard.panicStop();
+			assert.equal(soundboard.panicState(), 'fade');
+			assert.deepEqual(eventsOf('panic.changed'), []);
+		});
+
+		it('keeps what a playlist\'s stop mode remembers', async () => {
+			const { soundboard } = await playing();
+			soundboard.customizePlaylist('Combat', { stopMode: 'pause' });
+			soundboard.panicStop();
+			soundboard.panicStop();
+			assert.equal(soundboard.getPlaylistSnapshot('Combat').resume?.trackIndex, 0);
+		});
+
+		it('is a plain command a remote control could send', async () => {
+			const { soundboard } = await playing();
+			soundboard.dispatch(JSON.parse('{ "type": "panic.stop" }'));
+			assert.equal(soundboard.panicState(), 'now');
 		});
 	});
 

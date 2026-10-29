@@ -282,6 +282,50 @@ describe('PlaylistPlayer', () => {
 			assert.deepEqual(events, []);
 		});
 
+		describe('fading out and silencing', () => {
+			it('is fading out while idle with a voice still ramping down', () => {
+				const { player, advance } = setup({ rules: { fadeOut: 2 } });
+				player.play();
+				advance(1);
+				assert.equal(player.fadingOut, false);
+				player.stop();
+				assert.equal(player.fadingOut, true);
+				advance(3.5);
+				assert.equal(player.fadingOut, false);
+			});
+
+			it('is not fading out while playing, or when stopped without a fade', () => {
+				const { player, advance } = setup();
+				player.play();
+				advance(1);
+				player.stop();
+				assert.equal(player.fadingOut, false);
+			});
+
+			it('silences a playing playlist at once, remembering the place as a stop does', () => {
+				const { player, advance, engine, clock } = setup({ rules: { fadeOut: 2, stopMode: 'pause' } });
+				player.play();
+				advance(1.5);
+				player.silence();
+				assert.equal(player.state, 'idle');
+				assert.equal(engine.liveVoices.length, 0);
+				assert.equal(clock.pendingTimerCount, 0);
+				assert.equal(player.snapshot().resume?.trackIndex, 0);
+			});
+
+			it('cuts voices still fading out of an idle playlist', () => {
+				const { player, advance, engine, clock } = setup({ rules: { fadeOut: 2 } });
+				player.play();
+				advance(1);
+				player.stop();
+				assert.equal(engine.liveVoices.length, 1);
+				player.silence();
+				assert.equal(engine.liveVoices.length, 0);
+				assert.equal(player.fadingOut, false);
+				assert.equal(clock.pendingTimerCount, 0);
+			});
+		});
+
 		describe('what stopping remembers', () => {
 			/** @param {import('../../public/app/logic/playback-rules.js').StopMode} stopMode */
 			function playedFor4Seconds(stopMode) {

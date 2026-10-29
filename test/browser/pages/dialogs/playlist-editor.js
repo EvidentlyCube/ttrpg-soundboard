@@ -48,6 +48,11 @@ export class PlaylistEditorPage extends CustomizeDialog {
 		await this._setSeconds('fadeIn', 'Fade in', seconds);
 	}
 
+	/** @param {string} seconds */
+	async setFadeOut(seconds) {
+		await this._setSeconds('fadeOut', 'Fade out', seconds);
+	}
+
 	async openTracksTab() {
 		await this._dialog.locator('[data-tab="tracks"]').click();
 	}

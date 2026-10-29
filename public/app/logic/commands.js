@@ -7,7 +7,8 @@ import { isTransition } from './transitions.js';
 /**
  * Everything the UI, or later a remote control, can ask the soundboard to do. Commands are plain data, so they can be
  * sent over a connection unchanged (DESIGN.md §6).
- * @typedef {{ type: 'sound.play' | 'sound.stop', soundId: string }
+ * @typedef {{ type: 'panic.stop' }
+ * 	| { type: 'sound.play' | 'sound.stop', soundId: string }
  * 	| { type: 'playlist.toggle' | 'playlist.pause' | 'playlist.resume' | 'playlist.forget', playlistId: string }
  * 	| { type: 'playlist.play' | 'playlist.stop' | 'playlist.next' | 'playlist.previous', playlistId: string, transition?: Transition }
  * 	| { type: 'playlist.jump', playlistId: string, trackIndex: number, transition?: Transition }
@@ -28,6 +29,7 @@ import { isTransition } from './transitions.js';
  * @type {Record<Command['type'], { strings?: string[], numbers?: string[], transition?: boolean, optional?: Record<string, FieldType> }>}
  */
 const SHAPES = {
+	'panic.stop': {},
 	'sound.play': { strings: ['soundId'] },
 	'sound.stop': { strings: ['soundId'] },
 	'playlist.toggle': { strings: ['playlistId'] },
