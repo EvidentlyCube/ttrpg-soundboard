@@ -124,11 +124,13 @@ Sound or track options (`Explosion.mp3.json`)
 - `fadeIn` and `fadeOut` fade a sound in from its start point and out to its end point (§7), in seconds, `0` (the default, off) to `30`, rounded to 3 decimals.
 - Track files accept `startAt` and `endAt` and play only that part (§8.1). They accept `fadeIn` and `fadeOut` too, but tracks ignore those.
 - `duration` (seconds, 2 decimals, or `null` when it can't be read) and `measuredFrom` (the file's size, modification time and SHA-1 at that moment) are written by bootstrap (§3.5), never by hand. They always come together.
-- `source` says where a downloaded file came from (§5.4). Only downloads write it; it can't be changed through the API and isn't sent to the browser yet ([roadmap](ROADMAP.md)).
+- `source` says where the file came from. Every file has one after its first start (§3.3); it can't be changed through the API yet, but is sent to the browser (§5.2) and shown in the metadata dialog (§9.13).
   ```json
-  "source": { "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "extractor": "Youtube", "videoId": "dQw4w9WgXcQ", "playlistId": "PL…", "chapter": 3 }
+  "source": { "origin": "download", "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "extractor": "Youtube", "videoId": "dQw4w9WgXcQ", "playlistId": "PL…", "chapter": 3, "chapterStart": 61.5 }
   ```
-  `url` is always there: the link as pasted for a direct file, the video's own page for `yt-dlp`. `extractor` (yt-dlp's `extractor_key`, since an id only means something on its own site) and `videoId` come with every `yt-dlp` download, `playlistId` only when a playlist was downloaded, and `chapter` (counting from 1) only for a file cut from one chapter.
+  - `origin` says how it was learned: `"download"` (§5.4), `"fileName"` (an id in the file name), `"tags"` (a link in the file's tags) or `"unknown"`, which is just `{ "origin": "unknown" }`. `"edited"` is kept for an editor to come. A `source` without `origin` counts as a download.
+  - `url`: for a download, the link as pasted for a direct file or the video's own page for `yt-dlp`; for a guess, the link built or found.
+  - `extractor` (yt-dlp's `extractor_key`, since an id only means something on its own site) and `videoId` come with every `yt-dlp` download and every YouTube guess, `playlistId` when a playlist was downloaded or a link carried one, and `chapter` (counting from 1) with `chapterStart` (seconds into the video, 3 decimals) only for a file cut from one chapter.
 - `gain` is optional and defaults to `1`. It is the item's own volume as the linear multiplier a Web Audio `GainNode` takes: `1` plays the file as recorded, `2` doubles the amplitude (about +6 dB), `0` is silent. The UI shows it in decibels (§6.4). It is deliberately not called `volume`, because the volumes in `.soundboard` are slider positions, a different thing. A track's `gain` is applied together with its playlist's (§6.4); the track accordion sets it (§9.7).
 - The app writes `gain` rounded to 4 decimal places.
 
@@ -154,7 +156,7 @@ Playlist options (`Combat.json`)
 - `includedSubdirectories` lists paths relative to the playlist directory, using `/`. Every depth is listed explicitly.
 - Listed directories that no longer exist are ignored. They are not removed.
 
-**Validation (fatal).** Any options file or `.soundboard` that fails `JSON.parse`, is not an object, or has the wrong type for a known key (`title` must be a non-empty string, `gain` must be a number from `0` to `4`, `crossfade`, `fadeIn` and `fadeOut` numbers from `0` to `30`, `order` one of `"ordered"`, `"random"` and `"shuffle"`, `trackLooping` `true` or `false`, `stopMode` one of `"pause"`, `"resetTrack"` and `"resetPlaylist"`, `startAt` a non-negative number, `endAt` a non-negative number or `null` and, when both points are numbers, at least 10 ms (`MIN_CLIP_MS`) after `startAt`, `duration` a non-negative number or `null` and present together with a well-formed `measuredFrom`, `includedSubdirectories` must be an array of strings, `source` an object whose `url`, `extractor`, `videoId` and `playlistId` are strings and whose `chapter` is a positive integer (other keys inside it are kept), `version` must be a positive integer, `volumes.*` must be numbers in `0..1`) is an error. Bootstrap gathers **all** such errors, prints them in red with their paths, and exits with code `1` **before asking any questions or writing anything**. The user must fix or delete those files. Options files of empty playlists are validated too.
+**Validation (fatal).** Any options file or `.soundboard` that fails `JSON.parse`, is not an object, or has the wrong type for a known key (`title` must be a non-empty string, `gain` must be a number from `0` to `4`, `crossfade`, `fadeIn` and `fadeOut` numbers from `0` to `30`, `order` one of `"ordered"`, `"random"` and `"shuffle"`, `trackLooping` `true` or `false`, `stopMode` one of `"pause"`, `"resetTrack"` and `"resetPlaylist"`, `startAt` a non-negative number, `endAt` a non-negative number or `null` and, when both points are numbers, at least 10 ms (`MIN_CLIP_MS`) after `startAt`, `duration` a non-negative number or `null` and present together with a well-formed `measuredFrom`, `includedSubdirectories` must be an array of strings, `source` an object whose `origin` is one of the five above, whose `url`, `extractor`, `videoId` and `playlistId` are strings, whose `chapter` is a positive integer and whose `chapterStart` is a non-negative number (other keys inside it are kept), `version` must be a positive integer, `volumes.*` must be numbers in `0..1`) is an error. Bootstrap gathers **all** such errors, prints them in red with their paths, and exits with code `1` **before asking any questions or writing anything**. The user must fix or delete those files. Options files of empty playlists are validated too.
 
 **Unknown keys are preserved.** Whenever the app rewrites a file, it reads it again, merges, and writes back the whole object, so keys from future versions survive.
 
@@ -165,6 +167,7 @@ Playlist options (`Combat.json`)
 - A sound or track uses its metadata title if one was found and accepted (§3). Otherwise it uses the **filename exactly as it is, extension included** (`01_battle-theme.mp3`).
 - A playlist uses the directory name.
 - A download writes its title into the options file: the file name without its extension and without the ` [<videoId>]` tag `yt-dlp` added (§5.4). `Battle Theme [dQw4w9WgXcQ].ogg` becomes "Battle Theme". Only the downloaded video's own id is removed, so brackets that belong to the title, such as `[Live]`, stay. A new playlist takes the title typed in the add dialog (§9.9).
+- A file whose source is found in its name (§3.3) loses the ` [<id>]` from its title too. A title that is still exactly the file name also loses its extension, so `Battle [dQw4w9WgXcQ].ogg` becomes "Battle", as a download would be named; a title the user changed only loses the id.
 
 ### 2.5 Trash and moves
 
@@ -228,6 +231,11 @@ Playlists without tracks take no further part: no question is asked about their 
 5. **New nested subdirectories.** These are subdirectories not listed in the playlist's `includedSubdirectories`. A brand-new playlist has none listed, so all of its subdirectories count as new. If there are any, print and ask exactly as in §3.2 step 5. No exits `0`; Yes appends them to the list and writes the file.
 6. **Missing options files.** For every audio file without one, generate it **without asking**: the metadata title if found, otherwise the filename. Missing playlist options files are created as in §3.2 step 7. `.soundboard` is not rewritten.
 
+**Sources, in both modes.** Every sound and track whose options file has no `source` gets one (§2.3), so each file is examined once (`src/library/sources.js`). A new options file gets it in the same write; an existing one has it merged in, and these writes are counted with the generated options.
+1. **The file name.** The last `[…]` right before the extension, holding exactly 11 characters of `A–Z a–z 0–9 _ -`, is a YouTube video id, as `yt-dlp` names files (`Title - 003 Intro [id].ogg` included). The source is `{ origin: "fileName", url: "https://www.youtube.com/watch?v=<id>", extractor: "Youtube", videoId }`, and the title loses the id (§2.4). False positives, such as `[Instrumentl]`, are accepted, and nothing is checked online.
+2. **Otherwise, the tags.** The first link `readSourceLink` finds (§4) becomes `{ origin: "tags", url }`. A YouTube link also gives `extractor`, `videoId` and, with a `list=` parameter, `playlistId`. The known forms are `watch?v=` on `youtube.com` and its `m.` and `music.` hosts, `youtu.be/<id>`, and `/shorts/`, `/embed/`, `/live/` and `/v/`.
+3. **Otherwise** `{ origin: "unknown" }`.
+
 ### 3.4 Result
 
 Bootstrap reports how many options files it created or updated and how many playlists and sounds were loaded. It returns an in-memory `Library` (§5.1), a `SettingsStore` loaded from `.soundboard`, and the scan it built them from, which the change watcher compares against (§5.3). The server keeps only these, never file contents. A refresh builds them again (§3.6).
@@ -259,7 +267,7 @@ On success the server replaces its library and settings store with the new ones 
 
 ## 4. Metadata extraction
 
-`readTitle(filePath) → Promise<string | null>` and `readDuration(filePath) → Promise<number | null>` in `src/metadata/` pick the parser by extension (`.mp3`, `.ogg`, case-insensitive). They return `null` for missing or malformed data and only throw for file system errors. They read through a file handle with bounded reads and never load the whole file. No third-party code is involved.
+`readTitle(filePath) → Promise<string | null>`, `readSourceLink(filePath) → Promise<string | null>` and `readDuration(filePath) → Promise<number | null>` in `src/metadata/` pick the parser by extension (`.mp3`, `.ogg`, case-insensitive). They return `null` for missing or malformed data and only throw for file system errors. They read through a file handle with bounded reads and never load the whole file. No third-party code is involved.
 
 ### 4.1 MP3: ID3v2, falling back to ID3v1
 
@@ -269,11 +277,13 @@ On success the server replaces its library and settings store with the new ones 
   - If tag-wide unsynchronization is set (v2.2/2.3), read the whole tag (giving up beyond **2 MB**), reverse the unsynchronization, then parse. In v2.4, the title frame's own flags are honored: unsynchronization, data length indicator and group byte.
   - Compressed or encrypted title frames count as missing. A title frame over 64 KB is ignored.
 - **ID3v1.** If there is no ID3v2 title, read the last 128 bytes. If they start with `TAG`, bytes 3–32 hold the title in ISO-8859-1, trimmed.
+- **Source links.** The same walk reads the frames where `yt-dlp --embed-metadata` and taggers keep a file's page, and takes the first `http(s)` link from them, in this order: a user link (`WXXX`; its URL is always ISO-8859-1, after a description in the frame's encoding), a user text frame described "purl" (`TXXX`), the official source link (`WOAS`), then a comment (`COMM`, after its language and description). ID3v2.2 uses `WXX`, `TXX`, `WAS` and `COM`. Each frame is read only when wanted, with the title frame's limits and flags; a frame over 64 KB, compressed or encrypted is skipped. ID3v1 has no links.
 
 ### 4.2 OGG: Vorbis comments
 
 - Read Ogg pages (`"OggS"` capture pattern, segment table) of the first logical stream, ignoring pages of other multiplexed streams, and reassemble the first two packets. The second is the comment header. Reading stops after **1 MB**, because comment packets can hold embedded cover art; whatever part of the comments arrived is still searched.
 - Recognize Vorbis (`\x01vorbis` / `\x03vorbis`) and Opus (`OpusHead` / `OpusTags`). Parse the vendor string, then the comment list. The value of the first non-empty `TITLE=` entry (key matched case-insensitively) is the title, decoded as UTF-8.
+- The source link is the first `http(s)` link in a `PURL` entry, else in `COMMENT`, else in `DESCRIPTION`.
 - Other codecs in an Ogg container return `null`.
 
 ### 4.3 Durations
@@ -294,7 +304,7 @@ On success the server replaces its library and settings store with the new ones 
 Library   { root, playlists: Playlist[], sounds: AudioFile[], files: Map<id, AudioFile> }
 Playlist  { id, title, gain, crossfade, fadeIn, fadeOut, order, trackLooping, stopMode, tracks: AudioFile[], includedSubdirectories: string[] }
 AudioFile { id /* root-relative POSIX path */, title, format: 'mp3'|'ogg', size, gain, duration /* seconds or null */,
-            startAt, endAt /* seconds or null */, fadeIn, fadeOut, absolutePath }
+            startAt, endAt /* seconds or null */, fadeIn, fadeOut, source /* §2.3, origin filled in, or null */, absolutePath }
 Settings  { volumes: { master, music, sfx } }   // held by SettingsStore, saved to .soundboard
 ```
 
@@ -365,16 +375,17 @@ The server knows nothing about playback state.
 	"playlists": [
 		{ "id": "Combat", "title": "Combat", "gain": 0.8, "crossfade": 2.5, "fadeIn": 1, "fadeOut": 3, "order": "shuffle", "trackLooping": false, "stopMode": "resetPlaylist", "tracks": [
 			{ "id": "Combat/01 Battle.mp3", "title": "Battle", "format": "mp3", "size": 4194304, "gain": 1, "duration": 213.47,
-			  "startAt": 0, "endAt": null, "fadeIn": 0, "fadeOut": 0, "url": "/media/Combat/01%20Battle.mp3" }
+			  "startAt": 0, "endAt": null, "fadeIn": 0, "fadeOut": 0, "url": "/media/Combat/01%20Battle.mp3",
+			  "source": { "origin": "fileName", "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "extractor": "Youtube", "videoId": "dQw4w9WgXcQ" } }
 		] }
 	],
 	"sounds": [
 		{ "id": "Explosion.mp3", "title": "Big Explosion", "format": "mp3", "size": 48213, "gain": 0.5957, "duration": 4.21,
-		  "startAt": 0.25, "endAt": 3.8, "fadeIn": 0.05, "fadeOut": 0.5, "url": "/media/Explosion.mp3" }
+		  "startAt": 0.25, "endAt": 3.8, "fadeIn": 0.05, "fadeOut": 0.5, "url": "/media/Explosion.mp3", "source": { "origin": "unknown" } }
 	]
 }
 ```
-Each path segment of a media URL is percent-encoded separately. The library reflects changes made through `PATCH`, downloads, deletions and moves, so a reload shows them.
+Each path segment of a media URL is percent-encoded separately. `source` is the stored one (§2.3) with `origin` filled in, or `null` for a file bootstrap hasn't given one. The library reflects changes made through `PATCH`, downloads, deletions and moves, so a reload shows them.
 
 **Event stream messages** (`src/http/events.js`). Every connection starts with `externalChanges`, `trash` and, when downloads are available, a `download` message carrying the whole log, so a page that was away misses nothing.
 
@@ -534,6 +545,7 @@ flushTrackOptions(trackId)                // save that track's pending change no
 // waveforms (§6.6): not commands, because they are not playback
 startWaveforms()                          // ask the server what is missing and make it; also runs by itself after 'app.ready'
 stopWaveforms()                           // stop after the file being decoded; its result is dropped
+regenerateWaveforms()                     // make every sound's and track's waveform again, replacing the stored ones (§6.6)
 
 // external changes (§6.7): not commands, because they are not playback
 checkExternalChanges()                    // ask the server for a quick check; the UI calls it when the window gets the focus back
@@ -710,7 +722,12 @@ A created voice is wrapped in a `MonitoredVoice` that forwards its calls and rec
 - **Stopping.** Every start and stop bumps a run number. A stopped run ends at its next check, and the result of the file being decoded is dropped. Starting again asks the server afresh, so it continues with what is still missing. Nothing is remembered across a page load: F5 starts a new run.
 - **Reading.** `get(id)` fetches a waveform once and caches it (about 2 KB each); a `404` is not cached, so a waveform made later is found. A waveform just made is cached as it is stored.
 - **The decoder** (`WaveformDecoder`, `audio/web-audio-waveform-decoder.js`) fetches `/media/<id>`, decodes it with an `OfflineAudioContext` at 8000 Hz (22050 or 44100 Hz if the browser refuses), and reduces the samples to 1024 min/max pairs with `logic/peaks.js`. The decoder resamples while decoding, so a 5-minute stereo track takes about 10 MB instead of 100 MB, and only the 2 KB of peaks leave the method. It is the one part not covered by unit tests (TESTING.md).
-- **Drawing** (§9.7, §9.2) scales each waveform to its own loudest peak, so quiet files still show their shape.
+- **Regenerating.** `regenerateWaveforms()` (the header menu, §9.1) has the service make every sound's and track's waveform again, sounds first and then tracks in playlist order, whether or not one is stored. It replaces the stored files and the cached peaks as each is made. A run in progress gives way to it, as to a stop.
+- **Drawing** (§9.7, §9.2, `ui/waveform-draw.js`) scales each waveform to its own loudest peak, then shapes the levels so both loud and quiet stretches show detail. A linear scale hides the quiet parts of a loud track, and a track that is loud throughout reaches the top everywhere. Each level is therefore drawn as the average of two measures:
+  - **its decibels** above a floor 42 dB below the peak (`FLOOR_DB`, about one step of the 8-bit peaks), which lifts quiet stretches;
+  - **its rank** among all the track's levels (`RANK_WEIGHT` 0.5; equal levels share the middle of their ranks), which spreads crowded levels over the whole height, so spikes stand out.
+
+  Silence stays a flat line, the loudest level reaches about the top, and the order of levels is kept.
 
 ### 6.7 External changes
 
@@ -929,7 +946,7 @@ Browsers only allow audio to start inside a user gesture, so the app starts behi
 
 ### 9.1 Layout
 
-- The page is a full-height column: header (title, the external changes button while there are any, the waveform progress while there is any, the Trash button while the trash holds anything, volume controls and the debug button, §9.8), a scrolling main area, then the footer.
+- The page is a full-height column: header (the ☰ app menu button and the title, §9.3, then the external changes button while there are any, the waveform progress while there is any, the Trash button while the trash holds anything, volume controls and the debug button, §9.8), a scrolling main area, then the footer.
 - The main area has a "Playlists" section above a "Sound Effects" section. Both are always shown, even empty, because their titles carry the add buttons: **+ Add playlist** in blue and **+ Add sound** in amber (`tileGrid`, §9.9). With no playlists and no sounds, a line above them says none were found in this folder, until a download adds one.
 - Tiles for sounds and playlists added by a download or a move (`sound.added`, `playlist.added`) appear at once in their sorted place. Tiles of sounds and playlists deleted or moved away (`sound.removed`, `playlist.removed`), in this tab or another, disappear at once, and a Customize dialog open for that item closes.
 - Tiles are `<button>`s in a grid of columns at least 10rem (160 px) wide, with titles clamped to 3 lines. The full title shows as a tooltip.
@@ -972,6 +989,7 @@ One shared `Overlay` shows the context menus and the track list popover; opening
 | Play | `playSound` |
 | Stop All | `stopSound`; enabled only while instances are playing |
 | Customize | opens the sound's Customize dialog (§9.7) |
+| Metadata | opens the metadata dialog for the sound (§9.13) |
 
 **Playlist menu**
 
@@ -984,8 +1002,16 @@ One shared `Overlay` shows the context menus and the track list popover; opening
 | Stop | `stopPlaylist('default')`; enabled only while active |
 | Stop (Instant) | `stopPlaylist('instant')`; enabled only while active |
 | Reset | `forgetPlaylist`; enabled only while the playlist is idle and remembers where it will resume (§8.1) |
-| Add tracks… | opens the add dialog for this playlist (§9.9) |
 | Customize | opens the playlist's Customize dialog (§9.7) |
+| Metadata | opens the metadata dialog for every track of the playlist (§9.13) |
+
+Tracks are added from the Tracks tab of the playlist dialog (§9.9), so the menu doesn't offer it.
+
+**App menu**, opened by the ☰ button at the left of the header (§9.1), below it:
+
+| Item | Behavior |
+|---|---|
+| Regenerate Waves | `regenerateWaveforms` (§6.6) |
 
 "Active" means `loading`, `playing` or `paused`. The plain items follow the playlist's fades and crossfade; with those off, each behaves like its "(Instant)" twin, except for cutting voices already fading out. Separators divide the groups.
 
@@ -1032,17 +1058,18 @@ UI components extend `Component` (`ui/component.js`): `render()` builds the elem
 **Accent.** Each dialog has one accent color for everything that lights up: amber (`sfx`) in the sound dialog, blue (`music`) in the playlist dialog. The parts below take it as an `accent` option.
 
 **Shared parts** (`ui/customize-parts.js`), from which both dialogs are built:
-- **Card** (`card(title, accent, ...children)`). Settings are grouped in raised cards with rounded corners, a soft shadow and the title as a small uppercase pill on the top border. At rest the card is dimmed (`bg-raised-dim`, `border-line-dim`) and the pill is drawn in the border's color, so it reads as part of the border. While the card is hovered or anything in it has focus, it lights up (`bg-raised`, `border-line`) and the pill takes the accent color, so it is clear which part of the dialog is being worked with. Pills stick out above their cards, so cards are spaced `space-y-8`.
+- **Card** (`card(title, accent, ...children)`). Settings are grouped in raised cards with rounded corners, a soft shadow and the title as a small uppercase pill on the top border. At rest the card is dimmed (`bg-raised-dim`, `border-line-dim`) and the pill is drawn in the border's color, so it reads as part of the border. While the card is hovered or anything in it has focus, it lights up (`bg-raised`, `border-line`) and the pill takes the accent color, so it is clear which part of the dialog is being worked with. Pills stick out above their cards, so cards are spaced `space-y-8`. A pill stays on one line within its card, ending in "…" with the full title as a tooltip.
 - **Labeled row** (`labeledRow`). Several settings in one card: a fixed-width label on the left, the control on the right.
 - **Radio group** (`radioGroup({ name, choices, value, accent, onChange })`). Native radio buttons in the accent color (`role="radiogroup"`), each with its name and a one-line description below it. Choosing one reports it at once; `update(value)` follows changes made elsewhere.
 - **Checkbox** (`checkbox({ name, label, description, checked, accent, onChange })`). One on/off setting, laid out like a radio choice: a native checkbox in the accent color, its name, and a description below. `update(checked)` follows changes made elsewhere.
 - **Title.** A filled field (below), focused on open, with the floating label "Title" and a hint below it. The hint, usually a file or folder name, stays on one line, ending in "…" when too long, with the full text as its tooltip. Every edit is sent at once. While the field is empty or only spaces, it is marked invalid (`aria-invalid` and `data-invalid`), nothing is sent, the hint explains that the last title is kept, and the tile keeps it.
 - **Volume.** The gain widget on `ITEM_SCALE`.
-- **Play / Stop.** A button showing whether the item is playing.
-- **Status.** In the corner, without text: a spinner after a change, a checkmark once saved. A failure is shown as a red message.
+- **Play / Stop.** A button showing whether the item is playing, filled in the dialog's accent with dark text.
+- **Status.** Without text: a spinner after a change, a checkmark once saved. A failure is shown as a red message.
+- **Footer** (`playFooter`). Both dialogs hand Play / Stop and the status to the `Dialog` as its footer, so they stay in view below the scrolling body, on every tab: Play in the middle, the status at the right.
 - **Move or delete** (`moveOrDeleteCard`), the last card of the sound dialog, of an open track row ("Move or delete") and of the playlist's first tab ("Delete", without Move, with the note "The folder and everything in it go to the trash."). **Move…** on the left opens the move dialog (§9.11); **Hold to delete** on the right deletes (§2.5). A failure shows as a red message in the card. On success the item leaves the library, and the board closes the dialog or the accordion drops the row.
 - **Hold-to-delete button** (`ui/hold-button.js`). A red-outlined button that acts only after being held down for 0.5 s (`HOLD_MS`, or its `holdMs` option), by the pointer or by holding Enter or Space, so a slip never deletes anything. While held, a red fill sweeps across it from the left: a CSS width transition started by `data-holding`, so nothing updates during the hold (§9.6); its duration is an inline style, since Tailwind can't build a class from a variable. The `neutral` tone draws it grey instead, for actions that aren't deletions, such as Restore (§9.12). Releasing early, leaving the button, losing the focus or `pointercancel` cancels it, and the fill snaps back; key repeats are ignored. While the request runs it is disabled and reads "Deleting…".
-- **Tabs.** A tab bar over panels (`role="tablist"`, `tab`, `tabpanel`), the first selected. The left and right arrow keys move between tabs, and only the selected panel is shown. The bar stays at the top while the dialog scrolls.
+- **Tabs.** A tab bar over panels (`role="tablist"`, `tab`, `tabpanel`), the first selected unless another is asked for. The left and right arrow keys move between tabs, and only the selected panel is shown. The bar stays at the top while the dialog scrolls.
 
 **Filled field** (`ui/filled-field.js`, `filledField({ label?, unit?, accent, align, width, attributes })`), the one style for text fields in the dialogs:
 - A background (`bg-surface`) with rounded top corners and only a 2 px underline, no outline.
@@ -1057,7 +1084,7 @@ UI components extend `Component` (`ui/component.js`): `render()` builds the elem
 - **Fades:** Fade in and Fade out as labeled rows of seconds controls with the playlist fades' limits (below).
 - **Move or delete** (above).
 
-Below the cards: Play / Stop (`playSound`, or stopping all instances; it follows `sound.activeChanged`, so it also reflects presses on the tile) and the status (`sound.saved`, `sound.saveFailed`).
+In the footer: Play / Stop (`playSound`, or stopping all instances; it follows `sound.activeChanged`, so it also reflects presses on the tile) and the status (`sound.saved`, `sound.saveFailed`).
 
 **Start and end section** (`ui/range-control.js`). It works in whole milliseconds and shows them as seconds with three decimals. Every change sends both points with `customizeSound`, and `sound.changed` updates the control unless a handle is being dragged.
 - **Slider.** It spans the sound's stored duration. Two handles (`role="slider"`, "Start point" and "End point") never cross and stay at least `MIN_CLIP_MS` apart. Dragging a handle moves it; pressing the bar moves the nearer handle there (the start on a tie) and keeps dragging it. The part between the handles is amber (`bg-sfx`) on a dim bar. Handle and bar positions are inline styles (§9.6).
@@ -1075,7 +1102,7 @@ Below the cards: Play / Stop (`playSound`, or stopping all instances; it follows
   - **Playback order** is a radio group, sent with `customizePlaylist({ order })` and following `playlist.changed`: **Ordered** "First to last, as listed.", **Random** "Any track next, never the same one twice in a row." and **Shuffle** "Every track once in a shuffled order, then shuffled again." Below the radio buttons, after a divider, the checkbox **Repeat the current track** "It plays again until you move to another track." is sent with `customizePlaylist({ trackLooping })`.
   - **When stopped** is a radio group, sent with `customizePlaylist({ stopMode })` and following `playlist.changed`: **Pause** "Playing again continues where it stopped.", **Reset track** "Playing again starts the same track from its beginning." and **Reset playlist** "Playing again starts afresh, as if for the first time."
 - **"Tracks (N)" tab:** the track accordion (`ui/track-accordion.js`). The count in the tab follows `playlist.changed`.
-  - The list runs edge to edge between the tab bar and the Play row, with lines between the rows and no outer border. Below it, a blue **+ Add tracks** button opens the add dialog for this playlist (§9.9), in place of this dialog.
+  - The list runs edge to edge between the tab bar and the footer, with lines between the rows and no outer border. Below it, a blue **+ Add tracks** button opens the add dialog for this playlist (§9.9), in place of this dialog. This dialog comes back, on the Tracks tab, when the add dialog is closed without downloading, or when the download it started is dismissed.
   - One row per track: a play / stop button, then a button with `aria-expanded` showing number and title, and a small blue "Cropped" bubble when the track's points differ from the whole file (no duration is shown). Clicking the button area opens the row and closes any other; clicking the open one closes it. Hovering anywhere on the header tints the whole row blue (`bg-music/15`), and the open row's header has a stronger tint (`bg-music/20`) and a blue title.
   - **Test playback** (`ui/track-playback.js` holds the pure rules, with unit tests). Only the playlist's current track is playing or paused (`trackPlayback`), and a loading track counts as playing. The row's button is a sibling of the toggle, so pressing it doesn't open or close the row. It does what `trackAction` says: on a track that isn't current, `jumpToTrack(…, { transition: 'instant' })`; on the playing track, `stopPlaylist(…, { transition: 'instant' })`, which follows the stop mode (§8.1); on a paused track, `resumePlaylist`. Buttons follow `playlist.stateChanged`, so a track started from the footer shows as playing here too. All tracks are assumed playable.
   - A track whose gain differs from 0.0 dB (as `formatDb` rounds it) shows a small bubble in its header with the change: `+3.5 dB` in orange (`bg-boost/20`) when louder, `−6.0 dB` in cyan when quieter. It follows `playlist.changed` and is hidden at 0.0 dB.
@@ -1087,7 +1114,7 @@ Below the cards: Play / Stop (`playSound`, or stopping all instances; it follows
       - A track without a measured duration has no such card.
     - **Volume** holds the gain widget on `ITEM_SCALE` for the track's own gain, sent with `customizeTrack({ gain })` and following `playlist.changed`. It does not show the playlist's gain, which is on the first tab. A change reaches the track that is playing at once.
     - **Track** holds the title field (hint: `File: <track id>`), sent with `customizeTrack`. Row headers follow `playlist.changed`, while the open field is left alone, so it keeps its focus while typing. Later track settings get their own cards in the open row.
-- **Below both tabs**, staying in view while either scrolls: Play / Stop (`togglePlaylist`, like a tile click; it follows `playlist.stateChanged`) and the status, which follows the playlist's saves (`playlist.saved`, `playlist.saveFailed`) and its tracks' (`track.saved`, `track.saveFailed`).
+- **In the footer**, staying in view while either tab scrolls: Play / Stop (`togglePlaylist`, like a tile click; it follows `playlist.stateChanged`) and the status, which follows the playlist's saves (`playlist.saved`, `playlist.saveFailed`) and its tracks' (`track.saved`, `track.saveFailed`).
 
 **Fade in, Crossfade and Fade out** in the playlist dialog, in that order, and Fade in and Fade out in the sound dialog, each a seconds control (`ui/seconds-control.js`):
 - A slider in 0.1 s steps, in the dialog's accent, and a readout with three decimals (`Off`, `2.500 s`) that turns into a filled field with the unit `s` when clicked, like the gain widget's. Typed values accept `,` as the decimal point, an `s` suffix and `off`, and are clamped to the control's limit. An optional note sits below.
@@ -1123,7 +1150,7 @@ Below the cards: Play / Stop (`playSound`, or stopping all instances; it follows
 
 ### 9.9 Add dialog
 
-`ui/add-dialog.js`, opened in the shared `Dialog` (§9.7) by **+ Add sound** ("Add sounds", amber), **+ Add playlist** ("Add a playlist", blue) and **Add tracks** from the playlist menu or the Tracks tab ("Add tracks to Combat", blue).
+`ui/add-dialog.js`, opened in the shared `Dialog` (§9.7) by **+ Add sound** ("Add sounds", amber), **+ Add playlist** ("Add a playlist", blue) and **+ Add tracks** on the playlist dialog's Tracks tab ("Add tracks to Combat", blue), which it returns to (§9.7).
 
 - **Tools missing.** When `getDownloadTools()` reports a missing tool, every Add button opens a small "Downloads are not available" dialog instead: "Downloads need yt-dlp and ffmpeg. ffmpeg was not found when the app started. Install it, then restart the app."
 - **Link.** A filled field "Link", focused on open, and a **Look up** button; Enter looks up too. A hint below says what can be pasted. While the lookup runs, the button is disabled and reads "Looking up…". A failed lookup shows the server's message in red under the field.
@@ -1166,6 +1193,19 @@ Below the cards: Play / Stop (`playSound`, or stopping all instances; it follows
 - **One action at a time.** While one runs, every button is disabled and the one pressed reads "Restoring…" or "Deleting…". A failure shows in red in the footer. Afterwards the list is fetched again.
 - **Following changes.** Every `trash.changed`, from this tab or another, fetches the list again, and answers to older requests are dropped. The dialog closes once the trash is empty. Restored items appear on the board like any addition (§9.1).
 
+### 9.13 Metadata dialog
+
+`ui/metadata-dialog.js`, opened by **Metadata** in the sound and playlist menus (§9.3), titled `Metadata: "<title>"`, read-only. It reads the files' `source` from `getLibrary()` (§2.3).
+
+- **A sound** shows one raised card (`card`, §9.7), titled "Source", amber. **A playlist** shows one blue card per track, in playlist order, in one scrolling list, each titled with the track's number and title.
+- **Rows**, as a label and a value: **File** (the path inside the root), then the source's fields from `sourceRows` (`ui/source-fields.js`): **Origin** ("Downloaded", "Found in the file name", "Found in the file's tags", "Unknown", or "Entered by hand" for `edited`), **Link**, **Site** (the extractor), **Video**, **Playlist** and **Chapter**. The rows come from that one list of fields, each naming its source key, so an editor can later turn them into fields.
+- **No value** shows an italic "n/a" at lower opacity.
+- **Links** open in a new tab (`target="_blank"`, `rel="noopener noreferrer"`). **Link** links to its `url` when that is `http(s)`. For a YouTube source (an extractor starting with "Youtube"), the ids are linked too, rebuilt so they work whatever link was recorded:
+  - **Video:** `https://www.youtube.com/watch?v=<videoId>`.
+  - **Playlist:** `https://www.youtube.com/playlist?list=<playlistId>`, followed by an "in playlist" link to `watch?v=<videoId>&list=<playlistId>`.
+  - **Chapter:** `watch?v=<videoId>&t=<whole seconds>s` when `chapterStart` is known; otherwise the number is plain text.
+- Long values end in "…" with the full value as a tooltip, and everything can be selected and copied.
+
 ---
 
 ## 10. Project structure
@@ -1179,7 +1219,7 @@ src/
 	cli/        main.js  args.js  prompter.js  reporter.js  colors.js
 	library/    bootstrap-service.js  scanner.js  classify.js  sort.js  validate.js  errors.js
 	            options-store.js  settings-store.js  library.js  library-editor.js  durations.js  waveform-store.js
-	            change-watcher.js  tree-snapshot.js  file-moves.js  trash.js
+	            change-watcher.js  tree-snapshot.js  file-moves.js  trash.js  sources.js
 	downloads/  download-service.js  probe.js  yt-dlp.js  ffmpeg.js  link-fetcher.js  process-runner.js  line-splitter.js
 	            tools.js  file-names.js  workspace.js  errors.js
 	metadata/   index.js  id3.js  ogg.js  mpeg.js  binary-reader.js
@@ -1203,7 +1243,7 @@ public/
 		            dialog.js  customize-parts.js  filled-field.js  sound-editor.js  playlist-editor.js  track-accordion.js
 		            gain-control.js  gain-scale.js  debug-view.js  waveform-indicator.js  waveform-draw.js  waveform-canvas.js
 		            seconds-control.js  seconds-scale.js  range-control.js  range-scale.js  add-dialog.js  download-dialog.js
-		            hold-button.js  move-dialog.js  trash-button.js  trash-dialog.js
+		            hold-button.js  move-dialog.js  trash-button.js  trash-dialog.js  metadata-dialog.js  source-fields.js
 test/
 	backend/    cli/  downloads/  http/  library/  metadata/
 	frontend/   logic tests, backend-api.test.js, ui/ (pure UI helpers)
