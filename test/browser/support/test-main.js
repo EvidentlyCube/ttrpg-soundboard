@@ -11,7 +11,9 @@ import { FakeWaveformDecoder } from '../test-support/fake-waveform-decoder.js';
 
 const clock = new FakeClock();
 // Loading takes no time unless a test scripts it, so a press needs no `advance` before its sound starts.
-const engine = new FakeAudioEngine(clock, { defaultScript: { loadDelay: 0 } });
+// The fixtures say which formats this "browser" cannot play (support/fixtures.js).
+const unplayable = /** @type {string[]} */ (globalThis.soundboardTestOptions?.unplayableFormats ?? []);
+const engine = new FakeAudioEngine(clock, { defaultScript: { loadDelay: 0 }, canPlay: (format) => !unplayable.includes(format) });
 const decoder = new FakeWaveformDecoder();
 
 const soundboard = new Soundboard({

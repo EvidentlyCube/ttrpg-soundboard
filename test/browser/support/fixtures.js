@@ -57,15 +57,20 @@ class Soundboard {
  * @property {FooterPage} footer
  * @property {Audio} audio
  * @typedef {object} Options
+ * @property {string[]} unplayableFormats formats this "browser" cannot play, such as 'ogg' (Safari)
  * @property {'example' | import('../../helpers/tmp-tree.js').TreeSpec} library what the server serves: a copy of the example fixture, or a tree to build
  */
 
 /** @type {import('@playwright/test').Fixtures<Fixtures & Options, {}, import('@playwright/test').PlaywrightTestArgs & import('@playwright/test').PlaywrightTestOptions>} */
 const fixtures = {
 	library: ['example', { option: true }],
+	unplayableFormats: [[], { option: true }],
 
 	// The real page, with the fakes from test/helpers/ where the browser's audio would be (support/test-main.js).
-	page: async ({ page }, use) => {
+	page: async ({ page, unplayableFormats }, use) => {
+		await page.addInitScript((formats) => {
+			globalThis.soundboardTestOptions = { unplayableFormats: formats };
+		}, unplayableFormats);
 		await page.route('**/app/main.js', (route) => route.fulfill({ path: join(SUPPORT, 'test-main.js'), contentType: 'text/javascript' }));
 		await page.route('**/test-support/*.js', (route) => {
 			const name = new URL(route.request().url()).pathname.split('/').pop() ?? '';

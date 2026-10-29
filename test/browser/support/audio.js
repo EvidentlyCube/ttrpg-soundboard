@@ -35,7 +35,8 @@ export class Audio {
 	 * Says how a sound or track behaves when it plays. Call it before it plays. Every file with that title is set, since
 	 * several playlists can hold the same song.
 	 * @param {string} title
-	 * @param {{ duration?: number, loadDelay?: number, loadError?: string, playError?: string }} script seconds
+	 * @param {{ duration?: number, loadDelay?: number, loadError?: string, playError?: string, bufferError?: string }} script seconds; a
+	 * sound short enough to be buffered fails with `bufferError`, a track with `loadError`
 	 */
 	async script(title, script) {
 		const found = await this.#page.evaluate(async ([wanted, voiceScript]) => {
@@ -57,6 +58,16 @@ export class Audio {
 		return this.#page.evaluate(() => soundboardTest.engine.liveVoices.map(
 			(/** @type {any} */ voice) => ({ label: voice.label, bus: voice.bus, gain: voice.gain, startAt: voice.startAt }),
 		));
+	}
+
+	/** The system takes the audio device away, as when the lid closes or another app takes over. */
+	async suspend() {
+		await this.#page.evaluate(() => soundboardTest.engine.simulate('suspended'));
+	}
+
+	/** The system gives the audio device back, as it does once the person has clicked. */
+	async resume() {
+		await this.#page.evaluate(() => soundboardTest.engine.simulate('resumed'));
 	}
 
 	/** @param {string} title */

@@ -47,4 +47,24 @@ export class SoundsPage {
 		await expect(this.#tile(title)).toHaveAttribute('data-active', 'false');
 		await expect(this.#stopButton(title)).toBeHidden();
 	}
+
+	/** @param {string} title */
+	async expectError(title) {
+		await expect(this.#tile(title)).toHaveAttribute('data-error', 'true');
+	}
+
+	/** The red ring lasts two seconds of real time (DESIGN.md §9.1). @param {string} title */
+	async expectNoError(title) {
+		await expect(this.#tile(title)).not.toHaveAttribute('data-error', 'true');
+	}
+
+	/**
+	 * A tile that cannot be pressed, with the reason its tooltip gives.
+	 * @param {string} title
+	 * @param {string} reason
+	 */
+	async expectDisabled(title, reason) {
+		await expect(this.#tile(title)).toBeDisabled();
+		await expect(this.#tile(title)).toHaveAttribute('title', new RegExp(reason));
+	}
 }

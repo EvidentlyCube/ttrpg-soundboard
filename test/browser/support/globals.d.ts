@@ -4,3 +4,4 @@ declare var soundboardTest: {
 	engine: import('../../helpers/fake-audio-engine.js').FakeAudioEngine;
 	decoder: import('../../helpers/fake-waveform-decoder.js').FakeWaveformDecoder;
 };
+declare var soundboardTestOptions: { unplayableFormats: string[] } | undefined;
