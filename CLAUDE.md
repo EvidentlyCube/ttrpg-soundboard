@@ -73,7 +73,7 @@ Never quietly diverge from the design in code. Code comments refer to design sec
 
 ## Testing
 
-- TDD: write the test first for all domain and logic code. No automated tests for DOM/UI components or `WebAudioEngine`; those are checked with the manual checklist in `TESTING.md`. When new tests pass on the first run, break the code on purpose to confirm they can fail.
+- TDD: write the test first for all domain and logic code. DOM/UI tests should use Playwright; When new tests pass on the first run, break the code on purpose to confirm they can fail.
 - Add new manual checks to `TESTING.md` when a feature changes something only a browser can verify.
 - Tests live in `test/`, mirroring the source layout. Use `describe`/`it` from `node:test` with `node:assert/strict`. Names describe behavior (`it('ignores ended from a superseded track')`).
 - Tests never write into `test_fixtures/`. Copy to a temp directory first.
