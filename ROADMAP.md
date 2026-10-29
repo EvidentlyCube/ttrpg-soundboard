@@ -29,7 +29,26 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## Proposals
 
-None yet.
+### Reload guard
+
+**Goal.** Reloading or closing the page asks for confirmation while something is playing or paused, since a reload stops all audio and forgets where every playlist was. Nothing is asked when the board is silent, and the page's own reload after a refresh of external changes never asks.
+
+**Design changes.**
+- §6.1 (facade): `isAnythingPlaying()`, true while a playlist is active (playing or paused, i.e. `getActivePlaylists()` is not empty) or a sound has live instances. No new event: the UI already hears `playlist.stateChanged` and `sound.activeChanged`.
+- §9.1 (layout) or §9.0 (start-up): a "Reload guard" paragraph. A `beforeunload` listener in `App` calls `preventDefault()` only when `isAnythingPlaying()` is true. Browsers show their own generic text; the message cannot be customized.
+- §6.7 (external changes): the reload on `library.refreshed` removes the listener first, so it does not ask. The user already confirmed by pressing Refresh, whose tooltip says that playback stops.
+- `TESTING.md`: a manual check, since only a real browser shows the native prompt.
+
+**Open questions.**
+1. **Does a paused playlist count?** *Recommended:* yes. A reload loses its position and its place in the order too.
+2. **Does a sound that is still decoding or only has a fading-out voice count?** *Recommended:* count whatever `sound.activeChanged` counts (instance count above 0), and nothing more.
+3. **Does a playlist remembering a resume point (stopped with "Reset track" off) count?** *Recommended:* no. It is silent, and the position is only a convenience.
+4. **Should the guard be switchable?** *Recommended:* no. It asks only while audio is live, which is the case it exists for.
+
+**Plan.**
+1. `Soundboard.isAnythingPlaying()` — tests with the fake engine: false at start, true while a playlist plays or is paused, false after stop and Panic Stop, true while a sound instance plays and false when it ends.
+2. The `beforeunload` listener in `App`, removed before the refresh reload — Playwright tests: a reload attempt while a playlist plays raises the `beforeunload` dialog, none when silent, none after Panic Stop, and none on the refresh reload.
+3. Add the manual check to `TESTING.md`. Then update `DESIGN.md` (§6.1, §6.7, §9.1) in its own commit, and remove this proposal and the backlog entry.
 
 ---
 
