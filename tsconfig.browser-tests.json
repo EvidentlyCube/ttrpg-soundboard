@@ -12,5 +12,8 @@
 	"files": [],
 	"include": [
 		"test/browser/**/*.js"
+	],
+	"exclude": [
+		"test/browser/support/test-main.js"
 	]
 }

@@ -38,6 +38,11 @@ export default [
 		languageOptions: { globals: globals.browser },
 	},
 	{
+		// Runs in the page under test, not in Node (test/browser/support/test-main.js).
+		files: ['test/browser/support/test-main.js'],
+		languageOptions: { globals: globals.browser },
+	},
+	{
 		// Logic must stay runnable in Node tests and future remote clients, so it gets no environment globals at all.
 		files: ['public/app/logic/**/*.js'],
 		rules: {
