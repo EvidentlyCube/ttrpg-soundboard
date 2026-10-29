@@ -15,5 +15,8 @@
 		"src/**/*.js",
 		"test/backend/**/*.js",
 		"test/helpers/**/*.js"
+	],
+	"exclude": [
+		"scripts/browser-smoke"
 	]
 }

@@ -14,7 +14,8 @@
 		"typecheck": "tsc -p tsconfig.backend.json && tsc -p tsconfig.logic.json && tsc -p tsconfig.ui.json && tsc -p tsconfig.frontend-tests.json",
 		"lint": "eslint .",
 		"lint:fix": "eslint . --fix",
-		"check": "npm run typecheck && npm run lint && npm test"
+		"check": "npm run typecheck && npm run lint && npm test",
+		"smoke": "node scripts/browser-smoke/run.js"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",

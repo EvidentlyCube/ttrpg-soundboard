@@ -57,7 +57,7 @@ node scripts/mutate.js public/app/logic/options-sync.js "if (entry.saving || !op
 
 ## Browser smoke tests
 
-The real page has been driven in headless Chromium over the DevTools protocol, with real mouse input (`Input.dispatchMouseEvent`) and Node's built-in `WebSocket`, against the real server and a copy of the example fixture. That script is not committed yet ([`ROADMAP.md`](ROADMAP.md)). Lessons for whoever writes or commits it:
+The real page has been driven in headless Chromium over the DevTools protocol, with real mouse input (`Input.dispatchMouseEvent`) and Node's built-in `WebSocket`, against the real server and a copy of the example fixture. The scripts are in `scripts/browser-smoke/`: `harness.js` starts the server and Chromium, and each other file checks one feature and prints `"check": "ok"` or `"FAIL …"` lines. They always exit 0, so `npm run smoke [name filter]` runs them and counts the failures. It needs `chromium-browser` on `PATH` and stays out of `npm run check`. Screenshots go to a temp folder, never the repository. The scripts are excluded from the backend type-check, since they are throwaway driving code. Some assertions describe earlier versions of the UI and fail now (`clip-ui`, `crossfade-smoke`, `tracks-smoke`, `ui-smoke`; [`ROADMAP.md`](ROADMAP.md)); the others pass. Lessons for whoever writes or changes one:
 
 - Mouse events need the `buttons` bitmask (1 left, 2 right, 0 on release). Without it Chromium believes a button is still held after a right-click and drops the next click.
 - To test "clicking outside a popup", first check with `elementFromPoint` that the backdrop really is under the point, since a menu can sit on top of tiles.

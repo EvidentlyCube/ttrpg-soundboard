@@ -81,11 +81,11 @@ Will not implement.
 Load the next track shortly before the current one ends, for gapless changes.
 - **Seam:** `PlaylistPlayer` (DESIGN.md §8); crossfades already start the next voice early (§8.4).
 
-#### Committed browser smoke tests
+#### Bring the browser smoke tests up to date
 
-The UI and `WebAudioEngine` have been checked by driving the real page in headless Chromium over the DevTools protocol, using only Node's built-in `WebSocket`. That script lives outside the repository.
+The smoke scripts are committed in `scripts/browser-smoke/` (`npm run smoke`, see [`TESTING.md`](TESTING.md)), but four of them still check earlier versions of the UI and report 29 failed checks: `clip-ui`, `crossfade-smoke`, `tracks-smoke` and `ui-smoke`.
 
-- **Notes:** commit it (for example as `scripts/browser-smoke/` with an `npm run smoke` script) so the checks can be repeated. It needs a local Chromium and stays out of `npm run check`. See [`TESTING.md`](TESTING.md). It becomes more valuable as the dialogs add UI.
+- **Notes:** update their assertions to the current dialogs (cards, footers, the Tracks tab layout, the Metadata menu item), then make `npm run smoke` exit non-zero only for real failures. There are no scripts yet for downloads, the trash, moving or the metadata dialog.
 
 #### Media element reuse for Safari (only if needed)
 
