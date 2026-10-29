@@ -219,6 +219,61 @@ Replace the committed smoke scripts (`scripts/browser-smoke/`, [`TESTING.md`](TE
   - Real-browser checks of `WebAudioEngine` itself stay manual (or a separate small suite), since the mock replaces it.
   - Port what the smoke scripts cover, then remove them. It needs Playwright as a dev dependency, which needs the owner's approval (CLAUDE.md) and stays out of `npm run check`.
 
+### Browser test coverage still to write
+
+What the Playwright suite (`test/browser/`) does not check yet, collected when the first suite was finished. It covers the splash, playing and controlling playlists and sounds, errors, a suspended system, the sound and playlist Customize dialogs (title, volume, start point, fades, order, repeat, when stopped, crossfade, saving), external changes, the header volumes, the waveform indicator and the basics of the trash. Everything below is open. Each group is a candidate for its own proposal. The part that only a real browser can check stays in the manual checklist ([`TESTING.md`](TESTING.md)), and so does `WebAudioEngine`.
+
+- **Player bar and playlist playback.**
+  - The tile menu's instant items (Play, Next and Stop "(Instant)"), Reset, and Stop All on a sound.
+  - A playlist set to "Reset track" or "Reset playlist" when stopped: the "Resumes track 3" status, and starting again from the beginning.
+  - Repeat the current track, and the random and shuffle orders (with a seeded `random` passed through `test-main.js`).
+  - Previous restarting a track that has played for a while, instead of going back.
+  - Seeking with the keyboard, and seeking while paused.
+  - The crossfade band on the progress bar, and the fade levels on the engine's gain ramps (`FakeVoice.gainRamps`).
+  - Times from an hour on (`h:mm:ss`), and `--:--` while the duration is unknown.
+  - A track that is disabled in the track list (unsupported format), and the track list scrolling to the current track.
+  - The footer layout: three bars per row, two rows, then scrolling.
+  - A ninth instance of a sound replacing the oldest, and the difference between small (buffered) and large (streamed) sounds.
+- **Sound dialog.**
+  - Dragging the start and end handles, pressing the bar, the handles never crossing or coming closer than 10 ms, and the keyboard on the handles (arrows, Shift, Home and End).
+  - The start and end fields: `1,25 s`, clamping, nonsense marked red, Esc restoring the field.
+  - The fade-out and fades longer than the part that plays (the pulsing red bands).
+  - The volume widget: dragging, double-click to reset, the arrow, Home and End keys, `-inf`, nonsense marked red, Esc cancelling the edit only, and the orange boost state above 0 dB.
+  - The volume changing a sound that is already playing, and a copy already playing keeping the points it started with.
+- **Playlist dialog and tracks.**
+  - The Tracks tab: customizing, playing, cropping and changing the volume of a single track, renaming tracks, and the track settings saving (`track.saved`, `track.saveFailed`).
+  - Moving a track, and deleting a track or the whole playlist from the dialog, and the dialog closing when its playlist goes away.
+  - Adding tracks from the Tracks tab, and the dialog coming back on that tab.
+  - The fade-in and fade-out fields, and the crossfade limit note ("Up to … half the shortest track").
+- **Add dialog, Download dialog and downloads.** All of it, which needs the fake process runner behind the test server (`downloads: { tools, run }`): lookups and their errors, chapters and playlists, progress and the log, one job at a time, cancelling, dismissing, `503` without the tools, and new tiles appearing at once, including tracks added to a playlist that is playing.
+- **Move dialog and moves.** Moving a sound to a playlist and a track to sound effects, name clashes, and the open Customize dialog closing.
+- **Trash.**
+  - Restoring a playlist or a track (a playlist recreated from its options, tracks flattened), and the ` (2)` name clashes.
+  - Restore all and Delete all (held for 2 s), the dialog closing once the trash is empty, and the errors shown in it.
+  - Deleting a playlist that is playing, and a deleted sound that is playing stopping.
+- **Metadata dialog.** All of it: the rows, source links and their rebuilding for YouTube, the origin and chapter fields, and saving.
+- **App menu and waveforms.**
+  - ☰ → "Regenerate Waves" counting every sound and track, and its stop button.
+  - Failed waveforms counted in the indicator ("2 failed"), and one that cannot be decoded not stopping the rest.
+  - Making none again on a second page load, and the waveform appearing in an open dialog when it is made.
+- **External changes beyond the basics.**
+  - A refresh that fails: the "Could not load the changes" dialog with each problem, and the missing `.soundboard` bringing the "needs a restart" splash back for good.
+  - The check when the window gets the focus back.
+  - Replacing a file with an identical copy not showing the button, and a change made just before clicking Refresh surviving the reload.
+  - The button's "Refreshing…" state.
+- **Start-up and the system.**
+  - `app.startFailed`: "Could not start the soundboard. Click to retry." and retrying.
+  - An open popup closing when the system suspends audio, and an open Customize dialog staying underneath the splash.
+  - The empty library line ("none found in this folder").
+  - The debug view and its button.
+  - The context menu closing on a click outside it and on Esc, and Esc taking the topmost dialog first.
+- **The suite itself.**
+  - Firefox and WebKit projects in `playwright.config.js` (the browsers are installed), at least for layout checks.
+  - Narrow-window layouts, once "Basic mobile design" is done.
+  - A visual check of the waveform canvases.
+  - Whether `finishWaveforms()` and the other real-time waits can be made deterministic.
+  - Why the engine's `unlock` runs twice on start (the splash spec only asserts "at least once").
+
 ### Switching scenes
 
 Changing the mood in one action instead of stopping one playlist and starting another by hand. For example, starting a playlist fades out the others in its group, or a saved scene stores a set of playlists and volumes.
