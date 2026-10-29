@@ -1,8 +1,8 @@
 import { extname } from 'node:path';
 import { BinaryReader } from './binary-reader.js';
-import { readId3Title } from './id3.js';
+import { readId3SourceLink, readId3Title } from './id3.js';
 import { readMpegDuration } from './mpeg.js';
-import { readOggDuration, readOggTitle } from './ogg.js';
+import { readOggDuration, readOggSourceLink, readOggTitle } from './ogg.js';
 
 /** @typedef {import('./binary-reader.js').ByteSource} ByteSource */
 
@@ -10,6 +10,12 @@ import { readOggDuration, readOggTitle } from './ogg.js';
 const TITLE_READERS = {
 	'.mp3': readId3Title,
 	'.ogg': readOggTitle,
+};
+
+/** @type {Record<string, (reader: ByteSource) => Promise<string | null>>} */
+const LINK_READERS = {
+	'.mp3': readId3SourceLink,
+	'.ogg': readOggSourceLink,
 };
 
 /** @type {Record<string, (reader: ByteSource) => Promise<number | null>>} */
@@ -38,6 +44,17 @@ export async function readDuration(filePath) {
 export async function readTitle(filePath) {
 	const readFormatTitle = TITLE_READERS[extname(filePath).toLowerCase()];
 	return readFormatTitle ? withReader(filePath, readFormatTitle) : null;
+}
+
+/**
+ * Reads the first link to the file's page from its tags, where `yt-dlp --embed-metadata` and taggers keep it
+ * (DESIGN.md §4). Returns null when there is none; only file system errors are thrown.
+ * @param {string} filePath
+ * @returns {Promise<string | null>}
+ */
+export async function readSourceLink(filePath) {
+	const readFormatLink = LINK_READERS[extname(filePath).toLowerCase()];
+	return readFormatLink ? withReader(filePath, readFormatLink) : null;
 }
 
 /**

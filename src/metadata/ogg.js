@@ -4,6 +4,9 @@ const PAGE_HEADER_LENGTH = 27;
 // Comment packets can embed cover art, so reading stops here and whatever part of the comments arrived is parsed.
 const MAX_BYTES_READ = 1024 * 1024;
 const TAIL_BYTES = 128 * 1024;
+/** Where `yt-dlp --embed-metadata` and taggers keep a file's page, best first. */
+const LINK_KEYS = ['PURL', 'COMMENT', 'DESCRIPTION'];
+const LINK = /https?:\/\/[^\s"<>]+/;
 
 const CODECS = [
 	{ identification: Buffer.from('\x01vorbis', 'latin1'), comments: Buffer.from('\x03vorbis', 'latin1') },
@@ -16,12 +19,39 @@ const CODECS = [
  * @returns {Promise<string | null>}
  */
 export async function readOggTitle(reader) {
+	return (await readComments(reader)).find(([key, value]) => key === 'TITLE' && value !== '')?.[1] ?? null;
+}
+
+/**
+ * Reads the first `http(s)` link from the comments where a file's page is kept: `PURL`, then `COMMENT`, then
+ * `DESCRIPTION` (DESIGN.md §4.2). Returns null when none holds one.
+ * @param {ByteSource} reader
+ * @returns {Promise<string | null>}
+ */
+export async function readOggSourceLink(reader) {
+	const comments = await readComments(reader);
+	for (const wanted of LINK_KEYS) {
+		for (const [key, value] of comments) {
+			const link = key === wanted ? LINK.exec(value)?.[0] : undefined;
+			if (link) {
+				return link;
+			}
+		}
+	}
+	return null;
+}
+
+/**
+ * @param {ByteSource} reader
+ * @returns {Promise<[string, string][]>} keys in upper case, values trimmed; empty for missing or malformed data
+ */
+async function readComments(reader) {
 	const [identification, comments] = await readHeaderPackets(reader);
 	const codec = CODECS.find((candidate) => startsWith(identification, candidate.identification));
 	if (!codec || !startsWith(comments, codec.comments)) {
-		return null;
+		return [];
 	}
-	return findTitleComment(comments.subarray(codec.comments.length));
+	return parseComments(comments.subarray(codec.comments.length));
 }
 
 /**
@@ -147,10 +177,14 @@ async function readHeaderPackets(reader, count = 2) {
 }
 
 /**
- * Parses a Vorbis comment block (vendor string, then length-prefixed `KEY=value` entries), stopping safely at truncation.
+ * Parses a Vorbis comment block (vendor string, then length-prefixed `KEY=value` entries), stopping safely at
+ * truncation with the entries read so far.
  * @param {Buffer} data
+ * @returns {[string, string][]}
  */
-function findTitleComment(data) {
+function parseComments(data) {
+	/** @type {[string, string][]} */
+	const entries = [];
 	let offset = 0;
 	/** @returns {number | null} */
 	const readLength = () => {
@@ -164,30 +198,27 @@ function findTitleComment(data) {
 
 	const vendorLength = readLength();
 	if (vendorLength === null) {
-		return null;
+		return entries;
 	}
 	offset += vendorLength;
 	const count = readLength();
 	if (count === null) {
-		return null;
+		return entries;
 	}
 
 	for (let i = 0; i < count; i++) {
 		const length = readLength();
 		if (length === null || offset + length > data.length) {
-			return null;
+			return entries;
 		}
 		const entry = data.toString('utf8', offset, offset + length);
 		offset += length;
 		const separator = entry.indexOf('=');
-		if (separator > 0 && entry.slice(0, separator).toUpperCase() === 'TITLE') {
-			const title = entry.slice(separator + 1).trim();
-			if (title) {
-				return title;
-			}
+		if (separator > 0) {
+			entries.push([entry.slice(0, separator).toUpperCase(), entry.slice(separator + 1).trim()]);
 		}
 	}
-	return null;
+	return entries;
 }
 
 /**
