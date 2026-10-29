@@ -16,6 +16,8 @@ import { copyFixture, createTmpTree } from '../../helpers/tmp-tree.js';
 const TITLED_MP3 = buildId3v2({ frames: [textFrame('TIT2', 'Tagged Title')] });
 const TITLED_OGG = buildOgg({ comments: ['TITLE=Ogg Title'] });
 const SETTINGS = JSON.stringify({ version: 1 });
+/** What a file whose name and tags say nothing about its origin is given (DESIGN.md §3.3). */
+const UNKNOWN = { origin: 'unknown' };
 
 /** @type {import('../../helpers/tmp-tree.js').TmpDir[]} */
 const trees = [];
@@ -84,8 +86,8 @@ describe('BootstrapService', () => {
 			const { outcome, prompter } = await bootstrap(root);
 
 			assert.deepEqual(prompter.questions, []);
-			assert.deepEqual(await readOptions(root, 'Boom.mp3.json'), { title: 'Boom.mp3' });
-			assert.deepEqual(await readOptions(root, 'Combat/1.ogg.json'), { title: '1.ogg' });
+			assert.deepEqual(await readOptions(root, 'Boom.mp3.json'), { title: 'Boom.mp3', source: UNKNOWN });
+			assert.deepEqual(await readOptions(root, 'Combat/1.ogg.json'), { title: '1.ogg', source: UNKNOWN });
 			assert.deepEqual(await readJson(root, 'Combat.json'), { title: 'Combat', includedSubdirectories: [] });
 			assert.deepEqual(await readJson(root, '.soundboard'), { version: 1, volumes: { master: 1, music: 1, sfx: 1 } });
 			assert.equal(outcome.status, 'ready');
@@ -112,22 +114,22 @@ describe('BootstrapService', () => {
 				{ path: 'Boom.mp3', title: 'Tagged Title' },
 				{ path: 'Combat/1.ogg', title: 'Ogg Title' },
 			]]);
-			assert.deepEqual(await readOptions(root, 'Boom.mp3.json'), { title: 'Tagged Title' });
-			assert.deepEqual(await readOptions(root, 'Plain.mp3.json'), { title: 'Plain.mp3' });
-			assert.deepEqual(await readOptions(root, 'Combat/1.ogg.json'), { title: 'Ogg Title' });
+			assert.deepEqual(await readOptions(root, 'Boom.mp3.json'), { title: 'Tagged Title', source: UNKNOWN });
+			assert.deepEqual(await readOptions(root, 'Plain.mp3.json'), { title: 'Plain.mp3', source: UNKNOWN });
+			assert.deepEqual(await readOptions(root, 'Combat/1.ogg.json'), { title: 'Ogg Title', source: UNKNOWN });
 		});
 
 		it('uses file names when metadata titles are declined', async () => {
 			const root = await tree({ 'Boom.mp3': TITLED_MP3 });
 			await bootstrap(root, [false]);
-			assert.deepEqual(await readOptions(root, 'Boom.mp3.json'), { title: 'Boom.mp3' });
+			assert.deepEqual(await readOptions(root, 'Boom.mp3.json'), { title: 'Boom.mp3', source: UNKNOWN });
 		});
 
 		it('only reads metadata for files without options and keeps existing options files', async () => {
 			const root = await tree({ 'Boom.mp3': TITLED_MP3, 'Boom.mp3.json': '{ "title": "Mine", "extra": 1 }' });
 			const { prompter } = await bootstrap(root);
 			assert.deepEqual(prompter.questions, []);
-			assert.deepEqual(await readOptions(root, 'Boom.mp3.json'), { title: 'Mine', extra: 1 });
+			assert.deepEqual(await readOptions(root, 'Boom.mp3.json'), { title: 'Mine', extra: 1, source: UNKNOWN });
 		});
 
 		it('asks about nested directories and records them when accepted', async () => {
@@ -193,8 +195,8 @@ describe('BootstrapService', () => {
 
 			assert.deepEqual(prompter.questions, []);
 			assert.deepEqual(reporter.callsTo('metadataTitles'), []);
-			assert.deepEqual(await readOptions(root, 'New.mp3.json'), { title: 'Tagged Title' });
-			assert.deepEqual(await readOptions(root, 'Plain.ogg.json'), { title: 'Plain.ogg' });
+			assert.deepEqual(await readOptions(root, 'New.mp3.json'), { title: 'Tagged Title', source: UNKNOWN });
+			assert.deepEqual(await readOptions(root, 'Plain.ogg.json'), { title: 'Plain.ogg', source: UNKNOWN });
 		});
 
 		it('does not rewrite the settings file', async () => {
@@ -389,7 +391,7 @@ describe('BootstrapService', () => {
 			assert.equal(outcome.status, 'ready');
 			assert.deepEqual(outcome.library.sounds.map((sound) => sound.title), ['a.mp3', 'Tagged Title']);
 			assert.equal(outcome.scan.root, root);
-			assert.deepEqual(await readOptions(root, 'b.mp3.json'), { title: 'Tagged Title' });
+			assert.deepEqual(await readOptions(root, 'b.mp3.json'), { title: 'Tagged Title', source: UNKNOWN });
 		});
 
 		it('merges new nested directories without asking and without recording them', async () => {

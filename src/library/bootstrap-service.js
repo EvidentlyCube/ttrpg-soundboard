@@ -1,10 +1,11 @@
-import { readTitle } from '../metadata/index.js';
+import { readSourceLink, readTitle } from '../metadata/index.js';
 import { ValidationError } from './errors.js';
 import { isMeasured, measureIfNeeded } from './durations.js';
 import { buildLibrary } from './library.js';
 import { readValidatedJson, updateJsonFile, writeJsonAtomic } from './options-store.js';
 import { scanAudioDirectory } from './scanner.js';
 import { INITIAL_SETTINGS_FILE, SettingsStore } from './settings-store.js';
+import { guessSource, titleWithoutId, videoIdFromFileName } from './sources.js';
 import { validateAudioOptions, validatePlaylistOptions, validateSettingsFile } from './validate.js';
 
 /** @typedef {import('./library.js').Library} Library */
@@ -129,8 +130,9 @@ export class BootstrapService {
 
 		let written = 0;
 		for (const audio of missingOptions) {
+			const title = titles.get(audio.id) ?? audio.name;
 			/** @type {AudioOptions} */
-			const options = { title: titles.get(audio.id) ?? audio.name, ...(await measureIfNeeded(audio, undefined)) };
+			const options = { title, ...(await measureIfNeeded(audio, undefined)), ...(await sourceFor(audio, title)) };
 			await writeJsonAtomic(audio.optionsPath, options);
 			optionsByPath.set(audio.optionsPath, options);
 			written++;
@@ -143,6 +145,17 @@ export class BootstrapService {
 				optionsByPath.set(audio.optionsPath, { ...existing, ...measurement });
 				written++;
 			}
+		}
+		// Every file gets a source once, so none is examined twice (DESIGN.md §3.3).
+		for (const audio of audioFiles.filter((file) => file.hasOptions)) {
+			const existing = /** @type {AudioOptions} */ (optionsByPath.get(audio.optionsPath));
+			if (existing.source !== undefined) {
+				continue;
+			}
+			const change = await sourceFor(audio, existing.title);
+			await updateJsonFile(audio.optionsPath, (current) => ({ ...current, ...change }));
+			optionsByPath.set(audio.optionsPath, { ...existing, ...change });
+			written++;
 		}
 		for (const playlist of playlists) {
 			const added = newSubdirectories.get(playlist.id) ?? [];
@@ -201,6 +214,21 @@ export class BootstrapService {
 		}
 		return new Map(found.map(({ path, title }) => [path, title]));
 	}
+}
+
+/**
+ * Where a file without a recorded source came from: an id in its name, else a link in its tags, else unknown. An id
+ * found in the name is taken out of the title too (DESIGN.md §2.4).
+ * @param {ScannedAudio} audio
+ * @param {string | undefined} title
+ * @returns {Promise<AudioOptions>} what to merge into its options
+ */
+async function sourceFor(audio, title) {
+	const fromName = videoIdFromFileName(audio.name);
+	if (fromName !== null) {
+		return { source: guessSource(audio.name, null), title: titleWithoutId(title, audio.name, fromName) };
+	}
+	return { source: guessSource(audio.name, await readSourceLink(audio.absolutePath)) };
 }
 
 /**
