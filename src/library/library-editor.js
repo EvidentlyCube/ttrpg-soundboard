@@ -239,7 +239,7 @@ export class LibraryEditor {
 	}
 
 	/**
-	 * Moves a sound into the trash, with its options file and waveform (DESIGN.md §2).
+	 * Moves a sound into the trash, with its options file and waveform (DESIGN.md §2.5).
 	 * @param {string} soundId
 	 * @returns {Promise<Rearrangement>}
 	 */

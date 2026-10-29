@@ -3,10 +3,10 @@ import { basename, dirname, join } from 'node:path';
 import { uniqueName } from '../downloads/file-names.js';
 import { audioFormatOf } from './classify.js';
 
-/** Where deleted files go, mirroring their place in the root (DESIGN.md §2). Its dot hides it from the scanner. */
+/** Where deleted files go, mirroring their place in the root (DESIGN.md §2.5). Its dot hides it from the scanner. */
 export const TRASH_DIRECTORY = '.trash';
 
-/** The files that belong to an audio file and travel with it: its options file and its waveform (DESIGN.md §2). */
+/** The files that belong to an audio file and travel with it: its options file and its waveform (DESIGN.md §2.5). */
 const COMPANION_SUFFIXES = ['.json', '.wf'];
 
 /**

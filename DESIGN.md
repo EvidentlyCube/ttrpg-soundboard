@@ -48,6 +48,7 @@ node index.js <path-to-audio-directory> [--port <number>] [--verbose]
 <root>/
 ├── .soundboard                 ← marker and app settings (version, volumes)
 ├── .soundboard-downloads/      ← where downloads work (§5.4); emptied at every start
+├── .trash/                     ← deleted sounds, tracks and playlists, at the paths they had (§2.5)
 ├── Explosion.mp3               ← sound effect
 ├── Explosion.mp3.json          ← its options
 ├── Explosion.mp3.wf            ← its waveform, made by the browser (§6.6); disposable
@@ -67,7 +68,7 @@ node index.js <path-to-audio-directory> [--port <number>] [--verbose]
 
 The scanner applies these rules in order:
 
-1. Names starting with `.` (files or directories, at any depth) are **ignored**. This includes `.soundboard`, `.soundboard-downloads/`, `.DS_Store` and macOS `._*` files.
+1. Names starting with `.` (files or directories, at any depth) are **ignored**. This includes `.soundboard`, `.soundboard-downloads/`, `.trash/`, `.DS_Store` and macOS `._*` files.
 2. **Symlinks are ignored**, with a warning, to avoid loops and files outside the root.
 3. In the root:
    - Each directory is a **playlist**. Its ID is the directory name.
@@ -164,6 +165,16 @@ Playlist options (`Combat.json`)
 - A sound or track uses its metadata title if one was found and accepted (§3). Otherwise it uses the **filename exactly as it is, extension included** (`01_battle-theme.mp3`).
 - A playlist uses the directory name.
 - A download writes its title into the options file: the file name without its extension and without the ` [<videoId>]` tag `yt-dlp` added (§5.4). `Battle Theme [dQw4w9WgXcQ].ogg` becomes "Battle Theme". Only the downloaded video's own id is removed, so brackets that belong to the title, such as `[Live]`, stay. A new playlist takes the title typed in the add dialog (§9.9).
+
+### 2.5 Trash and moves
+
+Deleting never removes a file. Everything deleted goes into `.trash/` in the root, which its dot hides from the scanner, the change watcher and refreshes (§2.1). What happens to the trash afterwards is left to the user for now ([roadmap](ROADMAP.md)).
+
+- **A sound or a track** keeps its path relative to the root inside the trash, and its options file and waveform go with it: `Boom.mp3` becomes `.trash/Boom.mp3` (+ `.json`, `.wf`), and `Combat/Boss/1.mp3` becomes `.trash/Combat/Boss/1.mp3`. Missing folders are created.
+- **A playlist** moves as a whole: its folder with everything in it, including subdirectories that aren't included and files the app doesn't show, and its options file. `Combat/` becomes `.trash/Combat/` and `Combat.json` becomes `.trash/Combat.json`.
+- **A playlist's only track** can't leave it alone: deleting it deletes the playlist, and moving it away moves the track and then puts what is left of the playlist in the trash. An empty playlist never exists.
+- **Clashes.** Folders are merged into one of the same name already in the trash, so a playlist "Duck" deleted twice, and tracks deleted from it one by one, all end up in `.trash/Duck/`. A playlist's options file replaces the one already there. Any other file whose name is taken gets ` (2)`, ` (3)`… before its extension, and its options file and waveform take the same new name, so they stay paired.
+- **Moves.** A sound can become a track of any playlist, and a track can move to another playlist or out to the sounds. A playlist can't be moved. The file keeps its name, with ` (2)` added when it, its options file or its waveform is taken, and lands in the top level of the target: a track from a nested subdirectory doesn't take the subdirectory along. The options file moves unchanged, since sounds and tracks accept the same keys (§2.3), so the title, gain, points and fades carry over. The waveform stays valid, because a rename keeps the size and modified time.
 
 ---
 
@@ -284,6 +295,12 @@ Settings  { volumes: { master, music, sfx } }   // held by SettingsStore, saved 
   - It measures the duration (§3.5) and writes the options file with `title`, `source`, `duration` and `measuredFrom`. Then it adds the file to `Library.files` and to `sounds` or the playlist's `tracks`, sorted as at startup (§2.2): sounds by title, tracks by path, so an added track takes its place by name.
   - `createPlaylist` names the directory after the title (unsafe characters removed, ` (2)` when the directory or `<name>.json` exists), writes `<directory>.json` with the title and an empty `includedSubdirectories`, and adds the first track, so an empty playlist never exists.
   - Each returns the item plus `written`, every file it created, for the change watcher (§5.3). `playlist(id)` looks a playlist up.
+- **Deletions and moves** (§2.5). `deleteSound(id)`, `deleteTrack(id)`, `deletePlaylist(id)`, `moveSound(id, playlistId)` and `moveTrack(id, playlistId | null)`, where `null` means the sounds. `file-moves.js` does the renaming: `moveAudioFile` (an audio file with its companions, under a free name) and `mergeDirectory`.
+  - Each takes the item out of the library first, so a save requested afterwards fails as unknown. It then waits for the writes already queued on the item's options files, and on the playlist's for a playlist or a last track, so none can recreate a file at its old path. It waits before the work goes to the change watcher, which runs saves and these tasks in turn.
+  - The files are then moved through an injected `writeFiles`, the watcher's (§5.3). If that fails, the item is put back.
+  - A move puts the file into `sounds` (sorted by title) or the target's `tracks` (sorted by path) under its new id, and both update `Library.files`.
+  - Each returns `{ changes, removed, renamed }`. `changes` lists what happened, in order, as `library.removed` (`{ soundId }`, `{ trackId, playlistId }` or `{ playlistId }`) and `library.added` (`{ sound }` or the receiving `{ playlist }`). A playlist's last track is reported as the playlist's removal. `removed` lists the files that left the root and `renamed` the `[from, to]` pairs within it, for the watcher.
+  - Moving a track into its own playlist is a `ValidationError`; unknown ids and target playlists are the `Unknown…Error`s.
 - `WaveformStore` (`waveform-store.js`) keeps one waveform file, `<audio file>.wf`, next to each sound and track, beside its `.json` options file. The browser makes the waveforms (§6.6); the store only holds them. A file is a 16-byte header, then 2048 signed bytes:
   - The header is the magic `SBW1`, the bucket count (u16, always 1024), two reserved bytes, the audio file's size (u32) and its modified time in whole seconds (u32). The server fills the last two in from the audio file when it stores a waveform.
   - The bytes are 1024 pairs: the lowest and the highest sample of each of 1024 equal slices of the audio, across all channels, scaled to −127..127.
@@ -302,6 +319,8 @@ The server knows nothing about playback state.
 | GET | `/api/settings` | `{ "volumes": { "master": 1, "music": 0.8, "sfx": 1 } }` |
 | PUT | `/api/settings/volumes` | Body `{ master?, music?, sfx? }` (numbers in `0..1`). Merged into the settings and saved; returns the full settings. `400` for invalid JSON, a non-object, an out-of-range value or an unknown key. `413` for bodies over 16 KB. |
 | PATCH | `/api/sounds/<encoded id>` | Body `{ title?, gain?, startAt?, endAt?, fadeIn?, fadeOut? }`. Saved through `LibraryEditor` (§5.1); returns the updated sound in the `/api/library` format. `400` for invalid JSON, a non-object, an unknown key, an empty title, an out-of-range value, or points less than 10 ms apart. `404` when the id isn't a sound. `413` for bodies over 16 KB. |
+| DELETE | `/api/sounds/<encoded id>`, `/api/tracks/<encoded id>`, `/api/playlists/<encoded id>` | Moves the item into the trash (§2.5) and answers `200 { changes }`: the `library.removed` messages below, which every event stream gets too, so the page that asked can apply them at once. `404` for an unknown id. |
+| POST | `/api/move` | Body `{ id, to }`: a sound or track id, and a playlist id or `null` for the sounds. Moves it (§2.5) and answers `200 { changes }`, a `library.removed` and a `library.added` message, as for deletions. `400` for a body without them, a sound moved to the sounds or a track to its own playlist; `404` for an unknown id or playlist. The id is in the body because a track id takes up the rest of a path. |
 | PATCH | `/api/playlists/<encoded id>` | The same for a playlist, with body `{ title?, gain?, crossfade?, fadeIn?, fadeOut?, order?, trackLooping?, stopMode? }` (`LibraryEditor.updatePlaylist`); returns the playlist with its tracks in the `/api/library` format. |
 | PATCH | `/api/tracks/<encoded id>` | The same for a track, with body `{ title?, gain?, startAt?, endAt? }` (`LibraryEditor.updateTrack`); returns the track. The id contains `/`: the rest of the path is decoded as a whole, which keeps literal slashes, so `Combat%2F1.mp3` and `Combat/1.mp3` both work. The browser sends the first. |
 | GET | `/api/waveforms` | `{ "missing": ["Boom.mp3", "Combat/1.mp3", …] }`: the ids with no current waveform, sounds first (`WaveformStore.missing`) |
@@ -335,7 +354,7 @@ The server knows nothing about playback state.
 	]
 }
 ```
-Each path segment of a media URL is percent-encoded separately. The library reflects changes made through `PATCH` and downloads, so a reload shows them.
+Each path segment of a media URL is percent-encoded separately. The library reflects changes made through `PATCH`, downloads, deletions and moves, so a reload shows them.
 
 **Event stream messages** (`src/http/events.js`). Every connection starts with `externalChanges` and, when downloads are available, a `download` message carrying the whole log, so a page that was away misses nothing.
 
@@ -344,7 +363,8 @@ Each path segment of a media URL is percent-encoded separately. The library refl
 | `externalChanges` | `{ pending }` | on connect, then whenever the value changes (§5.3) |
 | `download` | `{ job }`, with `log` (every line) on connect | whenever the job starts, moves to another item or step, or ends; `job` is `null` once dismissed |
 | `download.log` | `{ lines, replaceLast }` | new log lines, batched at most every 250 ms; with `replaceLast`, the first line replaces the last one already sent (§5.4) |
-| `library.added` | `{ sound }` or `{ playlist }`, in the `/api/library` format, a playlist with all its tracks | once a download has added a file |
+| `library.added` | `{ sound }` or `{ playlist }`, in the `/api/library` format, a playlist with all its tracks | once a download has added a file, or a move has put one in its new place |
+| `library.removed` | `{ soundId }`, `{ trackId, playlistId }` or `{ playlistId }` | once a deletion or a move has taken an item away; `LibraryChanges` (`library-changes.js`) hands them from the routes to every stream |
 
 **Static files.** The path guard works on the raw request path, before any URL normalization: the path is percent-decoded, resolved against `public/`, and rejected unless it is still inside. Null bytes and malformed encoding are rejected too.
 
@@ -375,7 +395,7 @@ Each path segment of a media URL is percent-encoded separately. The library refl
   - otherwise the file is hashed. A different SHA-1, or one the baseline doesn't know, is a **change**; the same one only updates the baseline's size and time, because the file was merely touched or copied.
 - **Quick checks** compare sizes and modified times only and never hash, so there a touched file counts as a change. The page asks for one whenever it gets the focus back (`POST /api/changes/check`). If `fs.watch` throws or reports an error (for example when Linux runs out of inotify watches), the watcher prints `Can't watch the audio directory (…); checking it every 30 seconds instead.` and runs a quick check every 30 s (`POLL_MS`).
 - **Once a change is found**, `externalChanges` becomes `true`, every listener hears about it (the event streams, §5.2), and no more comparisons run until the next refresh. A directory that can no longer be read also counts as changed, with the reason printed; the refresh then says what is wrong.
-- **Own writes.** `LibraryEditor` and `SettingsStore` save through `watcher.updateFile`, which writes the file as `updateJsonFile` does (§2.3) and then records its new size, time and SHA-1 in the baseline. Downloads add their files through `watcher.writeFiles(task)`, which runs the task in turn and then records every file in the `written` list it returns (§5.1). Bootstrap writes before the baseline is taken. The app's own saves and additions therefore never count as external changes.
+- **Own writes.** `LibraryEditor` and `SettingsStore` save through `watcher.updateFile`, which writes the file as `updateJsonFile` does (§2.3) and then records its new size, time and SHA-1 in the baseline. Downloads add their files, and `LibraryEditor` deletes and moves them, through `watcher.writeFiles(task)`, which runs the task in turn and then follows the lists it returns (§5.1): files in `removed` leave the baseline, `renamed` pairs keep their entry under the new path (a rename changes neither content nor dates), and files in `written` are recorded afresh. Files in the trash are never in the baseline. Bootstrap writes before the baseline is taken. The app's own saves and additions therefore never count as external changes.
 - **Taking turns.** Comparisons, own writes, additions and refreshes run one at a time, in the order they were asked for. A comparison never sees a file the app is halfway through saving, none runs while a refresh rewrites files, and an addition never lands in a library a refresh is replacing. `watcher.refresh(rebuild)` runs the rebuild that way and, when it succeeded, takes a new baseline and sets `externalChanges` back to `false`.
 - The timers (`setTimeout`, `setInterval`) and `fs.watch` are injected, so tests run the delays on a fake clock.
 
@@ -442,6 +462,7 @@ UI layer (DOM)  ──commands──▶  Soundboard (logic facade)  ──▶  A
   - a `WaveformDecoder` (§6.6), and the `BackendApi` methods `fetchMissingWaveforms()`, `fetchWaveform(id)` and `saveWaveform(id, peaks)`;
   - for external changes (§6.7), the `BackendApi` methods `checkExternalChanges() → Promise<boolean>` and `refresh() → Promise<RefreshResult>`, and optionally `ServerEvents` (`connect(onMessage) → disconnect`), the server's pushed messages (§5.2). `api/server-events.js` implements it with `EventSource` on `/api/events`, which reconnects by itself; the server sends its current state on every connection;
   - for downloads (§6.8), the `BackendApi` methods `fetchDownload()` (the tools and the job with its log), `probeLink(url, { playlist })`, `startDownload(request) → Promise<DownloadJob>` and `dismissDownload()`. The two that can fail because of the user's link reject with the server's message alone, ready to show;
+  - for deletions and moves (§6.8), `deleteItem({ kind, id })` and `moveItem(id, to)`, which resolve with the server's `changes` and reject with its message alone;
   - a `Logger` (`warn`, `error`);
   - optionally a `random` function for the random playback orders (§8.1), `Math.random` unless tests pass a seeded one.
 
@@ -502,6 +523,14 @@ startDownload({ probeId, target, chapters?, entries? }) → Promise<void>  // re
 cancelDownload()                          // stop the running download; what it added stays
 dismissDownload()                         // cancel the running download, or forget a finished one
 
+// deleting and moving (§2.5, §6.8): not commands, because they are not playback. Each saves everything pending
+// first and rejects with a message for the user.
+deleteSound(soundId) → Promise<void>
+deleteTrack(trackId) → Promise<void>      // a playlist's only track takes the playlist with it
+deletePlaylist(playlistId) → Promise<void>
+moveSound(soundId, playlistId) → Promise<void>
+moveTrack(trackId, playlistId | null) → Promise<void>   // null: out to the sounds
+
 // volume (value is the slider position, 0..1, clamped)
 setVolume(bus, value)                     // bus: 'master' | 'music' | 'sfx'
 
@@ -559,6 +588,8 @@ on(type, handler) → unsubscribe, off(type, handler)
 | `download.log` | `{ lines, replaceLast }`: new log lines; with `replaceLast`, the first replaces the last line |
 | `sound.added` | `{ sound }`, a sound a download added |
 | `playlist.added` | `{ playlist }`, a playlist a download created. Tracks added to an existing playlist are announced as `playlist.changed`, as renames are. |
+| `sound.removed` | `{ soundId }`, a sound deleted or moved into a playlist |
+| `playlist.removed` | `{ playlistId }`, a playlist deleted, or left by its last track. A track that leaves a playlist that stays is announced as `playlist.changed`. |
 
 ### 6.3 AudioEngine port
 
@@ -654,23 +685,30 @@ A created voice is wrapped in a `MonitoredVoice` that forwards its calls and rec
 
 ### 6.7 External changes
 
-The page changes its library while it runs only for the app's own downloads, which only ever add (§6.8). When files change outside the app, it only learns that they did, and the user decides when to load them, by a full reload.
+The page changes its library while it runs only for the app's own downloads, deletions and moves (§6.8). When files change outside the app, it only learns that they did, and the user decides when to load them, by a full reload.
 
 - **Learning about changes.** Once the library has loaded, the facade connects to `ServerEvents` and keeps `hasExternalChanges()` in step with the server's messages, announcing every change of it as `library.externalChanges`. `checkExternalChanges()` asks the server for a quick check (§5.3) and announces its answer the same way. It does nothing before the library has loaded, or while a check is still running; a failed check is logged as a warning.
 - **Refreshing.** `refreshLibrary()` emits `library.refreshing`, then waits for `SettingsSync.settle()` and `OptionsSync.settleAll()` (§6.4), so the rebuild reads the user's latest edits, and calls `BackendApi.refresh()`. It ends with `library.refreshed`, or with `library.refreshFailed` for invalid options files (with their problems), a missing `.soundboard` (`restartNeeded`) or a request that failed (logged as an error). A call while one runs is ignored.
 - **Reloading.** Logic never touches `window`, so the UI reloads the page on `library.refreshed` (§9.1). The new page starts from the splash like any other (§9.0) and loads the new library; nothing about playback survives, which is how every reload already behaves.
 
-### 6.8 Downloads
+### 6.8 Downloads, deletions and moves
 
-The facade follows the server's download (§5.4) and takes in what it adds, so playback goes on undisturbed.
+The facade follows the server's download (§5.4) and takes in what it adds, so playback goes on undisturbed. Deletions and moves (§2.5) change the library the same way.
 
 - **Loading.** `start()` fetches the download state together with the library and settings. If that request fails, it logs a warning and carries on without it: both tools count as missing.
 - **The job.** `download` messages from `ServerEvents` replace the job. The log starts afresh whenever the job's id changes, and is replaced when a message brings `log`, as on every new connection. Both are announced as `download.changed` with `logReset`. `download.log` messages append lines, replacing the last one first with `replaceLast`, and keep the last 1000. `startDownload` takes the job the server answers with, unless the event stream announced it first, in which case its log has already begun.
 - **Additions.** Every tab hears every `library.added`, and again after reconnecting, so anything already known is skipped.
   - A new sound goes into `LibraryModel` (sorted by title, checked with `canPlay`) and is announced as `sound.added`.
   - A new playlist gets its own `PlaylistPlayer` and is announced as `playlist.added`.
-  - For a playlist the page has, `LibraryModel.addTracks` takes only the tracks it doesn't know, in path order, and keeps everything else as it is here, so a change not saved yet isn't undone. Then `PlaylistPlayer.addTracks` takes the new list (§8.1) and `playlist.changed` follows.
+  - For a playlist the page has, `LibraryModel.addTracks` takes only the tracks it doesn't know, in path order, and keeps everything else as it is here, so a change not saved yet isn't undone. Then `PlaylistPlayer.replaceTracks` takes the new list (§8.1) and `playlist.changed` follows.
   - Waveform generation is started again, so the new files get theirs (§6.6).
+- **Deleting and moving.** Each method first waits for `OptionsSync.settleAll()`, so no save can reach a file after it has moved, then calls `deleteItem` or `moveItem`. It applies the `changes` in the answer itself, as if they had come from `ServerEvents`, so the page follows at once; the same messages arrive on the event stream too, in every tab.
+- **Removals.** `library.removed` messages are skipped when the item is already gone here.
+  - A sound stops instantly, all its instances (§7), and leaves `LibraryModel`, announced as `sound.removed`.
+  - A track leaves its playlist's copy in `LibraryModel` (`removeTrack`). `PlaylistPlayer.replaceTracks` takes the shorter list, which stops the playlist instantly if that was its current track (§8.1), and `playlist.changed` follows.
+  - A playlist stops instantly, its player is dropped, and it is announced as `playlist.removed`.
+  - Whatever is cached for a removed file is forgotten: its decoded buffer (`BufferCache.forget`), its waveform (`WaveformService.forget`) and its URL. A new file may later take the same id and URL, and must never play or show the old one.
+- **A move** is a removal followed by an addition, handled as above.
 
 ---
 
@@ -692,6 +730,7 @@ The facade follows the server's download (§5.4) and takes in what it adds, so p
   - **Stop All** and a ninth press replacing the oldest stay instant. Removing an instance clears its timer.
 - **Changes only reach later presses.** An instance keeps the points and fades it started with, so dragging a handle never makes a playing sound jump or cut off. Volume is the exception, as it can't make anything jump.
 - When a voice ends or fails, its instance is removed and its resources released, and `sound.activeChanged` is sent when the count reaches 0.
+- A sound that is deleted or moved away is stopped like `stopSound`, which also cancels a press still decoding (§6.8).
 - Errors: a decode or playback failure, or a format the browser can't play, sends `sound.error`. A failed decode is forgotten, so the next press tries again.
 
 ---
@@ -743,7 +782,10 @@ This is where the race-condition risk sits. The design rules:
   - **Forgetting.** Everything is forgotten when a track is chosen with `jumpTo` (which starts a fresh history), when the playlist stops by itself (no more tracks without playlist looping, or every track failing), and on `forget()` while idle. `forget()` only clears the resume point; the history stays, so the next play starts a fresh one anyway.
   - `setRules` with a different `stopMode` trims the resume point at once (`resetTrack` drops the position, `resetPlaylist` drops everything), so what the tile shows always matches the dialog. It never brings back what was dropped. A different order refills the history around the remembered track, as while playing.
   - Snapshots and `playlist.stateChanged` carry `resume` (§6.2) while idle.
-- **Added tracks.** `addTracks(playlist)` takes a copy with tracks added by a download (§6.8), in path order, so tracks already there may move. The current voice, the retiring ones and the resume point are given their tracks' new indices. The play history is refilled around the current track, as for a new order, so Shuffle and Random reach the new tracks too. The crossfade is planned again, since the next track may have changed. The current track keeps playing, and while active, or remembering a resume point, `playlist.stateChanged` is sent again with the new index.
+- **Added and removed tracks.** `replaceTracks(playlist)` takes a copy with tracks added by a download or a move, or removed by a deletion or a move (§6.8), in path order, so tracks that stay may move.
+  - A removed current track stops the playlist instantly, as `stop('instant')` does. Voices still fading out on a removed track end at once, and a resume point on one is forgotten.
+  - The current voice, the retiring ones and the resume point are given their tracks' new indices. The play history is refilled around the current track, as for a new order, so Shuffle and Random reach new tracks too; without a current track it starts afresh at the next play.
+  - The crossfade is planned again, since the next track may have changed. The current track keeps playing, and while active, or remembering a resume point, `playlist.stateChanged` is sent again with the new index.
 - `setPlaylist(playlist)` takes a changed copy of the playlist with the same tracks in the same order (after a rename, new points or a new track gain), applies the tracks' gains to the current voice and the retiring ones at once, and, while active, sends `playlist.stateChanged` again so the current track's new title shows.
 - Volume: each voice starts at `playlist gain × track gain`. `setGain(gain)` applies a new playlist gain to the current voice and to the retiring ones, each with its own track's gain. Fades use a separate gain stage (§6.3), so this never disturbs one.
 
@@ -752,7 +794,7 @@ This is where the race-condition risk sits. The design rules:
 - `next()` moves the cursor forward. Past the last entry it first extends the history by the order, unless `playlistLooping` is off; then there is nothing more and the playlist stops. `upcoming()` returns the entry `next()` would move to, extending in the same way, so it can be asked for any number of times without picking again.
 - `previous()` moves the cursor back, but never before the first entry (`canGoBack`). Going back and then forward replays the same tracks.
 - `setOrder(order)` switches the order and, once started, refills the history as `start(current)` would; the current track keeps playing. While idle, the new order is simply used at the next start.
-- `setTracks(trackCount, remap)` follows tracks being added: entries move to their tracks' new indices, and once started the history is refilled as `start(current)` would.
+- `setTracks(trackCount, remap)` follows tracks being added or removed: `remap` gives a track's new index, or `null` for a removed one. Once started, the history is refilled as `start(current)` would around the current track's new index; if the current track was removed, the history is emptied, as before the first start.
 - It keeps at most `MAX_HISTORY` = 2¹⁶ entries. Beyond that it drops the oldest entries, but only ones before the cursor, so the current track and the round ahead are never cut.
 
 **Orders** (`logic/order-strategies.js`). Each fills the history with `start(trackCount, random, at)` → `{ entries, cursor }` and `extend(trackCount, random, last)` → entries to append. They are pure apart from the injected `random`, so tests use a seeded generator.
@@ -859,7 +901,7 @@ Browsers only allow audio to start inside a user gesture, so the app starts behi
 
 - The page is a full-height column: header (title, the external changes button while there are any, the waveform progress while there is any, volume controls and the debug button, §9.8), a scrolling main area, then the footer.
 - The main area has a "Playlists" section above a "Sound Effects" section. Both are always shown, even empty, because their titles carry the add buttons: **+ Add playlist** in blue and **+ Add sound** in amber (`tileGrid`, §9.9). With no playlists and no sounds, a line above them says none were found in this folder, until a download adds one.
-- Tiles for sounds and playlists added by a download (`sound.added`, `playlist.added`) appear at once in their sorted place.
+- Tiles for sounds and playlists added by a download or a move (`sound.added`, `playlist.added`) appear at once in their sorted place. Tiles of sounds and playlists deleted or moved away (`sound.removed`, `playlist.removed`), in this tab or another, disappear at once, and a Customize dialog open for that item closes.
 - Tiles are `<button>`s in a grid of columns at least 10rem (160 px) wide, with titles clamped to 3 lines. The full title shows as a tooltip.
 - Playlist tiles have a blue accent and sound tiles an amber one.
 - A playlist tile shows its track count when idle, following tracks added by a download, and "Loading…", "Playing" or "Paused" when active, and is highlighted while active.
@@ -953,6 +995,7 @@ UI components extend `Component` (`ui/component.js`): `render()` builds the elem
 - It has a title, a body and a × button. Every change inside applies at once, so nothing can be lost by closing: the × button, Esc, and a click that both starts and ends on the backdrop all close it. Esc is left to a popup when one is open on top.
 - It sits above the board and the footer, but below popups (§9.3) and the splash (§9.0).
 - It is at most 90 % of the window high; its body scrolls under the fixed header.
+- A second `Dialog` opened while one shows stacks on top of it, as the move dialog does over a Customize dialog (§9.11). Esc closes only the top one.
 - When a Customize dialog closes, the board saves its pending changes at once (`flushSoundOptions`, or the playlist dialog's `flushEdits`, which covers the playlist and every track renamed in it) and moves that kind of tile into sorted order.
 
 **Accent.** Each dialog has one accent color for everything that lights up: amber (`sfx`) in the sound dialog, blue (`music`) in the playlist dialog. The parts below take it as an `accent` option.
@@ -966,6 +1009,8 @@ UI components extend `Component` (`ui/component.js`): `render()` builds the elem
 - **Volume.** The gain widget on `ITEM_SCALE`.
 - **Play / Stop.** A button showing whether the item is playing.
 - **Status.** In the corner, without text: a spinner after a change, a checkmark once saved. A failure is shown as a red message.
+- **Move or delete** (`moveOrDeleteCard`), the last card of the sound dialog, of an open track row ("Move or delete") and of the playlist's first tab ("Delete", without Move, with the note "The folder and everything in it go to the trash."). **Move…** on the left opens the move dialog (§9.11); **Hold to delete** on the right deletes (§2.5). A failure shows as a red message in the card. On success the item leaves the library, and the board closes the dialog or the accordion drops the row.
+- **Hold-to-delete button** (`ui/hold-button.js`). A red-outlined button that acts only after being held down for 1 s (`HOLD_MS`), by the pointer or by holding Enter or Space, so a slip never deletes anything. While held, a red fill sweeps across it from the left: a CSS width transition started by `data-holding`, so nothing updates during the hold (§9.6). Releasing early, leaving the button, losing the focus or `pointercancel` cancels it, and the fill snaps back; key repeats are ignored. While the request runs it is disabled and reads "Deleting…".
 - **Tabs.** A tab bar over panels (`role="tablist"`, `tab`, `tabpanel`), the first selected. The left and right arrow keys move between tabs, and only the selected panel is shown. The bar stays at the top while the dialog scrolls.
 
 **Filled field** (`ui/filled-field.js`, `filledField({ label?, unit?, accent, align, width, attributes })`), the one style for text fields in the dialogs:
@@ -979,6 +1024,7 @@ UI components extend `Component` (`ui/component.js`): `render()` builds the elem
 - **Volume:** the gain widget.
 - **Start and end** (below). A sound without a measured duration has no such card ([roadmap](ROADMAP.md)).
 - **Fades:** Fade in and Fade out as labeled rows of seconds controls with the playlist fades' limits (below).
+- **Move or delete** (above).
 
 Below the cards: Play / Stop (`playSound`, or stopping all instances; it follows `sound.activeChanged`, so it also reflects presses on the tile) and the status (`sound.saved`, `sound.saveFailed`).
 
@@ -994,15 +1040,16 @@ Below the cards: Play / Stop (`playSound`, or stopping all instances; it follows
 - The clamping, mapping, key steps, fade bands, formatting and parsing are pure functions in `ui/range-scale.js`, with unit tests.
 
 **The playlist dialog** (`ui/playlist-editor.js`), opened from the playlist menu, in blue, always on its first tab:
-- **"Playlist" tab:** cards for the **Playlist** (the title, hint: `Folder: <directory>`), the **Volume**, the **Playback order**, **When stopped**, and the **Fades**: Fade in, Crossfade and Fade out as labeled rows of seconds controls (below). Later playlist settings add their cards here.
+- **"Playlist" tab:** cards for the **Playlist** (the title, hint: `Folder: <directory>`), the **Volume**, the **Playback order**, **When stopped**, the **Fades**: Fade in, Crossfade and Fade out as labeled rows of seconds controls (below), and **Delete** (above). Later playlist settings add their cards before Delete.
   - **Playback order** is a radio group, sent with `customizePlaylist({ order })` and following `playlist.changed`: **Ordered** "First to last, as listed.", **Random** "Any track next, never the same one twice in a row." and **Shuffle** "Every track once in a shuffled order, then shuffled again." Below the radio buttons, after a divider, the checkbox **Repeat the current track** "It plays again until you move to another track." is sent with `customizePlaylist({ trackLooping })`.
   - **When stopped** is a radio group, sent with `customizePlaylist({ stopMode })` and following `playlist.changed`: **Pause** "Playing again continues where it stopped.", **Reset track** "Playing again starts the same track from its beginning." and **Reset playlist** "Playing again starts afresh, as if for the first time."
-- **"Tracks (N)" tab:** the track accordion (`ui/track-accordion.js`).
+- **"Tracks (N)" tab:** the track accordion (`ui/track-accordion.js`). The count in the tab follows `playlist.changed`.
   - The list runs edge to edge between the tab bar and the Play row, with lines between the rows and no outer border. Below it, a blue **+ Add tracks** button opens the add dialog for this playlist (§9.9), in place of this dialog.
   - One row per track: a play / stop button, then a button with `aria-expanded` showing number and title, and a small blue "Cropped" bubble when the track's points differ from the whole file (no duration is shown). Clicking the button area opens the row and closes any other; clicking the open one closes it. Hovering anywhere on the header tints the whole row blue (`bg-music/15`), and the open row's header has a stronger tint (`bg-music/20`) and a blue title.
   - **Test playback** (`ui/track-playback.js` holds the pure rules, with unit tests). Only the playlist's current track is playing or paused (`trackPlayback`), and a loading track counts as playing. The row's button is a sibling of the toggle, so pressing it doesn't open or close the row. It does what `trackAction` says: on a track that isn't current, `jumpToTrack(…, { transition: 'instant' })`; on the playing track, `stopPlaylist(…, { transition: 'instant' })`, which follows the stop mode (§8.1); on a paused track, `resumePlaylist`. Buttons follow `playlist.stateChanged`, so a track started from the footer shows as playing here too. All tracks are assumed playable.
   - A track whose gain differs from 0.0 dB (as `formatDb` rounds it) shows a small bubble in its header with the change: `+3.5 dB` in orange (`bg-boost/20`) when louder, `−6.0 dB` in cyan when quieter. It follows `playlist.changed` and is hidden at 0.0 dB.
-  - An open track shows three cards (`card`, §9.7): **Start and end**, **Volume** and **Track**.
+  - **Tracks leaving.** On `playlist.changed`, the row of a track deleted or moved away is removed (and closed, if it was open), the others are numbered again, and each row looks its index up when its button is pressed, since indices shift. The rest of the dialog stays as it was, scrolled where it was.
+  - An open track shows four cards (`card`, §9.7): **Start and end**, **Volume**, **Track** and **Move or delete**. The playlist's only track adds the note "This is the only track: deleting or moving it deletes the playlist too."
     - **Start and end** holds one `RangeControl` (as in the sound dialog, below) in the blue accent, over the whole file. It is both the range editor and the seek bar:
       - **Editing.** Unless the track is playing (a loading track counts as playing), it has its handles, fields and Reset. Every change goes to `customizeTrack({ startAt, endAt })`, with the end at the end of the file stored as `null`, and the control follows `playlist.changed` unless a handle is dragged. Editing a paused track stops the playlist (§8.1), so the control then shows its editor anyway.
       - **Seeking.** While the track plays, `showPlayback` switches it to a seek bar: the handles are hidden, the fields and Reset disabled, what has not played yet dimmed (`bg-black/45`) and the stretch a crossfade will take over lightened (`bg-white/30`), hidden while the track loops (§8.4). Pressing anywhere on the bar calls `seek` with the position within the part that plays, clamped to the points. Progress follows `playlist.progress`, and the playhead and crossfade widths are inline styles (§9.6).
@@ -1069,6 +1116,15 @@ Below the cards: Play / Stop (`playSound`, or stopping all instances; it follows
 - **Cancel** asks "Cancel the download? Files already added stay." with the browser's confirm box, then calls `cancelDownload()`.
 - **When it ends,** the heading says "Download finished", "Download finished with errors" or "Download cancelled". A summary above the log says "6 added, 1 failed." (", the rest cancelled" when cancelled) and lists each failed item with its error in red. Cancel gives way to **Close**, which calls `dismissDownload()` and closes it in every tab.
 
+### 9.11 Move dialog
+
+`ui/move-dialog.js`, opened by **Move…** in the sound dialog or a track row (§9.7), titled `Move "<title>"`, in a second `Dialog` stacked on top of the Customize dialog.
+
+- **Destinations,** as full-width buttons, each with a colored stripe on its left, its name, and a count below ("4 sounds", "6 tracks"). **Sound effects** always comes first, in amber (`sfx`), then every playlist in title order, in blue (`music`). Hovering tints a button in its color. The first destination that can be picked has the focus.
+- **The current place,** the sound effects for a sound and the track's playlist for a track, is greyed out and disabled, its count followed by "· Here now".
+- **Picking** one calls `moveSound` or `moveTrack` at once, with every button disabled meanwhile. A failure shows in red below the list, and the buttons come back.
+- **Afterwards** the move dialog closes. A moved sound leaves the library, so the board closes its sound dialog too (§9.1). A moved track only leaves its row, so the playlist dialog stays as it was, ready for the next track, unless it was the playlist's only track, which removes the playlist and closes its dialog. Closing the Customize dialog closes a move dialog over it.
+
 ---
 
 ## 10. Project structure
@@ -1082,12 +1138,12 @@ src/
 	cli/        main.js  args.js  prompter.js  reporter.js  colors.js
 	library/    bootstrap-service.js  scanner.js  classify.js  sort.js  validate.js  errors.js
 	            options-store.js  settings-store.js  library.js  library-editor.js  durations.js  waveform-store.js
-	            change-watcher.js  tree-snapshot.js
+	            change-watcher.js  tree-snapshot.js  file-moves.js
 	downloads/  download-service.js  probe.js  yt-dlp.js  ffmpeg.js  link-fetcher.js  process-runner.js  line-splitter.js
 	            tools.js  file-names.js  workspace.js  errors.js
 	metadata/   index.js  id3.js  ogg.js  mpeg.js  binary-reader.js
 	http/       server.js  router.js  responses.js  static-files.js  media.js  range.js  mime.js  request-log.js  events.js
-	            library-json.js
+	            library-json.js  library-changes.js
 public/
 	index.html  favicon.svg
 	vendor/     tailwindcss-browser-<version>.js  tailwindcss-browser.LICENSE   (excluded from lint and type-checking)
@@ -1106,6 +1162,7 @@ public/
 		            dialog.js  customize-parts.js  filled-field.js  sound-editor.js  playlist-editor.js  track-accordion.js
 		            gain-control.js  gain-scale.js  debug-view.js  waveform-indicator.js  waveform-draw.js  waveform-canvas.js
 		            seconds-control.js  seconds-scale.js  range-control.js  range-scale.js  add-dialog.js  download-dialog.js
+		            hold-button.js  move-dialog.js
 test/
 	backend/    cli/  downloads/  http/  library/  metadata/
 	frontend/   logic tests, backend-api.test.js, ui/ (pure UI helpers)

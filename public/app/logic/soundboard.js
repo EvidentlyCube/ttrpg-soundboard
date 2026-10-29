@@ -626,7 +626,7 @@ export class Soundboard {
 	}
 
 	/**
-	 * Moves a sound into the server's trash (DESIGN.md §2). It stops at once, in every tab.
+	 * Moves a sound into the server's trash (DESIGN.md §2.5). It stops at once, in every tab.
 	 * @param {string} soundId
 	 * @returns {Promise<void>} rejects with a message for the user
 	 */
