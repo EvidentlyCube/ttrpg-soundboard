@@ -1,5 +1,6 @@
 import { expect } from '@playwright/test';
 import { CustomizeDialog } from './customize-dialog.js';
+import { TrackRowPage } from './track-row.js';
 
 /** The Customize dialog of a playlist (DESIGN.md §9.7). */
 export class PlaylistEditorPage extends CustomizeDialog {
@@ -51,6 +52,50 @@ export class PlaylistEditorPage extends CustomizeDialog {
 	/** @param {string} seconds */
 	async setFadeOut(seconds) {
 		await this._setSeconds('fadeOut', 'Fade out', seconds);
+	}
+
+	/** A track's row on the Tracks tab. @param {string} title the track's title */
+	track(title) {
+		return new TrackRowPage(this._page, this._dialog, title);
+	}
+
+	/** @param {'playlist' | 'tracks'} tab */
+	async expectTabSelected(tab) {
+		await expect(this._dialog.locator(`[data-tab="${tab}"]`)).toHaveAttribute('aria-selected', 'true');
+	}
+
+	/** @param {string[]} titles the tracks listed on the open Tracks tab, in order */
+	async expectTrackTitles(titles) {
+		await expect(this._dialog.locator('[data-track-row]')).toHaveText(titles.map((title) => new RegExp(title)));
+	}
+
+	/** The crossfade field's note, such as the limit set by the shortest track. @param {string | RegExp} text */
+	async expectCrossfadeNote(text) {
+		await expect(this._dialog.locator('[data-seconds-control="crossfade"]')).toContainText(text);
+	}
+
+	/** Holds the playlist's own delete button down, on the first tab. */
+	async holdToDeletePlaylist() {
+		await this._dialog.getByRole('button', { name: 'Hold to delete' }).first().click({ delay: 700 });
+	}
+
+	/** @param {string} reading as shown, such as "1.000 s" */
+	async expectFadeIn(reading) {
+		await this._expectSeconds('fadeIn', reading);
+	}
+
+	/** @param {string} reading as shown, such as "2.500 s" */
+	async expectFadeOut(reading) {
+		await this._expectSeconds('fadeOut', reading);
+	}
+
+	async openPlaylistTab() {
+		await this._dialog.locator('[data-tab="playlist"]').click();
+	}
+
+	/** @param {string} message part of the reason shown in the save status */
+	async expectSaveFailed(message) {
+		await expect(this._dialog.getByRole('status')).toContainText(new RegExp(`Could not save: .*${message}`));
 	}
 
 	async openTracksTab() {

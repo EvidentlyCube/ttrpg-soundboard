@@ -138,6 +138,11 @@ export class CustomizeDialog {
 		await expect(this._dialog.locator(`[data-seconds-control="${name}"] [data-seconds-readout]`)).toHaveText(reading);
 	}
 
+	/** Presses the "Move…" button of the item. */
+	async openMove() {
+		await this._dialog.locator('[data-move-item]').click();
+	}
+
 	/** Holds the delete button down until it acts. */
 	async holdToDelete() {
 		await this._dialog.getByRole('button', { name: 'Hold to delete' }).click({ delay: 700 });

@@ -26,6 +26,11 @@ export class SoundsPage {
 		}
 	}
 
+	/** @param {string} title @param {number} count how many tiles carry that title */
+	async expectCount(title, count) {
+		await expect(this.#tile(title)).toHaveCount(count);
+	}
+
 	/** @param {string} title */
 	async expectGone(title) {
 		await expect(this.#tile(title)).toBeHidden();

@@ -22,6 +22,11 @@ export class PlaylistsPage {
 	}
 
 	/** @param {string} title */
+	async expectGone(title) {
+		await expect(this.#tile(title)).toHaveCount(0);
+	}
+
+	/** @param {string} title */
 	async click(title) {
 		await this.#tile(title).click();
 	}

@@ -62,7 +62,7 @@ Make the page usable on a phone or tablet.
 
 ### Browser test coverage still to write
 
-What the Playwright suite (`test/browser/`) does not check yet, collected when the first suite was finished. It covers the splash, playing and controlling playlists and sounds, errors, a suspended system, the tile menus (instant items, Reset, Stop All), what a stopped playlist remembers, repeating, Previous, seeking while paused and the time formats, the sound and playlist Customize dialogs (title, volume, start and end points with their handles and fields, fades, order, repeat, when stopped, crossfade, saving, the volume widget, and a sound that is already playing), external changes, the header volumes, the waveform indicator and the basics of the trash. Everything below is open. Each group is a candidate for its own proposal. The part that only a real browser can check stays in the manual checklist ([`TESTING.md`](TESTING.md)), and so does `WebAudioEngine`.
+What the Playwright suite (`test/browser/`) does not check yet, collected when the first suite was finished. It covers the splash, playing and controlling playlists and sounds, errors, a suspended system, the tile menus (instant items, Reset, Stop All), what a stopped playlist remembers, repeating, Previous, seeking while paused and the time formats, the sound and playlist Customize dialogs, the Tracks tab (opening, renaming, volume, cropping, playing and seeking a track, deleting, moving, failed saves), the Move dialog (sounds and tracks, name clashes, failures), the whole trash (listing, restoring playlists, tracks and sounds, Restore all, Delete all, errors, deleting what plays) (title, volume, start and end points with their handles and fields, fades, order, repeat, when stopped, crossfade, saving, the volume widget, and a sound that is already playing), external changes, the header volumes, the waveform indicator and the basics of the trash. Everything below is open. Each group is a candidate for its own proposal. The part that only a real browser can check stays in the manual checklist ([`TESTING.md`](TESTING.md)), and so does `WebAudioEngine`.
 
 - **Player bar and playlist playback.**
   - The random and shuffle orders (with a seeded `random` passed through `test-main.js`).
@@ -71,17 +71,7 @@ What the Playwright suite (`test/browser/`) does not check yet, collected when t
   - A track that is disabled in the track list (unsupported format), and the track list scrolling to the current track.
   - The footer layout: three bars per row, two rows, then scrolling.
   - A ninth instance of a sound replacing the oldest, and the difference between small (buffered) and large (streamed) sounds.
-- **Playlist dialog and tracks.**
-  - The Tracks tab: customizing, playing, cropping and changing the volume of a single track, renaming tracks, and the track settings saving (`track.saved`, `track.saveFailed`).
-  - Moving a track, and deleting a track or the whole playlist from the dialog, and the dialog closing when its playlist goes away.
-  - Adding tracks from the Tracks tab, and the dialog coming back on that tab.
-  - The fade-in and fade-out fields, and the crossfade limit note ("Up to … half the shortest track").
-- **Add dialog, Download dialog and downloads.** All of it, which needs the fake process runner behind the test server (`downloads: { tools, run }`): lookups and their errors, chapters and playlists, progress and the log, one job at a time, cancelling, dismissing, `503` without the tools, and new tiles appearing at once, including tracks added to a playlist that is playing.
-- **Move dialog and moves.** Moving a sound to a playlist and a track to sound effects, name clashes, and the open Customize dialog closing.
-- **Trash.**
-  - Restoring a playlist or a track (a playlist recreated from its options, tracks flattened), and the ` (2)` name clashes.
-  - Restore all and Delete all (held for 2 s), the dialog closing once the trash is empty, and the errors shown in it.
-  - Deleting a playlist that is playing, and a deleted sound that is playing stopping.
+- **Add dialog, Download dialog and downloads.** All of it, which needs the fake process runner behind the test server (`downloads: { tools, run }`): lookups and their errors, chapters and playlists, progress and the log, one job at a time, cancelling, dismissing, `503` without the tools, and new tiles appearing at once, including tracks added to a playlist that is playing. Also adding tracks from the playlist dialog's Tracks tab, and the dialog coming back on that tab.
 - **Metadata dialog.** All of it: the rows, source links and their rebuilding for YouTube, the origin and chapter fields, and saving.
 - **App menu and waveforms.**
   - ☰ → "Regenerate waveforms" counting every sound and track, and its stop button.
