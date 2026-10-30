@@ -29,64 +29,10 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## Proposals
 
-### LAN access and remote control
-
-**Goal.** A page can run in one of three modes, chosen on the splash:
-
-- **Standalone** is today's app: it plays audio and nothing can control it.
-- **Host** is Standalone that can also be controlled by remotes. Its header has its own color and says it is the host.
-- **Remote** is a small page, meant for a phone on the same network, that never plays audio. It shows the playlist and sound buttons, a Panic Stop button, and one row per playing playlist with Previous, Pause/Play, Next and the titles of the track and the playlist. Its header has another color and says it is a remote control. Volumes, errors, Debug, the ☰ menu, context menus, progress, Customize, downloads and the trash stay on the host's page.
-
-At most one page is the host. Any number of remotes can follow it, all in sync. A page becomes the host only when someone asks it to, and a page that is already the host is only replaced after a deliberate one-second hold, so sound never starts coming from another device by accident.
-
-**Design changes.**
-- §1 and §1.1: a `--lan` option opens the server to the LAN; the "Trust" and "Touch" rows change.
-- §5.2: the host and relay routes and event messages; the request guard learns the access token and a remote-only allowlist for requests from other machines.
-- §5 (new subsection): the relay (`RemoteRelay`). It remembers which page is the host and its latest state, and hands commands on. It is the only playback-related thing the server holds, in memory only.
-- §6: `commands.js` keeps its role (the relay forwards commands unchanged and `dispatch()` on the host validates them). New `RemoteLink` (host side, run by the facade only while hosting), a page `role` kept by the app, and `RemoteController` (remote side), in `logic/`; new `BackendApi` and `ServerEvents` methods.
-- §9.0: the splash gets three buttons. §9.3: the ☰ menu gets "Become host" and "Stop hosting". §9.1: the header color and mode label. §6.9 and §9.14: role problems join the Problems list. New §9.15: the remote page.
-- §3 and §10: the new CLI option, new files, a type-check project for the remote UI.
-
-**How it works.**
-1. *Modes.* The splash has three buttons: **Standalone**, **Host** and **Remote**. The choice is not remembered: F5 shows the splash again.
-2. *Becoming the host.* A page asks the server with `PUT /api/remote/host` (its page id, and `replace: true` when it has been confirmed). The server answers `200` when the page is now the host, or `409` when another page is. The page id is a random id the page makes for itself and sends with its event stream (`/api/events?page=<id>`), so the server can tell which stream is which. If the answer is anything but `200` or `409` (the server is gone, an error), the page stays Standalone and records a warning in the Problems list (§6.9).
-3. *Replacing a host.* When another page is the host, the page shows a dialog saying so, with a button that must be held for one second (`HoldButton`). Releasing early does nothing. On completing the hold it asks again with `replace: true`. The server then tells the old host `remote.role` (`reason: 'replaced'`) on its stream. That page silently becomes Standalone (it keeps playing what it plays) and records an error in the Problems list: "Another page took over as host." The Problems button appears (§9.1) and the user can dismiss it as any other problem.
-4. *From the splash.*
-   - **Standalone** starts the app as today.
-   - **Host** starts the app (audio is unlocked inside the click, which a held button could not do) and then runs "becoming the host": at once if there is none, with the hold dialog if there is one. Declining the dialog leaves the page Standalone.
-   - **Remote** opens the remote page without audio. With no host, the remote page shows "No host is connected" and its buttons are disabled until one appears.
-   - The splash asks the server once, on load, whether a host exists (`GET /api/remote`). Under **Remote** it shows a warning "No host is running yet" when there is none; under **Host** a note "Another page is the host" when there is one. The request is read-only and starts no audio.
-5. *From the menu.* A Standalone page's ☰ menu has "Become host", which runs "becoming the host" as above. A host's menu has "Stop hosting" instead, which releases the role and returns to Standalone.
-6. *Losing the role.* The role is released when the host stops hosting, and when its event stream stays closed for more than 10 seconds (a browser that reconnects its stream within that time keeps the role). Nobody inherits it: the next page that asks gets it. A page that loses it by being replaced or timing out turns Standalone as in 3.
-7. *Commands.* The remote sends `POST /api/remote/commands` with one command. The relay checks it is one of the allowed types and forwards it to the host as a `command` message, and the host runs it through `dispatch()`. Allowed from a remote: `panic.stop`, `sound.play`, `playlist.toggle`, `playlist.next`, `playlist.previous`, `playlist.pause`, `playlist.resume`. Nothing that customizes, deletes or moves can be relayed. `409` when there is no host.
-8. *State.* The host's `RemoteLink` listens to the facade's events and sends a snapshot (`PUT /api/remote/state`): the panic state, the playlists that are playing or paused in start order with their state, track title and index, and the sounds with live instances. It sends a new one on each relevant change, not on `playlist.progress` or `voices.changed`. The relay stores the latest and sends it to every remote stream, also on connect, and clears it when the host goes. The remote refetches `GET /api/library` when the snapshot carries a new `libraryVersion`.
-8. *Security.* `--lan` binds `0.0.0.0` and prints a link with a random token (`http://192.168.1.20:3000/?token=…`). The token is kept in a cookie after the first visit. Requests that don't come from loopback need the token, and may only reach static files, `GET /api/library` and the `/api/remote…` routes; every other route, `/media` included (a remote plays nothing), answers `403`. The `Host` check accepts the LAN address as well. Without `--lan` nothing changes, and the three modes still work between tabs on the same machine.
-10. *Remote page.* Large touch buttons: Panic Stop at the top (same fade/now behavior, from the snapshot), the playlist and sound buttons (active ones highlighted), then the stack of players with Previous, Pause/Play and Next and the titles. No volume, progress, menus or context menus.
-11. *Header and notices.* Standalone keeps today's header. The host and remote headers use two new color tokens (§9.6) and show "HOST" or "REMOTE CONTROL" next to the title. Warnings and errors about the role use the existing Problems list (§6.9, §9.14): the page records them as its own problems, one row per kind, with the Problems button and Dismiss as for any other. The page-recorded rows today are all errors; this adds a severity, so a failed claim is a warning and a lost role an error. Kinds: `host-failed` ("Could not become the host", with the server's message) and `host-lost` ("Not the host any more"). A later successful claim removes both rows.
-
-**Open questions.**
-1. *Names.* Recommended: **Standalone**, **Host** and **Remote**, each with a one-line subtitle on the splash ("Plays here, no remote control", "Plays here, a phone can control it", "Controls a host on another device"). The code uses the roles `standalone`, `host` and `remote`.
-2. *The Host button starts as Standalone first.* Browsers only unlock audio inside the click, and a held button's end is not one, so the Host button starts the app first and shows the hold dialog over the board when it is needed. Recommended. The alternative, a hold panel on the splash itself, would need the audio unlocked by the hold's first press.
-3. *Grace period.* Recommended: the role survives a closed stream for 10 seconds, so a reconnect doesn't lose it.
-4. *Stop hosting* in the host's ☰ menu. Recommended, so the role can be given up without closing the tab.
-5. *Splash host check.* Recommended: one read-only request on load, for the two hints. It changes DESIGN.md §9.0's "no API requests"; without it the splash shows no hints and a missing host is only shown after the remote opens.
-6. *Tap on a playlist button.* Recommended: `playlist.toggle` as it works today. A tap on a sound plays it; stopping sounds is Panic Stop's job.
-7. *Security.* Recommended: the token above and the allowlist for non-loopback requests. Alternative: none, which lets anything on the network delete files and run downloads. Plain HTTP is acceptable: the remote plays no audio, so it needs no secure context.
-8. *Bind address.* **Decided:** `--lan`, alone for all interfaces (it prints every LAN address as a link), `--lan <address>` for one.
-9. *Remotes.* **Decided:** any number, all in sync. No warning for two tabs playing (that is "decided against").
-
-**Plan.** (Step 1 was built for the first design and is changed by step 1b.)
-1. Relay core (`RemoteRelay`, `src/remote/`) — done: commands, state, host and remotes.
-2. Explicit host claims — change the relay: a claim names the page and may replace the host, the old host is told `remote.role`, the role is released on request or after the grace period; no first-wins, no fallback.
-3. Routes and event messages — `GET /api/remote`, `PUT` and `DELETE /api/remote/host`, `PUT /api/remote/state`, `POST /api/remote/commands`, the `page` query on `/api/events`, and the `command`, `remote.host`, `remote.role` and `remote.state` messages; HTTP tests including `400`, `403` and `409`.
-4. `--lan` and the token — CLI option, binding, printed links, guard changes (`Host` names, token cookie, allowlist); a test for each refused request.
-5. Role and `RemoteLink` (host side) — the page role in the facade or app, becoming and leaving the host (with fakes: success, `409`, replace, failure, lost role), snapshots from facade events, relayed commands through `dispatch()`.
-6. `RemoteController` (remote side) — library, snapshot and connection state, sending commands, events; tests with fakes.
-7. Splash with three buttons, the ☰ items, the hold dialog, header colors and the role problems in the Problems list — Playwright.
-8. Remote page UI (`ui/remote/`) — Playwright against the test server with a host page and a remote page open together.
-9. Manual checks in `TESTING.md` (a phone on the LAN), then the `DESIGN.md` update in its own commit, and removal of this proposal and the backlog entry.
+None yet.
 
 ---
+
 
 ## Known issues
 
@@ -112,7 +58,7 @@ Make the page usable on a phone or tablet.
   - The footer's three bars per row, the tile grid and the dialogs need narrow layouts.
   - Audio unlocking and playback in Safari on iOS need checking.
   - Context menus get **no** touch gesture: long press stays unused (see "Decided against").
-  - Design specific to the remote page belongs to "LAN access and remote control" below, not here.
+  - The remote page is described in DESIGN.md §9.15.
 
 ### Browser test coverage still to write
 
@@ -180,16 +126,6 @@ Changing the mood in one action instead of stopping one playlist and starting an
 For future consideration: a sound that picks one of several files at random on each press (a sword hit with five takes), and a per-sound choice of what a second press does (overlap, restart, or stop).
 
 - **Seam:** `SoundPlayer` starts a new instance on every press (DESIGN.md §7).
-
-### LAN access and remote control
-
-Open the app on a phone on the same network to choose what plays, while the PC does the playing. This merges the earlier "LAN access" and "Remote control" entries. It builds on "Basic mobile design", and the design specific to the remote (what its page shows, how it differs from the player) belongs here.
-
-- **Seam:** commands and events are plain serializable objects and every command goes through `dispatch()`, which validates it (DESIGN.md §6). The server holds no playback state. Deletions, moves, downloads and the trash are deliberately not commands, so a remote limited to playback follows from the architecture.
-- **Notes:**
-  - Would add a `--lan` option (DESIGN.md §1), a command relay (`POST /api/commands`), an event stream of playback state, and a "standalone", "host" and "remote" mode for pages.
-  - Open: whether the remote is a separate page or a role of the same page. Today every open tab is an independent player (now called standalone), so the proposal must say which tab is the host and what happens when a second one asks.
-  - Builds on the request guard (DESIGN.md §5.2): the list of accepted `Host` names (`LOOPBACK_HOSTS`) is where the LAN address goes. It also needs a way to keep other people on the network out (for example a token in the link), since anything on the LAN could otherwise run downloads and delete files.
 
 ### Preloading the next track
 

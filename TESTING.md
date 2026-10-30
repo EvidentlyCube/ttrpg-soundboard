@@ -130,7 +130,7 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] An `.opus` file (`ffmpeg -i x.ogg -c:a libopus test.opus`) shows its title and duration, plays and gets a waveform; in Safari too.
 
 **Other web pages**
-- [ ] Open the board as `http://127.0.0.1:3000` and as `http://localhost:3000`: both load and work. Opening it by the machine's LAN address or any other name shows an error page (`403`).
+- [ ] Open the board as `http://127.0.0.1:3000` and as `http://localhost:3000`: both load and work. Without `--lan`, opening it by the machine's LAN address or any other name shows an error page (`403`).
 - [ ] With the board running, serve another page from a different port (`python3 -m http.server 8000` in an empty folder) and open it. In its console, `fetch('http://127.0.0.1:3000/api/refresh', { method: 'POST', mode: 'no-cors', body: 'x' })` and the same for `/api/trash/delete` fail or answer `403` in the Network tab, and nothing changes in the board or the folder.
 
 **Sounds**
@@ -138,8 +138,8 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] Sounds never create a player bar.
 
 **Panic Stop**
-- [ ] With a playlist and a few sounds that have fade-outs playing, "Stop (Fade)" fades them all out audibly, each over its own fade-out, and the button turns red and reads "Stop (NOW!)" while they fade. Pressing it then cuts everything with no tail and no click.
-- [ ] After the fades finish by themselves the button is yellow and reads "Stop (Fade)" again. So it does if you start a sound or playlist while it reads "Stop (NOW!)".
+- [ ] With a playlist and a few sounds that have fade-outs playing, "Stop All" fades them all out audibly, each over its own fade-out, and the button turns red and reads "STOP NOW!" while they fade. Pressing it then cuts everything with no tail and no click.
+- [ ] After the fades finish by themselves the button is yellow and reads "Stop All" again. So it does if you start a sound or playlist while it reads "STOP NOW!".
 - [ ] The button stays in the same place at the footer's right while player bars come and go.
 
 **Live volume**
@@ -362,3 +362,15 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] A playlist's volume in the panel is its gain times the track's; changing the playlist volume while it plays updates the row.
 - [ ] With the panel open, the playlist dialog and its test playback still work, and the panel stays on top of the dialog. Esc closes the panel only when no dialog or menu is open.
 - [ ] A track that fails to load (for example a file removed from the temp directory after the scan) shows `error`; hovering the status shows the message.
+
+**LAN access and remote control** (start with `--lan` on a copy of the fixture; use a phone on the same Wi-Fi)
+- [ ] The terminal prints a link with a token for each network address. Opening it on the phone loads the splash, and reloading the page without the token in the address still works (the cookie).
+- [ ] The address without the token, from the phone, answers an error page. `/api/library` and a `/media/…` URL from the phone answer `403`, with or without the token.
+- [ ] Without `--lan` the phone cannot reach the app at all.
+- [ ] On the laptop choose Host (the header turns green and says Host). On the phone choose Remote: the dot is green and the buttons show. A playlist button on the phone starts the playlist on the laptop and the phone shows its row; Stop, Next, Panic Stop and a sound button work, and pressing a playing sound stops it.
+- [ ] The phone makes no sound. A second phone as a remote follows the same state.
+- [ ] A phone choosing Remote with no host shows a notice and disabled buttons, and the splash note says no host is running. Starting the host fills the phone's page without a reload.
+- [ ] Reloading the host page keeps the phone connected (within 10 s) and the host role. Closing the host's tab turns the phone's dot red.
+- [ ] With a host running, choosing Host on another tab asks for a 1 s hold; Cancel keeps the old host. Holding takes over: the old tab becomes standalone, shows a "Not the host any more" problem, and the phone follows the new host. From a standalone tab, ☰ → Become host does the same.
+- [ ] The size buttons change the columns and the text size, keep the buttons under the finger, and survive a reload. A double tap changes the size by two steps, in Firefox's mobile view too.
+- [ ] On iOS Safari the remote page scrolls, has no zoom on double tap, and the long-pressed buttons do not open a menu.
