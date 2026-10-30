@@ -62,16 +62,12 @@ Make the page usable on a phone or tablet.
 
 ### Browser test coverage still to write
 
-What the Playwright suite (`test/browser/`) does not check yet, collected when the first suite was finished. It covers the splash, playing and controlling playlists and sounds, errors, a suspended system, the sound and playlist Customize dialogs (title, volume, start point, fades, order, repeat, when stopped, crossfade, saving), external changes, the header volumes, the waveform indicator and the basics of the trash. Everything below is open. Each group is a candidate for its own proposal. The part that only a real browser can check stays in the manual checklist ([`TESTING.md`](TESTING.md)), and so does `WebAudioEngine`.
+What the Playwright suite (`test/browser/`) does not check yet, collected when the first suite was finished. It covers the splash, playing and controlling playlists and sounds, errors, a suspended system, the tile menus (instant items, Reset, Stop All), what a stopped playlist remembers, repeating, Previous, seeking while paused and the time formats, the sound and playlist Customize dialogs (title, volume, start point, fades, order, repeat, when stopped, crossfade, saving), external changes, the header volumes, the waveform indicator and the basics of the trash. Everything below is open. Each group is a candidate for its own proposal. The part that only a real browser can check stays in the manual checklist ([`TESTING.md`](TESTING.md)), and so does `WebAudioEngine`.
 
 - **Player bar and playlist playback.**
-  - The tile menu's instant items (Play, Next and Stop "(Instant)"), Reset, and Stop All on a sound.
-  - A playlist set to "Reset track" or "Reset playlist" when stopped: the "Resumes track 3" status, and starting again from the beginning.
-  - Repeat the current track, and the random and shuffle orders (with a seeded `random` passed through `test-main.js`).
-  - Previous restarting a track that has played for a while, instead of going back.
-  - Seeking with the keyboard, and seeking while paused.
+  - The random and shuffle orders (with a seeded `random` passed through `test-main.js`).
+  - The progress bar has no keyboard seeking today; decide whether it should get one before testing it.
   - The crossfade band on the progress bar, and the fade levels on the engine's gain ramps (`FakeVoice.gainRamps`).
-  - Times from an hour on (`h:mm:ss`), and `--:--` while the duration is unknown.
   - A track that is disabled in the track list (unsupported format), and the track list scrolling to the current track.
   - The footer layout: three bars per row, two rows, then scrolling.
   - A ninth instance of a sound replacing the oldest, and the difference between small (buffered) and large (streamed) sounds.
