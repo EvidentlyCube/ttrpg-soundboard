@@ -29,12 +29,18 @@ async function tree(spec) {
  * @param {object} [options]
  * @param {string} [options.typed] what the user types in answer to questions
  * @param {(output: () => string) => Promise<void>} [options.whileRunning] runs once the server is up; shutdown follows
+ * @param {string} [options.typedWhileRunning] typed once the server is up; the input stays open and the signal never
+ * 	comes, so only these lines can end the run
  * @param {import('../../helpers/fake-process-runner.js').FakeProgram} [options.tools] answers `yt-dlp` and `ffmpeg`;
  * 	both are installed by default
  */
-async function run(argv, { typed = '', whileRunning = async () => {}, tools = installedTools } = {}) {
+async function run(argv, { typed = '', whileRunning = async () => {}, typedWhileRunning, tools = installedTools } = {}) {
 	const input = new PassThrough();
-	input.end(typed);
+	if (typedWhileRunning === undefined) {
+		input.end(typed);
+	} else {
+		input.write(typed);
+	}
 	let output = '';
 	let errorOutput = '';
 	const code = await main(argv, {
@@ -42,7 +48,13 @@ async function run(argv, { typed = '', whileRunning = async () => {}, tools = in
 		output: { write: (chunk) => (output += chunk, true) },
 		errorOutput: { write: (chunk) => (errorOutput += chunk, true) },
 		env: {},
-		waitForShutdown: () => whileRunning(() => output),
+		waitForShutdown: () => {
+			if (typedWhileRunning === undefined) {
+				return whileRunning(() => output);
+			}
+			setTimeout(() => input.write(typedWhileRunning), 20);
+			return new Promise(() => {});
+		},
 		run: fakeProcessRunner(tools).run,
 	});
 	return { code, output, errorOutput };
@@ -83,6 +95,31 @@ describe('main', () => {
 		assert.match(result.output, /Loaded 1 playlist and 1 sound\./);
 		assert.match(result.output, /Stopped\.\n$/);
 		await assert.rejects(fetch(`http://127.0.0.1:${port}/`));
+	});
+
+	it('stops when exit is typed, whatever its case or surrounding spaces', async () => {
+		const root = await tree({ 'a.mp3': '' });
+		for (const line of ['exit\n', ' EXIT \n']) {
+			const port = await findFreePort();
+			const result = await run([root, '--port', String(port)], { typedWhileRunning: line });
+			assert.equal(result.code, 0);
+			assert.match(result.output, /Press Ctrl\+C or type exit and press Enter to stop\.\n/);
+			assert.match(result.output, /Stopped\.\n$/);
+			await assert.rejects(fetch(`http://127.0.0.1:${port}/`));
+		}
+	});
+
+	it('keeps running when other lines are typed or the input closes', async () => {
+		const root = await tree({ 'a.mp3': '' });
+		const port = await findFreePort();
+		const result = await run([root, '--port', String(port)], {
+			typed: 'quit\n',
+			whileRunning: async () => {
+				await new Promise((resolve) => setTimeout(resolve, 50));
+				assert.equal((await fetch(`http://127.0.0.1:${port}/api/library`)).status, 200);
+			},
+		});
+		assert.equal(result.code, 0);
 	});
 
 	it('prints the address given to --lan, and says nothing about it without --lan', async () => {

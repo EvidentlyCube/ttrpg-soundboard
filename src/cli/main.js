@@ -1,6 +1,7 @@
 import { stat } from 'node:fs/promises';
 import { hostname, networkInterfaces } from 'node:os';
 import { resolve } from 'node:path';
+import { createInterface } from 'node:readline';
 import { runProcess } from '../downloads/process-runner.js';
 import { describeTools, findTools, missingTools } from '../downloads/tools.js';
 import { clearWorkspace } from '../downloads/workspace.js';
@@ -116,12 +117,33 @@ export async function main(argv, { input, output, errorOutput, env, waitForShutd
 	if (lan) {
 		writeLanLinks(output, colors, lan.addresses, args.port);
 	}
-	output.write('Press Ctrl+C to stop.\n');
-	await waitForShutdown();
+	output.write('Press Ctrl+C or type exit and press Enter to stop.\n');
+	const exitTyped = waitForExitCommand(input);
+	await Promise.race([waitForShutdown(), exitTyped.promise]);
+	exitTyped.stop();
 	watcher.stop();
 	await server.close();
 	output.write('Stopped.\n');
 	return 0;
+}
+
+/**
+ * Resolves when a line reading "exit" is typed. Closed input does not count: the app may be run with stdin detached.
+ * `stop()` must be called afterwards so stdin no longer keeps the process alive.
+ * @param {NodeJS.ReadableStream} input
+ * @returns {{ promise: Promise<void>, stop: () => void }}
+ */
+function waitForExitCommand(input) {
+	// No output stream, as in the prompter: the terminal does the echoing.
+	const lines = createInterface({ input });
+	const promise = new Promise((resolve) => {
+		lines.on('line', (line) => {
+			if (line.trim().toLowerCase() === 'exit') {
+				resolve(undefined);
+			}
+		});
+	});
+	return { promise, stop: () => lines.close() };
 }
 
 /**
