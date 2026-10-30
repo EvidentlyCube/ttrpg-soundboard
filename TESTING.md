@@ -112,6 +112,8 @@ node scripts/mutate.js public/app/logic/options-sync.js "if (entry.saving || !op
 
 ## Manual checklist
 
+The real `WebAudioEngine` (how fades, crossfades, loops and clip points become `AudioParam` automation) has no automated test, since the browser suite runs on the fake engine. These checks are the only coverage. A gain node's `gain.value` still reads the old value right after a change is scheduled, so judge fades by listening or by sampling over time.
+
 Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that matters most. Start with a copy of the example fixture (`cp -r test_fixtures/example_soundboard /tmp/sb && npm start -- /tmp/sb`) or a real library.
 
 **Start and audio**
