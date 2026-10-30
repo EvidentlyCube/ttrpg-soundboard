@@ -16,10 +16,11 @@
  */
 export function appMenuItems({ hosting }) {
 	return [
-		{ id: 'regenerateWaves', label: 'Regenerate Waves', enabled: true, group: 0 },
+		{ id: 'regenerateWaves', label: 'Regenerate waveforms', enabled: true, group: 0 },
 		hosting
 			? { id: 'stopHosting', label: 'Stop hosting', enabled: true, group: 1 }
 			: { id: 'becomeHost', label: 'Become host', enabled: true, group: 1 },
+		{ id: 'connectPhone', label: 'Connect a phone', enabled: true, group: 1 },
 	];
 }
 

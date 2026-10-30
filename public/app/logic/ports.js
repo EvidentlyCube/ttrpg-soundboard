@@ -137,7 +137,13 @@
  * 	when the page is not the host
  * @property {(command: import('./commands.js').Command) => Promise<void>} sendRemoteCommand rejects with the server's
  * 	message, for instance when no page is the host
+ * @property {() => Promise<string[]>} fetchConnectLinks the addresses that open the remote on another
+ * 	device; empty when the server was not started with `--lan`
+ * @property {(address: string, decision: 'allow' | 'deny') => Promise<void>} answerAccessRequest rejects when the request
+ * 	is gone (DESIGN.md §5.2)
  */
+
+/** @typedef {{ address: string, code: string }} AccessRequest a device that asks to be paired (DESIGN.md §5.6) */
 
 /** @typedef {'sound' | 'playlist' | 'track'} ItemKind */
 
@@ -179,6 +185,7 @@
  * 	| { type: 'download.log', lines: string[], replaceLast: boolean }
  * 	| ({ type: 'trash' } & TrashSummary)
  * 	| { type: 'problems', problems: Omit<import('./problem-list.js').ProblemJson, 'count'>[] }
+ * 	| { type: 'access.requests', requests: AccessRequest[] }
  * 	| { type: 'remote.role', host: boolean, reason?: 'replaced' }
  * 	| { type: 'command', command: unknown }
  * 	| { type: 'remote.host', connected: boolean }

@@ -185,7 +185,7 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] Replacing an audio file (or touching its content) makes its waveform be made again; deleting a `.wf` file does too, after a reload.
 - [ ] While a track plays its waveform stays still above the seek bar. A file the browser can't decode counts as failed in the indicator and the rest carry on.
 - [ ] Safari: decoding works, and the tab's memory stays flat while hundreds of waveforms are made.
-- [ ] The ☰ button left of the title opens a menu with "Regenerate Waves". Choosing it counts every sound and track in the indicator ("Waveforms 0 / N"), rewrites every `.wf` file, and redraws open waveforms as they are made; ■ stops it.
+- [ ] The ☰ button left of the title opens a menu with "Regenerate waveforms". Choosing it counts every sound and track in the indicator ("Waveforms 0 / N"), rewrites every `.wf` file, and redraws open waveforms as they are made; ■ stops it.
 - [ ] Reloading the page right after the splash never flashes the waveform indicator when nothing is missing.
 
 **External changes**
@@ -364,9 +364,14 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] A track that fails to load (for example a file removed from the temp directory after the scan) shows `error`; hovering the status shows the message.
 
 **LAN access and remote control** (start with `--lan` on a copy of the fixture; use a phone on the same Wi-Fi)
-- [ ] The terminal prints a link with a token for each network address. Opening it on the phone loads the splash, and reloading the page without the token in the address still works (the cookie).
-- [ ] The address without the token, from the phone, answers an error page. `/api/library` and a `/media/…` URL from the phone answer `403`, with or without the token.
-- [ ] Without `--lan` the phone cannot reach the app at all.
+- [ ] The terminal prints one plain address for each network address, and none for Docker or bridge interfaces. Opening it on the phone shows a three-digit code and "Waiting for approval…".
+- [ ] A banner under the header of the server's page shows the phone's address and the same code. Allow makes the phone open the splash by itself. Reloading the phone, or closing and reopening its browser, needs no new approval. The sounds stay usable while the banner is up.
+- [ ] A second tab on the phone shows the same code and adds no second card. With no page open on the server the terminal prints `Connection request from …, code …`; a page opened within 2 minutes shows the request.
+- [ ] Deny shows "Denied" on the phone, with "Try again". Not answering for 2 minutes shows "The request expired".
+- [ ] Reloading the phone's connect page more than 5 times within a minute shows "Blocked", and the phone then gets an error page for every address until the server restarts. Other devices are not affected.
+- [ ] After a server restart the phone is asked to pair again.
+- [ ] ☰ → Connect a phone shows a QR code and the address. Scanning it with the phone's camera opens the connect page, and approving there loads the splash (no loop of reloads). Without `--lan` the dialog says to start with `--lan`.
+- [ ] `/api/library` and a `/media/…` URL from the phone answer `403`, also after it was allowed. Without `--lan` the phone cannot reach the app at all.
 - [ ] On the laptop choose Host (the header turns green and says Host). On the phone choose Remote: the dot is green and the buttons show. A playlist button on the phone starts the playlist on the laptop and the phone shows its row; Stop, Next, Panic Stop and a sound button work, and pressing a playing sound stops it.
 - [ ] The phone makes no sound. A second phone as a remote follows the same state.
 - [ ] A phone choosing Remote with no host shows a notice and disabled buttons, and the splash note says no host is running. Starting the host fills the phone's page without a reload.

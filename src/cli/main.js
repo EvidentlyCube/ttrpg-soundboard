@@ -1,4 +1,3 @@
-import { randomInt } from 'node:crypto';
 import { stat } from 'node:fs/promises';
 import { hostname, networkInterfaces } from 'node:os';
 import { resolve } from 'node:path';
@@ -78,8 +77,10 @@ export async function main(argv, { input, output, errorOutput, env, waitForShutd
 			addresses,
 			options: {
 				address: args.lan.address ?? '0.0.0.0',
+				addresses,
 				names: [...addresses, ...(args.lan.address ? [] : [hostname(), `${hostname()}.local`])].map((name) => (name.includes(':') ? `[${name}]` : name)),
-				token: String(randomInt(1_000_000)).padStart(6, '0'),
+				// A page that is open shows the request too; this is for when none is.
+				onRequest: ({ address, code }) => output.write(`Connection request from ${address}, code ${code}\n`),
 			},
 		};
 	}
@@ -113,7 +114,7 @@ export async function main(argv, { input, output, errorOutput, env, waitForShutd
 
 	output.write(`Soundboard running at ${server.url}\n`);
 	if (lan) {
-		writeLanLinks(output, colors, lan, args.port);
+		writeLanLinks(output, colors, lan.addresses, args.port);
 	}
 	output.write('Press Ctrl+C to stop.\n');
 	await waitForShutdown();
@@ -147,25 +148,29 @@ async function isDirectory(path) {
 /**
  * @param {Terminal['output']} output
  * @param {ReturnType<typeof createColors>} colors
- * @param {{ options: import('../http/server.js').LanOptions, addresses: string[] }} lan
+ * @param {string[]} addresses
  * @param {number} port
  */
-function writeLanLinks(output, colors, { options, addresses }, port) {
+function writeLanLinks(output, colors, addresses, port) {
 	if (addresses.length === 0) {
 		output.write(colors.yellow('--lan: no address on the local network was found, so nothing else can reach the app.\n'));
 		return;
 	}
-	output.write('Open one of these on another device on the same network (the token keeps others out):\n');
+	output.write('Open one of these on another device on the same network, then allow it here or in the app:\n');
 	for (const address of addresses) {
 		const host = address.includes(':') ? `[${address}]` : address;
-		output.write(`  http://${host}:${port}/?token=${options.token}\n`);
+		output.write(`  http://${host}:${port}/\n`);
 	}
 }
 
-/** @returns {string[]} the IPv4 addresses of this machine's network interfaces, without the loopback one */
+/** Docker, bridges and virtual machines: addresses no phone can reach. */
+const VIRTUAL_INTERFACE = /^(docker|br-|veth|virbr|vboxnet|vmnet)/;
+
+/** @returns {string[]} the IPv4 addresses of this machine's network interfaces, without the loopback and virtual ones */
 function lanAddresses() {
-	return Object.values(networkInterfaces())
-		.flatMap((entries) => entries ?? [])
+	return Object.entries(networkInterfaces())
+		.filter(([name]) => !VIRTUAL_INTERFACE.test(name))
+		.flatMap(([, entries]) => entries ?? [])
 		.filter((entry) => entry.family === 'IPv4' && !entry.internal)
 		.map((entry) => entry.address);
 }

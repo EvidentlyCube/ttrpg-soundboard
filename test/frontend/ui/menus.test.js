@@ -7,11 +7,11 @@ const enabledLabels = (items) => items.filter((item) => item.enabled).map((item)
 
 describe('appMenuItems', () => {
 	it('offers regenerating the waveforms, and becoming the host', () => {
-		assert.deepEqual(enabledLabels(appMenuItems({ hosting: false })), ['Regenerate Waves', 'Become host']);
+		assert.deepEqual(enabledLabels(appMenuItems({ hosting: false })), ['Regenerate waveforms', 'Become host', 'Connect a phone']);
 	});
 
 	it('offers to stop hosting instead while the page is the host', () => {
-		assert.deepEqual(enabledLabels(appMenuItems({ hosting: true })), ['Regenerate Waves', 'Stop hosting']);
+		assert.deepEqual(enabledLabels(appMenuItems({ hosting: true })), ['Regenerate waveforms', 'Stop hosting', 'Connect a phone']);
 	});
 });
 

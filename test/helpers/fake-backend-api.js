@@ -225,6 +225,21 @@ export class FakeBackendApi {
 		this.dismissedProblems.push('all');
 	}
 
+	/** @type {string[]} */
+	connectLinks = [];
+
+	async fetchConnectLinks() {
+		return this.connectLinks;
+	}
+
+	/** @type {{ address: string, decision: 'allow' | 'deny' }[]} */
+	accessAnswers = [];
+
+	/** @type {BackendApi['answerAccessRequest']} */
+	async answerAccessRequest(address, decision) {
+		this.accessAnswers.push({ address, decision });
+	}
+
 	#rearranged() {
 		if (this.rearrangement instanceof Error) {
 			throw this.rearrangement;

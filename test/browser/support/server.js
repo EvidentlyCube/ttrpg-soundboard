@@ -7,9 +7,11 @@ import { copyFixture, createTmpTree } from '../../helpers/tmp-tree.js';
  * Starts the real server on a temporary library, wired like src/cli/main.js: with the change watcher, so files that
  * change in the folder show up in the page. Downloads are left out.
  * @param {'example' | import('../../helpers/tmp-tree.js').TreeSpec} [library] a copy of the example fixture, or a tree to build
+ * @param {{ lan?: boolean }} [options] `lan` starts it as with `--lan`, listening on the loopback address only and linking
+ * 	the made-up address 192.168.1.20
  * @returns {Promise<{ url: string, root: string, stop: () => Promise<void> }>}
  */
-export async function startSoundboardServer(library = 'example') {
+export async function startSoundboardServer(library = 'example', { lan = false } = {}) {
 	const copy = library === 'example' ? await copyFixture('example_soundboard') : await createTmpTree(library);
 	const reporter = /** @type {ConstructorParameters<typeof BootstrapService>[0]['reporter']} */ (new Proxy({}, { get: () => () => {} }));
 	const watcher = new ChangeWatcher({ root: copy.root, log: () => {} });
@@ -26,6 +28,7 @@ export async function startSoundboardServer(library = 'example') {
 		port: 0,
 		logError: (error) => console.error('SERVER ERROR', error),
 		watcher,
+		lan: lan ? { address: '127.0.0.1', addresses: ['192.168.1.20'], names: [] } : undefined,
 		refresh: () => watcher.refresh(() => bootstrap.refresh(copy.root)),
 	});
 	return {

@@ -217,6 +217,24 @@ export class HttpBackendApi {
 		await this.#request('POST', '/api/remote/commands', { body: command, plainErrors: true });
 	}
 
+	/** @type {BackendApi['fetchConnectLinks']} */
+	async fetchConnectLinks() {
+		const response = await fetch(`${this.#baseUrl}/api/access/links`, { cache: 'no-store' });
+		if (response.status === 404) {
+			return [];
+		}
+		if (!response.ok) {
+			throw new Error(await errorMessageOf(response));
+		}
+		const { links } = /** @type {{ links: string[] }} */ (await response.json());
+		return links;
+	}
+
+	/** @type {BackendApi['answerAccessRequest']} */
+	async answerAccessRequest(address, decision) {
+		await this.#request('POST', '/api/access/requests/answer', { body: { address, decision }, plainErrors: true });
+	}
+
 	/** @param {string} path */
 	async #delete(path) {
 		const response = await fetch(this.#baseUrl + path, { method: 'DELETE' });

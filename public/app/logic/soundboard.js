@@ -60,7 +60,8 @@ import { VolumeControl } from './volume.js';
  * 	| { type: 'library.refreshed' }
  * 	| { type: 'library.refreshFailed', message: string, errors: { path: string, message: string }[], restartNeeded: boolean }
  * 	| { type: 'trash.changed', size: number, count: number }
- * 	| { type: 'problems.changed', count: number }} RefreshEvent
+ * 	| { type: 'problems.changed', count: number }
+ * 	| { type: 'access.requestsChanged', requests: import('./ports.js').AccessRequest[] }} RefreshEvent
  * @typedef {AppEvent | LevelEvent | SoundEvent | PlaylistEvent | VolumeChangedEvent | CustomizeEvent | VoicesEvent | WaveformEvent
  * 	| RefreshEvent | DownloadEvent} SoundboardEvent
  */
@@ -132,6 +133,8 @@ export class Soundboard {
 	/** @type {import('./ports.js').TrashSummary} */
 	#trash = { size: 0, count: 0 };
 	#problems = new ProblemList();
+	/** @type {import('./ports.js').AccessRequest[]} */
+	#accessRequests = [];
 	/** Id of the download job whose failures are listed already. @type {string | null} */
 	#reportedJob = null;
 	#checkingChanges = false;
@@ -961,6 +964,32 @@ export class Soundboard {
 		return this.#waveforms?.get(id) ?? Promise.resolve(null);
 	}
 
+	/**
+	 * Devices on the network that ask to be paired (DESIGN.md §5.6), as the server last reported them. Empty without
+	 * `--lan`. `access.requestsChanged` announces every change.
+	 * @returns {import('./ports.js').AccessRequest[]}
+	 */
+	accessRequests() {
+		return this.#accessRequests;
+	}
+
+	/**
+	 * @returns {Promise<string[]>} the addresses that open the remote on another device; empty
+	 * 	without `--lan`
+	 */
+	fetchConnectLinks() {
+		return this.#api.fetchConnectLinks();
+	}
+
+	/**
+	 * Allows or denies a device that asked to be paired. The list changes when the server says so.
+	 * @param {string} address
+	 * @param {'allow' | 'deny'} decision
+	 */
+	answerAccessRequest(address, decision) {
+		this.#api.answerAccessRequest(address, decision).catch((error) => this.#logger.warn('Could not answer the connection request.', error));
+	}
+
 	/** Whether the server reported files changed outside the app since the library was loaded. */
 	hasExternalChanges() {
 		return this.#externalChanges;
@@ -1254,6 +1283,10 @@ export class Soundboard {
 				if (this.#problems.setServer(message.problems)) {
 					this.#announceProblems();
 				}
+				return;
+			case 'access.requests':
+				this.#accessRequests = message.requests;
+				this.#events.emit({ type: 'access.requestsChanged', requests: message.requests });
 				return;
 			case 'trash': {
 				const { size, count } = message;

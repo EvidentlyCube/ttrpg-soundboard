@@ -20,9 +20,10 @@ const KEEP_ALIVE_MS = 30_000;
  * @param {Request} request
  * @param {Response} response
  * @param {{ watcher?: ChangeWatcher, downloads?: DownloadService, libraryChanges?: LibraryChanges,
- * 	trash?: import('../library/trash.js').Trash, problems?: import('../library/problems.js').Problems, relay?: RemoteRelay }} sources without them, nothing ever changes
+ * 	trash?: import('../library/trash.js').Trash, problems?: import('../library/problems.js').Problems, relay?: RemoteRelay,
+ * 	pairing?: import('./access-control.js').AccessControl }} sources without them, nothing ever changes
  */
-export function serveEvents(request, response, { watcher, downloads, libraryChanges, trash, problems, relay }) {
+export function serveEvents(request, response, { watcher, downloads, libraryChanges, trash, problems, relay, pairing }) {
 	response.writeHead(200, {
 		'Content-Type': 'text/event-stream; charset=utf-8',
 		'Cache-Control': 'no-store',
@@ -63,6 +64,11 @@ export function serveEvents(request, response, { watcher, downloads, libraryChan
 	if (problems) {
 		sendProblems(problems.list);
 	}
+	const sendRequests = () => send({ type: 'access.requests', requests: pairing?.pending() ?? [] });
+	if (pairing) {
+		sendRequests();
+	}
+	const unsubscribePairing = pairing?.onChange(sendRequests);
 	const unsubscribeProblems = problems?.onChange(sendProblems);
 	const unsubscribeTrash = trash?.onChange(sendTrash);
 	const unsubscribeWatcher = watcher?.onChange(sendExternalChanges);
@@ -77,6 +83,7 @@ export function serveEvents(request, response, { watcher, downloads, libraryChan
 		unsubscribeLibrary?.();
 		unsubscribeTrash?.();
 		unsubscribeProblems?.();
+		unsubscribePairing?.();
 	});
 }
 

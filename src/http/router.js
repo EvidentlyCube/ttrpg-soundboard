@@ -11,6 +11,7 @@ import { serveEvents, toMessage } from './events.js';
 import { toFileJson, toLibraryJson, toPlaylistJson } from './library-json.js';
 import { allowMethods, HttpError, sendJson } from './responses.js';
 import { serveStaticFile } from './static-files.js';
+import { serveAccess } from './access-routes.js';
 import { checkAccess } from './lan-access.js';
 import { serveRemote } from './remote-routes.js';
 
@@ -39,7 +40,9 @@ import { serveRemote } from './remote-routes.js';
  * @property {import('./library-changes.js').LibraryChanges} [libraryChanges] tells the event streams about deletions and moves
  * @property {import('../library/trash.js').Trash} [trash] the trash's summary for the event streams
  * @property {import('../library/problems.js').Problems} [problems] what startup found wrong, for the event streams
- * @property {{ token: string }} [access] with `--lan`: what requests from other machines need (`lan-access.js`)
+ * @property {{ control: import('./access-control.js').AccessControl, links: string[] }} [access] with `--lan`: what requests
+ * 	from other machines need (`lan-access.js`)
+ * @property {import('./access-control.js').AccessControl} [pairing] with `--lan`: the requests the pages on this machine answer
  * @property {import('../remote/remote-relay.js').RemoteRelay} [relay] connects the remotes to the host page
  * @property {() => Promise<RefreshOutcome>} [refresh] rebuilds the library and swaps it into this context
  * @property {Promise<RefreshOutcome> | null} refreshing the refresh running now
@@ -84,21 +87,26 @@ export function createRequestHandler(context) {
  */
 async function route(request, response, context) {
 	// The raw path is used on purpose: URL parsing would resolve `..` before the static file guard could see it.
-	const pathname = (request.url ?? '/').split('?')[0];
+	let pathname = (request.url ?? '/').split('?')[0];
 
 	checkRequest(request.headers, context.guard);
 	if (context.access) {
 		const entry = checkAccess(request, pathname, context.access);
 		if (entry) {
-			response.writeHead(302, { 'Location': entry.redirectTo, 'Set-Cookie': entry.cookie, 'Cache-Control': 'no-store' });
-			response.end();
-			return;
+			pathname = '/connect.html';
 		}
 	}
 
 	if (pathname === '/api/events') {
 		allowMethods(request, ['GET']);
 		serveEvents(request, response, context);
+		return;
+	}
+	if (pathname.startsWith('/api/access/')) {
+		if (!context.access) {
+			throw new HttpError(404, 'Not found');
+		}
+		await serveAccess(request, response, pathname, context.access, readJsonBody);
 		return;
 	}
 	if (pathname === '/api/remote' || pathname.startsWith('/api/remote/')) {

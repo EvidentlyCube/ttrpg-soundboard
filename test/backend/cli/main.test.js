@@ -85,18 +85,18 @@ describe('main', () => {
 		await assert.rejects(fetch(`http://127.0.0.1:${port}/`));
 	});
 
-	it('prints a link with a token for the address given to --lan, and says nothing about it without --lan', async () => {
+	it('prints the address given to --lan, and says nothing about it without --lan', async () => {
 		const root = await tree({ 'a.mp3': '' });
 		const port = await findFreePort();
 		const lan = await run([root, '--port', String(port), '--lan', '127.0.0.1'], {
 			whileRunning: async (output) => {
-				assert.match(output(), new RegExp(`Open one of these on another device.*\\n  http://127\\.0\\.0\\.1:${port}/\\?token=\\d{6}\\n`));
+				assert.match(output(), new RegExp(`Open one of these on another device.*\\n  http://127\\.0\\.0\\.1:${port}/\\n`));
 				assert.equal((await fetch(`http://127.0.0.1:${port}/api/remote`)).status, 200);
 			},
 		});
 		assert.equal(lan.code, 0);
 		const plain = await run([root, '--port', String(await findFreePort())]);
-		assert.doesNotMatch(plain.output, /token/);
+		assert.doesNotMatch(plain.output, /another device/);
 	});
 
 	it('logs requests only with --verbose', async () => {

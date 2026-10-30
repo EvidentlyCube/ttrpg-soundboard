@@ -10,6 +10,7 @@ import { LibraryEditor } from '../library/library-editor.js';
 import { Problems } from '../library/problems.js';
 import { Trash } from '../library/trash.js';
 import { WaveformStore } from '../library/waveform-store.js';
+import { AccessControl } from './access-control.js';
 import { LibraryChanges } from './library-changes.js';
 import { LOOPBACK_HOSTS } from './request-guard.js';
 import { logWhenDone } from './request-log.js';
@@ -39,8 +40,9 @@ const LOOPBACK = '127.0.0.1';
  * Opens the server to the local network (DESIGN.md §1, §5.2).
  * @typedef {object} LanOptions
  * @property {string} address the address to listen on; `0.0.0.0` for every interface
+ * @property {string[]} addresses this machine's addresses on the network, which the connect links use
  * @property {string[]} names the addresses and host names other machines use to reach the server
- * @property {string} token what requests from other machines must carry
+ * @property {(request: import('./access-control.js').PendingRequest) => void} [onRequest] called for every new pairing request
  */
 
 /**
@@ -68,6 +70,10 @@ export async function startServer({ library, settings, problems = [], port, publ
 	// The trash is not watched (DESIGN.md §2.5): it is read now and after the app's own changes to it.
 	const trash = new Trash(library.root);
 	await trash.reload();
+	const control = new AccessControl();
+	if (lan?.onRequest) {
+		control.onRequest(lan.onRequest);
+	}
 	/** @type {import('./router.js').RouterContext} */
 	const context = {
 		...servicesFor(library),
@@ -75,8 +81,9 @@ export async function startServer({ library, settings, problems = [], port, publ
 		publicDir,
 		// The port is known only once the server listens.
 		guard: { hosts: [...LOOPBACK_HOSTS, ...(lan?.names ?? [])], port },
-		access: lan && { token: lan.token },
+		access: lan && { control, links: /** @type {string[]} */ ([]) },
 		relay: new RemoteRelay(),
+		pairing: lan && control,
 		logError,
 		watcher,
 		libraryChanges: new LibraryChanges(),
@@ -123,6 +130,9 @@ export async function startServer({ library, settings, problems = [], port, publ
 	const address = server.address();
 	const actualPort = typeof address === 'object' && address !== null ? address.port : port;
 	context.guard.port = actualPort;
+	if (context.access && lan) {
+		context.access.links = lan.addresses.map((name) => `http://${name.includes(':') ? `[${name}]` : name}:${actualPort}/`);
+	}
 	return {
 		url: `http://${LOOPBACK}:${actualPort}`,
 		close: () => new Promise((resolve) => {

@@ -1,5 +1,7 @@
+import { AccessRequestsBanner } from './access-requests-banner.js';
 import { AddDialog } from './add-dialog.js';
 import { Component } from './component.js';
+import { ConnectPhoneDialog } from './connect-phone-dialog.js';
 import { openContextMenu } from './context-menu.js';
 import { DebugView } from './debug-view.js';
 import { DownloadDialog } from './download-dialog.js';
@@ -183,6 +185,7 @@ class Board extends Component {
 	#problemsDialog = new Dialog();
 	#metadataDialog = new Dialog();
 	#replaceHostDialog = new Dialog();
+	#connectPhoneDialog = new Dialog();
 	/** The item whose Customize dialog is open, so the dialog can close when the item is deleted or moved away. @type {{ kind: 'sound' | 'playlist', id: string } | null} */
 	#editing = null;
 	/** @type {Map<string, SoundTile>} */
@@ -238,6 +241,8 @@ class Board extends Component {
 						this.becomeHost();
 					} else if (item === 'stopHosting') {
 						soundboard.stopHosting();
+					} else if (item === 'connectPhone') {
+						this.#openConnectPhone();
 					}
 				});
 			},
@@ -324,6 +329,9 @@ class Board extends Component {
 
 		// The download dialog covers the header and the board, but not the footer (DESIGN.md §9.10).
 		const upper = h('div', { class: 'relative flex min-h-0 flex-1 flex-col' }, header, main);
+		const requests = new AccessRequestsBanner(soundboard).mount(upper);
+		this.#adopt(requests);
+		header.after(requests.element);
 		this.#adopt(new DownloadDialog(soundboard).mount(upper));
 		const root = h('div', { class: 'flex h-full flex-col' }, upper);
 		this.#adopt(new PlayerDock({ soundboard, overlay, playlists, isPlayable }).mount(root));
@@ -333,7 +341,15 @@ class Board extends Component {
 		this.own(() => this.#problemsDialog.close());
 		this.own(() => this.#metadataDialog.close());
 		this.own(() => this.#replaceHostDialog.close());
+		this.own(() => this.#connectPhoneDialog.close());
 		return root;
+	}
+
+	#openConnectPhone() {
+		const dialog = new ConnectPhoneDialog(this.#soundboard);
+		const body = h('div');
+		dialog.mount(body);
+		this.#connectPhoneDialog.open({ title: 'Connect a phone', body, onClose: () => dialog.destroy() });
 	}
 
 	/**

@@ -80,11 +80,13 @@ class Soundboard {
  * @typedef {object} Options
  * @property {string[]} unplayableFormats formats this "browser" cannot play, such as 'ogg' (Safari)
  * @property {'example' | import('../../helpers/tmp-tree.js').TreeSpec} library what the server serves: a copy of the example fixture, or a tree to build
+ * @property {boolean} lan whether the server runs as with `--lan` (DESIGN.md §5.6)
  */
 
 /** @type {import('@playwright/test').Fixtures<Fixtures & Options, {}, import('@playwright/test').PlaywrightTestArgs & import('@playwright/test').PlaywrightTestOptions>} */
 const fixtures = {
 	library: ['example', { option: true }],
+	lan: [false, { option: true }],
 	unplayableFormats: [[], { option: true }],
 
 	// The real page, with the fakes from test/helpers/ where the browser's audio would be (support/test-main.js). Set on
@@ -102,8 +104,8 @@ const fixtures = {
 		await use(page);
 	},
 
-	soundboard: async ({ page, library, splash }, use) => {
-		const server = await startSoundboardServer(library);
+	soundboard: async ({ page, library, lan, splash }, use) => {
+		const server = await startSoundboardServer(library, { lan });
 		await use(new Soundboard(page, server.url, server.root, splash));
 		// The page may still be saving waveforms; stop it before the folder goes.
 		await page.goto('about:blank');
