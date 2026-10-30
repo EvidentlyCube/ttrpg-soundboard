@@ -141,6 +141,12 @@ export class SoundEditorPage extends CustomizeDialog {
 		await expect(this._dialog.locator('[data-range-waveform]')).toBeVisible({ visible: shown });
 	}
 
+	/** The waveform is drawn on its canvas, not just given room: some pixel is painted. */
+	async expectWaveformPainted() {
+		const canvas = this._dialog.locator('[data-range-waveform] canvas');
+		await expect.poll(() => canvas.evaluate(paintedPixels)).toBeGreaterThan(0);
+	}
+
 	async resetRange() {
 		await this._dialog.locator('[data-range-reset]').click();
 	}
@@ -149,4 +155,24 @@ export class SoundEditorPage extends CustomizeDialog {
 	async expectRangeSays(text) {
 		await expect(this._dialog.locator('[data-range-length]')).toHaveText(text);
 	}
+}
+
+/**
+ * @param {Element} element a canvas
+ * @returns {number} how many of its pixels are not transparent
+ */
+function paintedPixels(element) {
+	const canvas = /** @type {HTMLCanvasElement} */ (element);
+	const context = canvas.getContext('2d');
+	if (!context || canvas.width === 0 || canvas.height === 0) {
+		return 0;
+	}
+	const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+	let painted = 0;
+	for (let index = 3; index < data.length; index += 4) {
+		if (data[index] > 0) {
+			painted++;
+		}
+	}
+	return painted;
 }

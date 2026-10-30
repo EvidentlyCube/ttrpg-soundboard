@@ -107,3 +107,33 @@ test('a dialog opened afterwards shows the waveform at once', async ({ soundboar
 
 	await dialogs.soundEditor.expectWaveform(true);
 });
+
+test('the waveform in a sound dialog is painted on its canvas', async ({ soundboard, sounds, dialogs, audio }) => {
+	await soundboard.startAndWaitUntilLoaded();
+	await audio.finishWaveforms();
+
+	await sounds.useMenu('Base Connected', 'Customize');
+
+	await dialogs.soundEditor.expectWaveform(true);
+	await dialogs.soundEditor.expectWaveformPainted();
+});
+
+test('the waveform of the playing track is painted behind its progress bar', async ({ soundboard, playlists, footer, audio }) => {
+	await soundboard.startAndWaitUntilLoaded();
+	await audio.finishWaveforms();
+
+	await playlists.click('Music MP3');
+
+	await footer.player('Music MP3').expectWaveformPainted();
+});
+
+test('before the waveform exists nothing is painted in the bar', async ({ soundboard, splash, playlists, footer, audio }) => {
+	await soundboard.open();
+	await audio.holdWaveforms();
+	await splash.click();
+	await soundboard.waitUntilLoaded();
+
+	await playlists.click('Music MP3');
+
+	await footer.player('Music MP3').expectNoWaveformPainted();
+});

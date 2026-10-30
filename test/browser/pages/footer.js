@@ -168,6 +168,34 @@ export class PlayerBarPage {
 		await expect(this.#page.locator('[role=menuitem][data-current=true]')).toHaveText(new RegExp(title));
 	}
 
+	/** The track's waveform is drawn behind the progress bar: some pixel of its canvas is painted. */
+	async expectWaveformPainted() {
+		const canvas = this.#bar.locator('canvas');
+		await expect.poll(() => canvas.evaluate((element) => {
+			const target = /** @type {HTMLCanvasElement} */ (element);
+			const context = target.getContext('2d');
+			if (!context || target.width === 0 || target.height === 0) {
+				return 0;
+			}
+			const { data } = context.getImageData(0, 0, target.width, target.height);
+			return data.filter((value, index) => index % 4 === 3 && value > 0).length;
+		})).toBeGreaterThan(0);
+	}
+
+	/** Nothing is painted yet, as before a waveform is made. */
+	async expectNoWaveformPainted() {
+		const canvas = this.#bar.locator('canvas');
+		await expect(canvas).toBeAttached();
+		await expect.poll(() => canvas.evaluate((element) => {
+			const target = /** @type {HTMLCanvasElement} */ (element);
+			const context = target.getContext('2d');
+			if (!context || target.width === 0 || target.height === 0) {
+				return 0;
+			}
+			return context.getImageData(0, 0, target.width, target.height).data.filter((value, index) => index % 4 === 3 && value > 0).length;
+		})).toBe(0);
+	}
+
 	/** @returns {Promise<string>} the title of the track the bar shows */
 	async currentTrack() {
 		return (await this.#bar.getByTitle('Choose a track').innerText()).trim();

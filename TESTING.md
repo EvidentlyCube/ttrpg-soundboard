@@ -50,9 +50,9 @@ How the app is tested: the automated suite that runs in Node, the Playwright sui
 ```
 test/browser/
   playwright.config.js   Chromium; traces and screenshots go to a temp folder, never the repository
-  support/               fixtures.js, server.js, test-main.js, audio.js, disk.js, globals.d.ts
+  support/               fixtures.js, server.js, test-main.js, audio.js, disk.js, downloads.js, globals.d.ts
   pages/                 one page object per area: splash, header, playlists, sounds, footer (with player bars)
-  pages/dialogs/         customize-dialog.js (shared), sound-editor.js, playlist-editor.js, trash.js
+  pages/dialogs/         customize-dialog.js (shared), sound-editor.js, playlist-editor.js, track-row.js, move-dialog.js, metadata.js, add-dialog.js, download-dialog.js, trash.js
   specs/                 *.spec.js, one per feature area
 ```
 
@@ -75,11 +75,12 @@ test('a playlist starts from its tile and keeps time in the footer', async ({ so
 
 | Fixture | What it is |
 |---|---|
-| `library`, `unplayableFormats` (options) | What the server serves (`'example'`, a copy of the example fixture, or a tree for `createTmpTree`), and the formats this "browser" cannot play. Set with `test.use({ … })`. |
+| `library`, `unplayableFormats`, `downloadTools`, `randomSeed` (options) | What the server serves (`'example'`, a copy of the example fixture, or a tree for `createTmpTree`), the formats this "browser" cannot play, which of yt-dlp and ffmpeg the server finds (`'none'` by default, `'both'`, `'withoutFfmpeg'`), and a seed that makes the random and shuffle orders repeatable. Set with `test.use({ … })`. |
 | `soundboard` | `open()`, `waitUntilLoaded()`, `startAndWaitUntilLoaded()`, `reload()`, and `waitForTheFolderToSettle()`, the one real-time wait, to show that nothing happens. One server and one temporary library per test. |
 | `splash`, `header`, `playlists`, `sounds`, `footer`, `dialogs` | Page objects. Actions wait for what they need; assertions are `expect…` methods that retry, so a spec never sleeps or polls. |
-| `audio` | The fake engine and clock: `advance`, `script(title, { duration, loadDelay, loadError, bufferError, … })` (every file with that title), `expectPlaying`, `expectPlayingCount`, `expectVoice`, `expectBusGain`, `suspend`/`resume`, and holding and finishing waveform making. |
-| `disk` | The audio folder: `expectOptions`, `expectSettings`, `expectFile`, and changes behind the app's back with `addCopyOf` and `remove`. |
+| `audio` | The fake engine and clock: `advance`, `script(title, { duration, loadDelay, loadError, bufferError, … })` (every file with that title), `expectPlaying`, `expectPlayingCount`, `expectVoice` (gain, start point, buffered or streamed), `expectRamp` (fades and crossfades), `expectBusGain`, `suspend`/`resume`, and holding, failing and finishing waveform making. |
+| `disk` | The audio folder: `expectOptions`, `expectSettings`, `expectFile`, and changes behind the app's back with `addCopyOf`, `write` and `remove`. |
+| `downloads` | The fake yt-dlp and ffmpeg behind the server (`downloadTools` must not be `'none'`): `addVideo`, `addPlaylist`, `addFile` and `addUnusableLink` say what the "internet" holds, `failVideo` makes one video fail, `hold`/`release` keep a download open to look at its dialog, and `calls` lists what was run. |
 
 Lessons for whoever writes or changes a spec:
 
@@ -87,7 +88,9 @@ Lessons for whoever writes or changes a spec:
 - Several playlists can hold the same song, so `audio.script` sets every file with the title.
 - The red error ring on a tile lasts 2 s of real time (`window.setTimeout`), not of fake time. A debounced save (500 ms) and the waveform service's pause between files are on the fake clock; `audio.advance(500)` makes the save happen.
 - The screen uses a real minus sign (`−6.0 dB`); `expectVolume` converts. Bus volumes are saved as the slider's position, not as the gain.
-- Hold buttons (delete, restore) use real timers: `click({ delay: 700 })`.
+- Hold buttons use real timers: `click({ delay: 700 })` for delete and restore on a row, `2300` for Restore all and Delete all.
+- End a test that starts work on the server (a refresh, a download) only after the work has finished and the page has settled, or the server writes into a folder that is being deleted.
+- A fake that waits for a kill must check whether the signal has already fired; listening afterwards never resolves.
 - The `soundboard` fixture leaves the page before stopping the server, since the page may still be saving waveforms.
 - Fake audio and a headless browser cannot tell how the UI feels or what the real engine does; the manual checklist keeps those checks.
 
