@@ -110,6 +110,16 @@ export class RemoteController {
 		this.#send({ type: 'playlist.toggle', playlistId });
 	}
 
+	/** @param {string} soundId */
+	stopSound(soundId) {
+		this.#send({ type: 'sound.stop', soundId });
+	}
+
+	/** @param {string} playlistId */
+	stopPlaylist(playlistId) {
+		this.#send({ type: 'playlist.stop', playlistId });
+	}
+
 	/** @param {string} playlistId */
 	pausePlaylist(playlistId) {
 		this.#send({ type: 'playlist.pause', playlistId });

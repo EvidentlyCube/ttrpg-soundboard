@@ -5,6 +5,8 @@
 const RELAYABLE_COMMANDS = new Set([
 	'panic.stop',
 	'sound.play',
+	'sound.stop',
+	'playlist.stop',
 	'playlist.toggle',
 	'playlist.pause',
 	'playlist.resume',

@@ -29,7 +29,7 @@ test('choosing Host makes the page the host at once', async ({ page, soundboard,
 	await expect(page.getByRole('menuitem', { name: 'Stop hosting' })).toBeVisible();
 });
 
-test('a remote control follows the host and controls it', async ({ page, soundboard, splash, playlists, footer }) => {
+test('a remote control follows the host and controls it', async ({ page, soundboard, splash, footer }) => {
 	await soundboard.open();
 	await splash.choose('host');
 	await soundboard.waitUntilLoaded();
@@ -39,8 +39,8 @@ test('a remote control follows the host and controls it', async ({ page, soundbo
 	await expect(remote.locator('[data-host-note]')).toHaveText('Another page is the host. You will be asked before it is replaced.');
 	await remote.locator('[data-start-mode=remote]').click();
 	await expect(remote.locator('[data-remote-view]')).toBeVisible();
-	await expect(roleLabel(remote)).toHaveText('Remote control');
-	await expect(remote.locator('[data-host-status]')).toHaveText('Host connected');
+	await expect(roleLabel(remote)).toHaveText('Remote');
+	await expect(remote.locator('[data-host-status]')).toHaveAttribute('title', 'Host connected');
 
 	await remote.locator('[data-playlist-id="Music MP3"]').click();
 	await footer.expectPlayersCount(1);
@@ -48,17 +48,18 @@ test('a remote control follows the host and controls it', async ({ page, soundbo
 	await expect(remote.locator('[data-remote-player="Music MP3"] [data-player-track]')).toHaveText('Piece by Piece');
 	await expect(remote.locator('[data-playlist-id="Music MP3"]')).toHaveAttribute('data-active', 'true');
 
-	await remote.getByRole('button', { name: 'Pause', exact: true }).click();
-	await expect(remote.getByRole('button', { name: 'Play', exact: true })).toBeVisible();
-	await playlists.expectStatus('Music MP3', 'Paused');
-	await remote.getByRole('button', { name: 'Play', exact: true }).click();
-	await expect(remote.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
-
 	await remote.getByRole('button', { name: 'Next', exact: true }).click();
 	await expect(remote.locator('[data-remote-player="Music MP3"] [data-player-track]')).not.toHaveText('Piece by Piece');
 
 	await remote.locator('[data-sound-id]').first().click();
 	await expect(remote.locator('[data-sound-id][data-active="true"]')).toHaveCount(1);
+	await remote.locator('[data-sound-id]').first().click();
+	await expect(remote.locator('[data-sound-id][data-active="true"]')).toHaveCount(0);
+
+	await remote.getByRole('button', { name: 'Stop', exact: true }).click();
+	await expect(remote.locator('[data-remote-player]')).toHaveCount(0);
+	await remote.locator('[data-playlist-id="Music MP3"]').click();
+	await footer.expectPlayersCount(1);
 
 	await remote.locator('[data-panic-button]').click();
 	await footer.expectEmpty();
@@ -126,13 +127,13 @@ test('stopping hosting turns the page standalone and tells the remote', async ({
 	const remote = await page.context().newPage();
 	await remote.goto(soundboard.url);
 	await remote.locator('[data-start-mode=remote]').click();
-	await expect(remote.locator('[data-host-status]')).toHaveText('Host connected');
+	await expect(remote.locator('[data-host-status]')).toHaveAttribute('title', 'Host connected');
 
 	await page.locator('[data-app-menu]').click();
 	await page.getByRole('menuitem', { name: 'Stop hosting' }).click();
 
 	await expect(roleLabel(page)).toBeHidden();
-	await expect(remote.locator('[data-host-status]')).toHaveText('No host');
+	await expect(remote.locator('[data-host-status]')).toHaveAttribute('title', 'No host');
 	await expect(remote.locator('[data-remote-notice]')).toContainText('No host is connected');
 });
 

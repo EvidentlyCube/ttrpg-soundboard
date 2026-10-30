@@ -28,7 +28,7 @@ export class FooterPage {
 	async expectPanic(state) {
 		const button = this.#page.locator('[data-panic-button]');
 		await expect(button).toHaveAttribute('data-state', state);
-		await expect(button).toHaveText(state === 'fade' ? 'Stop(Fade)' : 'Stop(NOW!)');
+		await expect(button).toHaveText(state === 'fade' ? 'Stop All' : 'STOP NOW!');
 	}
 
 	/** @param {string} playlistTitle */
