@@ -19,8 +19,8 @@ function asksBeforeUnload(page) {
 test.beforeEach(async ({ soundboard, audio }) => {
 	await test.step('Make the files long enough to still be playing', async () => {
 		await soundboard.startAndWaitUntilLoaded();
-		await audio.script('Piece by Piece', { duration: 100 });
-		await audio.script(SOUND, { duration: 60 });
+		await audio.givenFile('Piece by Piece', { duration: 100 });
+		await audio.givenFile(SOUND, { duration: 60 });
 	});
 });
 

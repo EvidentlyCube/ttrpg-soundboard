@@ -3,7 +3,7 @@ import { test } from '../support/fixtures.js';
 test('a sound that cannot be loaded flashes its tile red and plays nothing', async ({ soundboard, sounds, audio }) => {
 	await test.step('Make the sound fail to decode', async () => {
 		await soundboard.startAndWaitUntilLoaded();
-		await audio.script('Base Connected', { bufferError: 'Could not decode' });
+		await audio.givenFile('Base Connected', { bufferError: 'Could not decode' });
 	});
 
 	await test.step('Click the sound', async () => {
@@ -21,8 +21,8 @@ test('a sound that cannot be loaded flashes its tile red and plays nothing', asy
 test('a playlist whose tracks all fail gives up and flashes its tile red', async ({ soundboard, playlists, footer, audio }) => {
 	await test.step('Make every track of the playlist fail to load', async () => {
 		await soundboard.startAndWaitUntilLoaded();
-		await audio.script('Piece by Piece', { loadError: 'Could not load' });
-		await audio.script('Intro', { loadError: 'Could not load' });
+		await audio.givenFile('Piece by Piece', { loadError: 'Could not load' });
+		await audio.givenFile('Intro', { loadError: 'Could not load' });
 	});
 
 	await test.step('Click the playlist', async () => {

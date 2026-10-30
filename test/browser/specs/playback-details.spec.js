@@ -107,8 +107,8 @@ test.describe('fades and crossfades', () => {
 	test.beforeEach(async ({ soundboard, audio }) => {
 		await test.step('Make both tracks 30 s long', async () => {
 			await soundboard.startAndWaitUntilLoaded();
-			await audio.script('Piece by Piece', { duration: 30 });
-			await audio.script('Intro', { duration: 30 });
+			await audio.givenFile('Piece by Piece', { duration: 30 });
+			await audio.givenFile('Intro', { duration: 30 });
 		});
 	});
 
@@ -280,7 +280,7 @@ test.describe('sound instances', () => {
 		test('the ninth press replaces the oldest of eight', async ({ soundboard, sounds, audio }) => {
 			await test.step('Make the sound 30 s long', async () => {
 				await soundboard.startAndWaitUntilLoaded();
-				await audio.script('Base Connected', { duration: 30 });
+				await audio.givenFile('Base Connected', { duration: 30 });
 			});
 
 			await test.step('Press it eight times: eight copies play', async () => {

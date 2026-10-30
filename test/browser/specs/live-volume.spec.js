@@ -3,7 +3,7 @@ import { expect, test } from '../support/fixtures.js';
 test.beforeEach(async ({ soundboard, playlists, audio }) => {
 	await test.step('Make the track long, then start the playlist', async () => {
 		await soundboard.startAndWaitUntilLoaded();
-		await audio.script('Piece by Piece', { duration: 100 });
+		await audio.givenFile('Piece by Piece', { duration: 100 });
 		await playlists.click('Music MP3');
 		await audio.expectPlaying('Piece by Piece');
 	});

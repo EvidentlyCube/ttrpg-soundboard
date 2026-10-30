@@ -67,7 +67,7 @@ test('two playlists play side by side', async ({ soundboard, playlists, footer, 
 test('the next track starts when the first one ends', async ({ soundboard, playlists, footer, audio }) => {
 	await test.step('Make the first track 30 s long and start the playlist', async () => {
 		await soundboard.startAndWaitUntilLoaded();
-		await audio.script('Piece by Piece', { duration: 30 });
+		await audio.givenFile('Piece by Piece', { duration: 30 });
 		await playlists.click('Music MP3');
 		await audio.expectPlaying('Piece by Piece');
 	});

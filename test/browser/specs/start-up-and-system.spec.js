@@ -144,7 +144,7 @@ test.describe('the debug view', () => {
 
 	test('lists the voices the engine was asked to play, with their status', async ({ sounds, header, audio }) => {
 		await test.step('Make the sound 1 s long and open the debug view', async () => {
-			await audio.script('Base Connected', { duration: 1 });
+			await audio.givenFile('Base Connected', { duration: 1 });
 			await header.toggleDebug();
 		});
 

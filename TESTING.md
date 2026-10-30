@@ -78,7 +78,7 @@ test('a playlist starts from its tile and keeps time in the footer', async ({ so
 | `library`, `unplayableFormats`, `downloadTools`, `randomSeed` (options) | What the server serves (`'example'`, a copy of the example fixture, or a tree for `createTmpTree`), the formats this "browser" cannot play, which of yt-dlp and ffmpeg the server finds (`'none'` by default, `'both'`, `'withoutFfmpeg'`), and a seed that makes the random and shuffle orders repeatable. Set with `test.use({ … })`. |
 | `soundboard` | `open()`, `waitUntilLoaded()`, `startAndWaitUntilLoaded()`, `reload()`, and `waitForTheFolderToSettle()`, the one real-time wait, to show that nothing happens. One server and one temporary library per test. |
 | `splash`, `header`, `playlists`, `sounds`, `footer`, `dialogs` | Page objects. Actions wait for what they need; assertions are `expect…` methods that retry, so a spec never sleeps or polls. |
-| `audio` | The fake engine and clock: `advance`, `script(title, { duration, loadDelay, loadError, bufferError, … })` (every file with that title), `expectPlaying`, `expectPlayingCount`, `expectVoice` (gain, start point, buffered or streamed), `expectRamp` (fades and crossfades), `expectBusGain`, `suspend`/`resume`, and holding, failing and finishing waveform making. |
+| `audio` | The fake engine and clock: `advance`, `givenFile(title, { duration, loadDelay, loadError, bufferError, … })` (every file with that title), `expectPlaying`, `expectPlayingCount`, `expectVoice` (gain, start point, buffered or streamed), `expectRamp` (fades and crossfades), `expectBusGain`, `suspend`/`resume`, and holding, failing and finishing waveform making. |
 | `disk` | The audio folder: `expectOptions`, `expectSettings`, `expectFile`, and changes behind the app's back with `addCopyOf`, `write` and `remove`. |
 | `downloads` | The fake yt-dlp and ffmpeg behind the server (`downloadTools` must not be `'none'`): `addVideo`, `addPlaylist`, `addFile` and `addUnusableLink` say what the "internet" holds, `failVideo` makes one video fail, `hold`/`release` keep a download open to look at its dialog, and `calls` lists what was run. |
 
@@ -86,7 +86,7 @@ Lessons for whoever writes or changes a spec:
 
 - Locate by role and visible name first. The few `data-*` hooks used are ones the UI already has for its own state (`data-sound-id`, `data-playlist-id`, `data-player-bar`, `data-active`, `data-error`, `data-gain-readout`, …). Add a page-object method, not a locator in a spec.
 - Nothing in the suite runs `yt-dlp` or `ffmpeg` or reaches the network: with `downloadTools` at `'none'` the server has no downloads at all, and otherwise `FakeDownloads` supplies both the programs and the fetcher. This was checked by running the whole suite with shims in front of the tools and no network.
-- Several playlists can hold the same song, so `audio.script` sets every file with the title.
+- Several playlists can hold the same song, so `audio.givenFile` sets every file with the title.
 - The red error ring on a tile lasts 2 s of real time (`window.setTimeout`), not of fake time. A debounced save (500 ms) and the waveform service's pause between files are on the fake clock; `audio.advance(500)` makes the save happen.
 - The screen uses a real minus sign (`−6.0 dB`); `expectVolume` converts. Bus volumes are saved as the slider's position, not as the gain.
 - Hold buttons use real timers: `click({ delay: 700 })` for delete and restore on a row, `2300` for Restore all and Delete all.

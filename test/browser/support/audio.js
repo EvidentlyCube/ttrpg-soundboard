@@ -33,13 +33,14 @@ export class Audio {
 	}
 
 	/**
-	 * Says how a sound or track behaves when it plays. Call it before it plays. Every file with that title is set, since
-	 * several playlists can hold the same song.
+	 * Pretends the file with this title is such a file: the fake engine plays it for that long, loads it that slowly or
+	 * fails on it, as a real file of that length or condition would. The library's own data is untouched. Call it before the
+	 * file plays. Every file with that title is set, since several playlists can hold the same song.
 	 * @param {string} title
 	 * @param {{ duration?: number, loadDelay?: number, loadError?: string, playError?: string, bufferError?: string }} script seconds; a
 	 * sound short enough to be buffered fails with `bufferError`, a track with `loadError`
 	 */
-	async script(title, script) {
+	async givenFile(title, script) {
 		const found = await this.#page.evaluate(async ([wanted, voiceScript]) => {
 			const library = await (await fetch('/api/library')).json();
 			const files = [...library.sounds, ...library.playlists.flatMap((/** @type {any} */ playlist) => playlist.tracks)];

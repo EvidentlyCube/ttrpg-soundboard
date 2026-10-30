@@ -55,7 +55,7 @@ test('the stop button silences every copy of that sound and no other', async ({ 
 test('a sound becomes idle by itself when it ends', async ({ soundboard, sounds, audio }) => {
 	await test.step('Make the sound 1.5 s long and play it', async () => {
 		await soundboard.startAndWaitUntilLoaded();
-		await audio.script('Base Connected', { duration: 1.5 });
+		await audio.givenFile('Base Connected', { duration: 1.5 });
 		await sounds.click('Base Connected');
 		await sounds.expectPlaying('Base Connected');
 	});

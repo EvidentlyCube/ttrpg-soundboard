@@ -71,7 +71,7 @@ test.describe('stopping a playlist that remembers its place', () => {
 	test.beforeEach(async ({ soundboard, audio }) => {
 		await test.step('Make the first track long', async () => {
 			await soundboard.startAndWaitUntilLoaded();
-			await audio.script('Piece by Piece', { duration: 100 });
+			await audio.givenFile('Piece by Piece', { duration: 100 });
 		});
 	});
 
@@ -156,8 +156,8 @@ test.describe('the player bar', () => {
 	test.beforeEach(async ({ soundboard, audio }) => {
 		await test.step('Make both tracks long', async () => {
 			await soundboard.startAndWaitUntilLoaded();
-			await audio.script('Piece by Piece', { duration: 100 });
-			await audio.script('Intro', { duration: 100 });
+			await audio.givenFile('Piece by Piece', { duration: 100 });
+			await audio.givenFile('Intro', { duration: 100 });
 		});
 	});
 
@@ -206,7 +206,7 @@ test.describe('the player bar', () => {
 
 	test('repeating the track plays it again when it ends', async ({ playlists, dialogs, footer, audio }) => {
 		await test.step('Make the first track 30 s long and set the playlist to repeat the track', async () => {
-			await audio.script('Piece by Piece', { duration: 30 });
+			await audio.givenFile('Piece by Piece', { duration: 30 });
 			await playlists.useMenu(PLAYLIST, 'Customize');
 			await dialogs.playlistEditor.setRepeatTrack(true);
 			await dialogs.playlistEditor.close();
@@ -272,7 +272,7 @@ test.describe('the player bar', () => {
 
 	test('times from an hour on show hours', async ({ playlists, footer, audio }) => {
 		await test.step('Make the first track just over an hour long and start the playlist', async () => {
-			await audio.script('Piece by Piece', { duration: 3725 });
+			await audio.givenFile('Piece by Piece', { duration: 3725 });
 			await playlists.click(PLAYLIST);
 		});
 
@@ -287,7 +287,7 @@ test.describe('the player bar', () => {
 
 	test('the duration shows as dashes while the track is loading', async ({ playlists, footer, audio }) => {
 		await test.step('Make the first track take five seconds to load, then start the playlist', async () => {
-			await audio.script('Piece by Piece', { duration: 100, loadDelay: 5 });
+			await audio.givenFile('Piece by Piece', { duration: 100, loadDelay: 5 });
 			await playlists.click(PLAYLIST);
 		});
 

@@ -287,7 +287,7 @@ test.describe('deleting for good', () => {
 test.describe('deleting what plays', () => {
 	test('a sound that is playing stops', async ({ sounds, dialogs, audio }) => {
 		await test.step('Make the sound long and play it', async () => {
-			await audio.script(SOUND, { duration: 30 });
+			await audio.givenFile(SOUND, { duration: 30 });
 			await sounds.click(SOUND);
 			await audio.expectPlaying(SOUND);
 		});

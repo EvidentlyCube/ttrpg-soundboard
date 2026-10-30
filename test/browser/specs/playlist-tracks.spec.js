@@ -132,7 +132,7 @@ test.describe('a single track', () => {
 		const track = dialogs.playlistEditor.track(FIRST);
 
 		await test.step('Make the track 100 s long and open its row: the range is editable', async () => {
-			await audio.script(FIRST, { duration: 100 });
+			await audio.givenFile(FIRST, { duration: 100 });
 			await track.open();
 			await track.expectEditableRange();
 		});

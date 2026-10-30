@@ -8,8 +8,8 @@ test.describe('with fade-outs', () => {
 	test.beforeEach(async ({ soundboard, playlists, sounds, dialogs, audio }) => {
 		await test.step('Make the files long enough to still be playing after the fades', async () => {
 			await soundboard.startAndWaitUntilLoaded();
-			await audio.script('Piece by Piece', { duration: 100 });
-			await audio.script(SOUND, { duration: 60 });
+			await audio.givenFile('Piece by Piece', { duration: 100 });
+			await audio.givenFile(SOUND, { duration: 60 });
 		});
 
 		await test.step('Give the playlist a 2 s fade-out', async () => {

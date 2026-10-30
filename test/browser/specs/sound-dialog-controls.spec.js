@@ -332,7 +332,7 @@ test.describe('changing a sound that is playing', () => {
 	test('a new volume reaches the copies already playing', async ({ sounds, dialogs, audio }) => {
 		await test.step('Close the dialog, make the sound long and play it', async () => {
 			await dialogs.soundEditor.close();
-			await audio.script(SOUND, { duration: 30 });
+			await audio.givenFile(SOUND, { duration: 30 });
 			await sounds.click(SOUND);
 			await audio.expectVoice(SOUND, { gain: 1 });
 		});
@@ -350,7 +350,7 @@ test.describe('changing a sound that is playing', () => {
 	test('a copy that already plays keeps the points it started with', async ({ sounds, dialogs, audio }) => {
 		await test.step('Close the dialog, make the sound long and play it from the start', async () => {
 			await dialogs.soundEditor.close();
-			await audio.script(SOUND, { duration: 30 });
+			await audio.givenFile(SOUND, { duration: 30 });
 			await sounds.click(SOUND);
 			await audio.expectVoice(SOUND, { startAt: 0 });
 		});
