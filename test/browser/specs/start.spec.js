@@ -43,7 +43,7 @@ test('the page runs on the fake audio engine, which the click unlocks', async ({
 	await soundboard.startAndWaitUntilLoaded();
 
 	const unlocks = await page.evaluate(() => soundboardTest.engine.unlockCount);
-	expect(unlocks).toBeGreaterThan(0);
+	expect(unlocks).toBe(1);
 });
 
 test('the page works when opened as localhost, which is the same server under another name', async ({ page, soundboard, splash, playlists }) => {

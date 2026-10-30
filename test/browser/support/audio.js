@@ -78,6 +78,30 @@ export class Audio {
 		});
 	}
 
+	/**
+	 * Makes the waveform of every file with this title fail to decode. Call it before the waveforms are made.
+	 * @param {string} title
+	 */
+	async failWaveform(title) {
+		const found = await this.#page.evaluate(async (wanted) => {
+			const library = await (await fetch('/api/library')).json();
+			const files = [...library.sounds, ...library.playlists.flatMap((/** @type {any} */ playlist) => playlist.tracks)];
+			const urls = files.filter((/** @type {any} */ file) => file.title === wanted).map((/** @type {any} */ file) => file.url);
+			for (const url of urls) {
+				soundboardTest.decoder.failing.add(url);
+			}
+			return urls.length;
+		}, title);
+		if (found === 0) {
+			throw new Error(`No sound or track is called "${title}"`);
+		}
+	}
+
+	/** @param {number} count how many files the page has decoded for waveforms so far */
+	async expectDecodedCount(count) {
+		await expect.poll(() => this.#page.evaluate(() => soundboardTest.decoder.decoded.length)).toBe(count);
+	}
+
 	/** Lets the waiting waveform decoding go on. */
 	async releaseWaveforms() {
 		await this.#page.evaluate(() => {
@@ -96,6 +120,18 @@ export class Audio {
 		await expect(async () => {
 			await this.advance(250);
 			await expect(indicator).toBeHidden({ timeout: 50 });
+		}).toPass({ timeout: 15_000, intervals: [20] });
+	}
+
+	/**
+	 * Like `finishWaveforms`, for a run that ends with the indicator still showing, as when some files failed.
+	 * @param {string} text what the indicator should come to say, such as "Waveforms 16 / 16, 2 failed"
+	 */
+	async finishWaveformsWith(text) {
+		const indicator = this.#page.locator('[data-waveform-indicator]');
+		await expect(async () => {
+			await this.advance(250);
+			await expect(indicator).toContainText(text, { timeout: 50 });
 		}).toPass({ timeout: 15_000, intervals: [20] });
 	}
 

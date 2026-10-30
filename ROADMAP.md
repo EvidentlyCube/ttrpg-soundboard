@@ -62,7 +62,7 @@ Make the page usable on a phone or tablet.
 
 ### Browser test coverage still to write
 
-What the Playwright suite (`test/browser/`) does not check yet, collected when the first suite was finished. It covers the splash, playing and controlling playlists and sounds, errors, a suspended system, the tile menus (instant items, Reset, Stop All), what a stopped playlist remembers, repeating, Previous, seeking while paused and the time formats, the sound and playlist Customize dialogs, the Tracks tab (opening, renaming, volume, cropping, playing and seeking a track, deleting, moving, failed saves), the Move dialog (sounds and tracks, name clashes, failures), the whole trash (listing, restoring playlists, tracks and sounds, Restore all, Delete all, errors, deleting what plays) (title, volume, start and end points with their handles and fields, fades, order, repeat, when stopped, crossfade, saving, the volume widget, and a sound that is already playing), external changes, the header volumes, the waveform indicator and the basics of the trash. Everything below is open. Each group is a candidate for its own proposal. The part that only a real browser can check stays in the manual checklist ([`TESTING.md`](TESTING.md)), and so does `WebAudioEngine`.
+What the Playwright suite (`test/browser/`) does not check yet, collected when the first suite was finished. It covers the splash, playing and controlling playlists and sounds, errors, a suspended system, the tile menus (instant items, Reset, Stop All), what a stopped playlist remembers, repeating, Previous, seeking while paused and the time formats, the sound and playlist Customize dialogs, the Tracks tab (opening, renaming, volume, cropping, playing and seeking a track, deleting, moving, failed saves), the Move dialog (sounds and tracks, name clashes, failures), the Metadata dialog (rows, rebuilt YouTube links, n/a, non-http links), regenerating and failing waveforms, a failed refresh and the rest of the external changes, a failed start, the empty library line, the debug view and the context menu closing, the whole trash (listing, restoring playlists, tracks and sounds, Restore all, Delete all, errors, deleting what plays) (title, volume, start and end points with their handles and fields, fades, order, repeat, when stopped, crossfade, saving, the volume widget, and a sound that is already playing), external changes, the header volumes, the waveform indicator and the basics of the trash. Everything below is open. Each group is a candidate for its own proposal. The part that only a real browser can check stays in the manual checklist ([`TESTING.md`](TESTING.md)), and so does `WebAudioEngine`.
 
 - **Player bar and playlist playback.**
   - The random and shuffle orders (with a seeded `random` passed through `test-main.js`).
@@ -72,28 +72,11 @@ What the Playwright suite (`test/browser/`) does not check yet, collected when t
   - The footer layout: three bars per row, two rows, then scrolling.
   - A ninth instance of a sound replacing the oldest, and the difference between small (buffered) and large (streamed) sounds.
 - **Add dialog, Download dialog and downloads.** All of it, which needs the fake process runner behind the test server (`downloads: { tools, run }`): lookups and their errors, chapters and playlists, progress and the log, one job at a time, cancelling, dismissing, `503` without the tools, and new tiles appearing at once, including tracks added to a playlist that is playing. Also adding tracks from the playlist dialog's Tracks tab, and the dialog coming back on that tab.
-- **Metadata dialog.** All of it: the rows, source links and their rebuilding for YouTube, the origin and chapter fields, and saving.
-- **App menu and waveforms.**
-  - ☰ → "Regenerate waveforms" counting every sound and track, and its stop button.
-  - Failed waveforms counted in the indicator ("2 failed"), and one that cannot be decoded not stopping the rest.
-  - Making none again on a second page load, and the waveform appearing in an open dialog when it is made.
-- **External changes beyond the basics.**
-  - A refresh that fails: the "Could not load the changes" dialog with each problem, and the missing `.soundboard` bringing the "needs a restart" splash back for good.
-  - The check when the window gets the focus back.
-  - Replacing a file with an identical copy not showing the button, and a change made just before clicking Refresh surviving the reload.
-  - The button's "Refreshing…" state.
-- **Start-up and the system.**
-  - `app.startFailed`: "Could not start the soundboard. Click to retry." and retrying.
-  - An open popup closing when the system suspends audio, and an open Customize dialog staying underneath the splash.
-  - The empty library line ("none found in this folder").
-  - The debug view and its button.
-  - The context menu closing on a click outside it and on Esc, and Esc taking the topmost dialog first.
 - **The suite itself.**
   - Firefox and WebKit projects in `playwright.config.js` (the browsers are installed), at least for layout checks.
   - Narrow-window layouts, once "Basic mobile design" is done.
   - A visual check of the waveform canvases.
   - Whether `finishWaveforms()` and the other real-time waits can be made deterministic.
-  - Why the engine's `unlock` runs twice on start (the splash spec only asserts "at least once").
 
 ### Switching scenes
 

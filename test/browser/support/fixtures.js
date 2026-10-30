@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { test as base } from '@playwright/test';
 import { HeaderPage } from '../pages/header.js';
+import { MetadataPage } from '../pages/dialogs/metadata.js';
 import { MoveDialogPage } from '../pages/dialogs/move-dialog.js';
 import { TrashPage } from '../pages/dialogs/trash.js';
 import { PlaylistEditorPage } from '../pages/dialogs/playlist-editor.js';
@@ -77,7 +78,7 @@ class Soundboard {
  * @property {Audio} audio
  * @property {HeaderPage} header
  * @property {Disk} disk
- * @property {{ soundEditor: SoundEditorPage, playlistEditor: PlaylistEditorPage, trash: TrashPage, move: MoveDialogPage }} dialogs
+ * @property {{ soundEditor: SoundEditorPage, playlistEditor: PlaylistEditorPage, trash: TrashPage, move: MoveDialogPage, metadata: MetadataPage }} dialogs
  * @typedef {object} Options
  * @property {string[]} unplayableFormats formats this "browser" cannot play, such as 'ogg' (Safari)
  * @property {'example' | import('../../helpers/tmp-tree.js').TreeSpec} library what the server serves: a copy of the example fixture, or a tree to build
@@ -139,6 +140,7 @@ const fixtures = {
 			playlistEditor: new PlaylistEditorPage(page),
 			trash: new TrashPage(page),
 			move: new MoveDialogPage(page),
+			metadata: new MetadataPage(page),
 		});
 	},
 

@@ -43,6 +43,25 @@ export class HeaderPage {
 		await expect(this.#page.getByRole('button', { name: 'External Changes – Refresh' })).toBeHidden();
 	}
 
+	/** The button while the server rebuilds its library: disabled, and reading "Refreshing…". */
+	async expectRefreshing() {
+		const button = this.#page.locator('[data-external-changes]');
+		await expect(button).toBeDisabled();
+		await expect(button).toHaveText('Refreshing…');
+	}
+
+	/** The dialog that lists why a refresh failed. @param {string} path the file @param {string} message part of what is wrong with it */
+	async expectRefreshFailure(path, message) {
+		const dialog = this.#page.getByRole('dialog', { name: 'Could not load the changes' });
+		await expect(dialog).toBeVisible();
+		await expect(dialog).toContainText(path);
+		await expect(dialog).toContainText(message);
+	}
+
+	async dismissRefreshFailure() {
+		await this.#page.getByRole('dialog', { name: 'Could not load the changes' }).getByRole('button', { name: 'Close' }).click();
+	}
+
 	async refreshExternalChanges() {
 		await this.#page.getByRole('button', { name: 'External Changes – Refresh' }).click();
 	}
@@ -55,6 +74,12 @@ export class HeaderPage {
 
 	async expectNoWaveforms() {
 		await expect(this.#page.locator('[data-waveform-indicator]')).toBeHidden();
+	}
+
+	/** Picks "Regenerate waveforms" in the ☰ menu. */
+	async regenerateWaveforms() {
+		await this.#page.getByRole('button', { name: 'Menu' }).click();
+		await this.#page.getByRole('menuitem', { name: 'Regenerate waveforms', exact: true }).click();
 	}
 
 	async stopWaveforms() {
@@ -85,6 +110,26 @@ export class HeaderPage {
 
 	async openProblems() {
 		await this.#page.locator('[data-problems-button]').click();
+	}
+
+	/** The bug button that opens or closes the debug view (DESIGN.md §9.8). */
+	async toggleDebug() {
+		await this.#page.getByRole('button', { name: 'Debug view' }).click();
+	}
+
+	/** @param {boolean} open whether the debug panel is on screen */
+	async expectDebugOpen(open) {
+		await expect(this.#page.locator('[data-debug-panel]')).toBeVisible({ visible: open });
+	}
+
+	async expectDebugEmpty() {
+		await expect(this.#page.locator('[data-debug-empty]')).toBeVisible();
+	}
+
+	/** @param {string} label a voice's title @param {string} status such as "playing" or "ended" */
+	async expectDebugVoice(label, status) {
+		const row = this.#page.locator('[data-voice]').filter({ hasText: label });
+		await expect(row).toHaveAttribute('data-status', status);
 	}
 
 	async openTrash() {

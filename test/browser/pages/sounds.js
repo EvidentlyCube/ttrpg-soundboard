@@ -51,6 +51,16 @@ export class SoundsPage {
 		await this.#page.getByRole('menuitem', { name: item, exact: true }).click();
 	}
 
+	/** Opens the tile's context menu without picking anything. @param {string} title */
+	async openMenu(title) {
+		await this.#tile(title).click({ button: 'right' });
+	}
+
+	/** @param {boolean} open whether a context menu is on screen */
+	async expectMenuOpen(open) {
+		await expect(this.#page.getByRole('menu')).toBeVisible({ visible: open });
+	}
+
 	/** @param {string[]} titles every sound's title, in the order the tiles are laid out */
 	async expectOrder(titles) {
 		await expect(this.#page.locator('[data-sound-id] > span')).toHaveText(titles);

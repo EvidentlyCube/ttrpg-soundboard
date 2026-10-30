@@ -1,4 +1,4 @@
-import { copyFile, readFile, rm, stat } from 'node:fs/promises';
+import { copyFile, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect } from '@playwright/test';
 import { FIXTURES_DIR } from '../../helpers/tmp-tree.js';
@@ -49,6 +49,11 @@ export class Disk {
 	 */
 	async addCopyOf(fixtureFile, name) {
 		await copyFile(join(FIXTURES_DIR, 'example_soundboard', fixtureFile), join(this.#root, name));
+	}
+
+	/** Writes a file, as an editor would. @param {string} name path in the audio folder @param {string} content */
+	async write(name, content) {
+		await writeFile(join(this.#root, name), content);
 	}
 
 	/** Deletes a file, as if by hand. @param {string} name */

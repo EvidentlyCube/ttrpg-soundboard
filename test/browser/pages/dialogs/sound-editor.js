@@ -136,6 +136,11 @@ export class SoundEditorPage extends CustomizeDialog {
 		await (shown ? expect(warning.first()).toBeVisible() : expect(warning).toHaveCount(0));
 	}
 
+	/** @param {boolean} shown whether the file's waveform is drawn above the slider */
+	async expectWaveform(shown) {
+		await expect(this._dialog.locator('[data-range-waveform]')).toBeVisible({ visible: shown });
+	}
+
 	async resetRange() {
 		await this._dialog.locator('[data-range-reset]').click();
 	}
