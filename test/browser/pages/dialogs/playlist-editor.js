@@ -98,6 +98,11 @@ export class PlaylistEditorPage extends CustomizeDialog {
 		await expect(this._dialog.getByRole('status')).toContainText(new RegExp(`Could not save: .*${message}`));
 	}
 
+	/** Presses "+ Add tracks" on the Tracks tab. */
+	async addTracks() {
+		await this._dialog.locator('[data-add-tracks]').click();
+	}
+
 	async openTracksTab() {
 		await this._dialog.locator('[data-tab="tracks"]').click();
 	}

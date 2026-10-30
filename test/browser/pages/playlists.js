@@ -14,6 +14,11 @@ export class PlaylistsPage {
 		return this.#page.locator('[data-playlist-id]').filter({ has: this.#page.getByText(title, { exact: true }) });
 	}
 
+	/** Presses "+ Add playlist". */
+	async openAdd() {
+		await this.#page.locator('[data-add-button=music]').click();
+	}
+
 	/** The line that says nothing was found, which is there only while the library is empty. @param {boolean} shown */
 	async expectNoneFoundLine(shown) {
 		await expect(this.#page.getByText('No playlists or sounds were found in this folder.')).toBeVisible({ visible: shown });

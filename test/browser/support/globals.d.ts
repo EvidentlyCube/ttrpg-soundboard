@@ -5,4 +5,4 @@ declare var soundboardTest: {
 	decoder: import('../../helpers/fake-waveform-decoder.js').FakeWaveformDecoder;
 	release?: () => void;
 };
-declare var soundboardTestOptions: { unplayableFormats: string[] } | undefined;
+declare var soundboardTestOptions: { unplayableFormats: string[], randomSeed?: number } | undefined;

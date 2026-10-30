@@ -47,7 +47,7 @@ test('replacing a file with an identical copy brings no button', async ({ soundb
 	await header.expectNoExternalChangesButton();
 });
 
-test('the button is disabled and says Refreshing… while the server works', async ({ page, header, disk }) => {
+test('the button is disabled and says Refreshing… while the server works', async ({ page, soundboard, splash, header, disk }) => {
 	let release = () => {};
 	const gate = new Promise((resolve) => {
 		release = () => resolve(undefined);
@@ -62,7 +62,10 @@ test('the button is disabled and says Refreshing… while the server works', asy
 	await header.refreshExternalChanges();
 
 	await header.expectRefreshing();
+
 	release();
+	await splash.click();
+	await soundboard.waitUntilLoaded();
 });
 
 test('a volume changed just before clicking Refresh is saved before the page reloads', async ({ soundboard, splash, header, disk }) => {

@@ -10,6 +10,7 @@ import { App } from './ui/app.js';
 import { FakeAudioEngine } from '../test-support/fake-audio-engine.js';
 import { FakeClock } from '../test-support/fake-clock.js';
 import { FakeWaveformDecoder } from '../test-support/fake-waveform-decoder.js';
+import { seededRandom } from '../test-support/seeded-random.js';
 
 const clock = new FakeClock();
 // Loading takes no time unless a test scripts it, so a press needs no `advance` before its sound starts.
@@ -26,6 +27,10 @@ class FullSizeDecoder extends FakeWaveformDecoder {
 }
 const decoder = new FullSizeDecoder();
 
+// The random and shuffle orders are repeatable when a test gives a seed; otherwise the page keeps its own randomness, so
+// two pages never share a page id.
+const seed = globalThis.soundboardTestOptions?.randomSeed;
+
 const api = new HttpBackendApi();
 const serverEvents = new EventSourceServerEvents();
 const soundboard = new Soundboard({
@@ -35,6 +40,7 @@ const soundboard = new Soundboard({
 	decoder,
 	serverEvents,
 	logger: console,
+	...(seed === undefined ? {} : { random: seededRandom(seed) }),
 });
 const remote = new RemoteController({ api, serverEvents, logger: console });
 

@@ -6,6 +6,7 @@ import { expect } from '@playwright/test';
  * @property {'music' | 'sfx'} bus
  * @property {number} gain
  * @property {number} startAt
+ * @property {'buffer' | 'stream'} kind a buffered voice plays a sound loaded into memory; a streamed one plays from the file
  */
 
 /**
@@ -56,7 +57,7 @@ export class Audio {
 	/** @returns {Promise<VoiceInfo[]>} the voices that have not been stopped */
 	async #liveVoices() {
 		return this.#page.evaluate(() => soundboardTest.engine.liveVoices.map(
-			(/** @type {any} */ voice) => ({ label: voice.label, bus: voice.bus, gain: voice.gain, startAt: voice.startAt }),
+			(/** @type {any} */ voice) => ({ label: voice.label, bus: voice.bus, gain: voice.gain, startAt: voice.startAt, kind: voice.kind }),
 		));
 	}
 
@@ -145,6 +146,18 @@ export class Audio {
 		await this.#page.evaluate(() => soundboardTest.engine.simulate('resumed'));
 	}
 
+	/**
+	 * The volume ramps a voice of this title was given, as [target gain, seconds]: fades in and out, and crossfades. Voices
+	 * that were stopped count too, since a fade-out ends with the voice stopped.
+	 * @param {string} title
+	 * @param {[number, number]} ramp
+	 */
+	async expectRamp(title, [target, seconds]) {
+		await expect.poll(() => this.#page.evaluate((wanted) => soundboardTest.engine.voices
+			.filter((/** @type {any} */ voice) => voice.label === wanted)
+			.flatMap((/** @type {any} */ voice) => voice.gainRamps), title)).toContainEqual([expect.closeTo(target, 3), seconds]);
+	}
+
 	/** @param {string} title */
 	async expectPlaying(title) {
 		await expect.poll(async () => (await this.#liveVoices()).map((voice) => voice.label)).toContain(title);
@@ -162,7 +175,7 @@ export class Audio {
 	/**
 	 * A voice for this title with these settings, such as where in the file it started.
 	 * @param {string} title
-	 * @param {{ gain?: unknown, startAt?: unknown }} settings numbers, or matchers such as `expect.closeTo`
+	 * @param {{ gain?: unknown, startAt?: unknown, kind?: unknown }} settings numbers, or matchers such as `expect.closeTo`
 	 */
 	async expectVoice(title, settings) {
 		await expect.poll(async () => (await this.#liveVoices()).filter((voice) => voice.label === title)).toContainEqual(expect.objectContaining(settings));

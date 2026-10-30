@@ -1,6 +1,8 @@
 import { join } from 'node:path';
 import { test as base } from '@playwright/test';
 import { HeaderPage } from '../pages/header.js';
+import { AddDialogPage } from '../pages/dialogs/add-dialog.js';
+import { DownloadDialogPage } from '../pages/dialogs/download-dialog.js';
 import { MetadataPage } from '../pages/dialogs/metadata.js';
 import { MoveDialogPage } from '../pages/dialogs/move-dialog.js';
 import { TrashPage } from '../pages/dialogs/trash.js';
@@ -12,6 +14,7 @@ import { SoundsPage } from '../pages/sounds.js';
 import { SplashPage } from '../pages/splash.js';
 import { Audio } from './audio.js';
 import { Disk } from './disk.js';
+import { downloadSetup, FakeDownloads } from './downloads.js';
 import { startSoundboardServer } from './server.js';
 
 const SUPPORT = import.meta.dirname;
@@ -78,10 +81,13 @@ class Soundboard {
  * @property {Audio} audio
  * @property {HeaderPage} header
  * @property {Disk} disk
- * @property {{ soundEditor: SoundEditorPage, playlistEditor: PlaylistEditorPage, trash: TrashPage, move: MoveDialogPage, metadata: MetadataPage }} dialogs
+ * @property {{ soundEditor: SoundEditorPage, playlistEditor: PlaylistEditorPage, trash: TrashPage, move: MoveDialogPage, metadata: MetadataPage, add: AddDialogPage, download: DownloadDialogPage }} dialogs
  * @typedef {object} Options
  * @property {string[]} unplayableFormats formats this "browser" cannot play, such as 'ogg' (Safari)
  * @property {'example' | import('../../helpers/tmp-tree.js').TreeSpec} library what the server serves: a copy of the example fixture, or a tree to build
+ * @property {number | undefined} randomSeed makes the random and shuffle orders repeatable; without it they are random
+ * @property {import('./downloads.js').DownloadTools} downloadTools which of yt-dlp and ffmpeg the server finds; none by default
+ * @property {FakeDownloads} downloads what the fake yt-dlp and ffmpeg know and do
  * @property {boolean} lan whether the server runs as with `--lan` (DESIGN.md §5.6)
  */
 
@@ -89,15 +95,17 @@ class Soundboard {
 const fixtures = {
 	library: ['example', { option: true }],
 	lan: [false, { option: true }],
+	downloadTools: ['none', { option: true }],
 	unplayableFormats: [[], { option: true }],
+	randomSeed: [undefined, { option: true }],
 
 	// The real page, with the fakes from test/helpers/ where the browser's audio would be (support/test-main.js). Set on
 	// the context, so a second page of a test (a remote control) gets them too.
-	page: async ({ page, unplayableFormats }, use) => {
+	page: async ({ page, unplayableFormats, randomSeed }, use) => {
 		const context = page.context();
-		await context.addInitScript((formats) => {
-			globalThis.soundboardTestOptions = { unplayableFormats: formats };
-		}, unplayableFormats);
+		await context.addInitScript(({ formats, seed }) => {
+			globalThis.soundboardTestOptions = { unplayableFormats: formats, ...(seed === undefined ? {} : { randomSeed: seed }) };
+		}, { formats: unplayableFormats, seed: randomSeed });
 		await context.route('**/app/main.js', (route) => route.fulfill({ path: join(SUPPORT, 'test-main.js'), contentType: 'text/javascript' }));
 		await context.route('**/test-support/*.js', (route) => {
 			const name = new URL(route.request().url()).pathname.split('/').pop() ?? '';
@@ -106,8 +114,14 @@ const fixtures = {
 		await use(page);
 	},
 
-	soundboard: async ({ page, library, lan, splash }, use) => {
-		const server = await startSoundboardServer(library, { lan });
+	// Playwright reads which fixtures a function needs from its first parameter, which must be a destructuring pattern.
+	// eslint-disable-next-line no-empty-pattern
+	downloads: async ({}, use) => {
+		await use(new FakeDownloads());
+	},
+
+	soundboard: async ({ page, library, lan, splash, downloadTools, downloads }, use) => {
+		const server = await startSoundboardServer(library, { lan, downloads: downloadSetup(downloadTools, downloads) });
 		await use(new Soundboard(page, server.url, server.root, splash));
 		// The page may still be saving waveforms; stop it before the folder goes.
 		await page.goto('about:blank');
@@ -141,6 +155,8 @@ const fixtures = {
 			trash: new TrashPage(page),
 			move: new MoveDialogPage(page),
 			metadata: new MetadataPage(page),
+			add: new AddDialogPage(page),
+			download: new DownloadDialogPage(page),
 		});
 	},
 

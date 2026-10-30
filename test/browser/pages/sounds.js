@@ -14,6 +14,11 @@ export class SoundsPage {
 		return this.#page.locator('[data-sound-id]').filter({ has: this.#page.getByText(title, { exact: true }) });
 	}
 
+	/** Presses "+ Add sound". */
+	async openAdd() {
+		await this.#page.locator('[data-add-button=sfx]').click();
+	}
+
 	/** @param {string} title */
 	#stopButton(title) {
 		return this.#page.getByRole('button', { name: `Stop all ${title}` });

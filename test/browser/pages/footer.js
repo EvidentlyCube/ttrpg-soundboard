@@ -19,6 +19,37 @@ export class FooterPage {
 		await this.expectPlayersCount(0);
 	}
 
+	/** @returns {Promise<{ x: number, y: number }[]>} where every player bar is, left to right and top to bottom */
+	async #barPositions() {
+		return this.#page.locator('[data-player-bar]').evaluateAll((bars) => bars.map((bar) => {
+			const { x, y } = bar.getBoundingClientRect();
+			return { x: Math.round(x), y: Math.round(y) };
+		}));
+	}
+
+	/** The bars sit in three columns: the rows hold [3, 3, 1] bars for seven playlists. @param {number[]} rows how many bars each row holds */
+	async expectRows(rows) {
+		await expect.poll(async () => {
+			const positions = await this.#barPositions();
+			const counts = new Map();
+			for (const { y } of positions) {
+				counts.set(y, (counts.get(y) ?? 0) + 1);
+			}
+			return [...counts.entries()].sort((a, b) => a[0] - b[0]).map(([, count]) => count);
+		}).toEqual(rows);
+	}
+
+	/** The dock is two rows of bars tall at most, and scrolls beyond that. @param {boolean} scrolls */
+	async expectScrolls(scrolls) {
+		const grid = this.#page.locator('[data-player-dock] .overflow-y-auto');
+		await expect.poll(() => grid.evaluate((element) => element.scrollHeight > element.clientHeight + 1)).toBe(scrolls);
+	}
+
+	/** The height of the dock, to see that it stops growing. */
+	async height() {
+		return (await this.#page.locator('[data-player-dock]').boundingBox())?.height ?? 0;
+	}
+
 	/** The Panic Stop button (DESIGN.md §9.1). */
 	async pressPanic() {
 		await this.#page.locator('[data-panic-button]').click();
@@ -122,9 +153,35 @@ export class PlayerBarPage {
 		await expect(this.#page.getByRole('menuitem').locator('span.truncate')).toHaveText(titles);
 	}
 
+	/** A track that cannot be picked, such as one in a format this browser cannot play. @param {string} title */
+	async expectTrackDisabled(title) {
+		await expect(this.#page.getByRole('menuitem', { name: title })).toBeDisabled();
+	}
+
+	/** The open track list has scrolled so that this track is inside it. @param {string} title */
+	async expectTrackListShows(title) {
+		await expect(this.#page.getByRole('menuitem', { name: title })).toBeInViewport({ ratio: 1 });
+	}
+
 	/** @param {string} title the track marked in the open track list */
 	async expectCurrentInTrackList(title) {
 		await expect(this.#page.locator('[role=menuitem][data-current=true]')).toHaveText(new RegExp(title));
+	}
+
+	/** @returns {Promise<string>} the title of the track the bar shows */
+	async currentTrack() {
+		return (await this.#bar.getByTitle('Choose a track').innerText()).trim();
+	}
+
+	/** The part of the progress bar where the crossfade into the next track happens. @param {number | null} percent how much of the bar from its end, or null while there is none */
+	async expectCrossfadeBand(percent) {
+		const band = this.#bar.locator('[data-crossfade-band]');
+		if (percent === null) {
+			await expect(band).toBeHidden();
+			return;
+		}
+		await expect(band).toBeVisible();
+		await expect.poll(() => band.evaluate((element) => Number.parseFloat(/** @type {HTMLElement} */ (element).style.width))).toBeCloseTo(percent, 0);
 	}
 
 	/** @param {string} title */
