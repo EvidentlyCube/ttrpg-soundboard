@@ -11,10 +11,11 @@ It is a living document: every change to it is reviewed by hand by the project o
 A local soundboard for running RPG sessions. A Node.js server scans a directory of audio files and serves a vanilla-JS web app. The browser does all audio playback: overlapping sound effects plus several music playlists at once.
 
 ```
-node index.js <path-to-audio-directory> [--port <number>] [--verbose]
+node index.js <path-to-audio-directory> [--port <number>] [--lan [<address>]] [--verbose]
 ```
 
 - The server listens on `127.0.0.1` only. The default port is `3000`; `--port` accepts 1–65535.
+- With **`--lan`** it listens on all interfaces instead, or only on `<address>` when one is given (the next argument counts as the address only if it is an IP address). It also makes up a token for the run and prints one link per network address (`http://192.168.1.20:3000/?token=…`) for opening the app on a phone as a remote control (§5.5, §9.15). Requests from other machines need the token and can reach only the pages and the remote routes (§5.2).
 - Output is quiet by default: the startup summary, warnings and errors. `--verbose` also logs every HTTP request (§5.2).
 - After startup it prints `Soundboard running at http://127.0.0.1:3000` and `Press Ctrl+C to stop.` The user opens that URL themselves.
 - While it runs, it watches the directory. Files added, removed or changed from outside the app are not loaded by themselves: the page offers a refresh, which rebuilds the library as a restart would (§3.6, §5.3).
@@ -36,8 +37,8 @@ node index.js <path-to-audio-directory> [--port <number>] [--verbose]
 | Module system | ES modules everywhere (`"type": "module"`) |
 | Tests | `node --test` with `node:assert/strict`, and Playwright for the UI ([`TESTING.md`](TESTING.md)) |
 | Browsers | Current desktop Chrome, Firefox and **Safari** |
-| Trust | The server listens on the loopback address only and trusts whoever can reach it: it has no login. It protects against other web pages open in the same browser (the request guard, §5.2), not against other programs or users on the same machine. |
-| Touch | No special handling. Touch users may not be able to open the context menus. |
+| Trust | The server listens on the loopback address only and trusts whoever can reach it: it has no login. It protects against other web pages open in the same browser (the request guard, §5.2), not against other programs or users on the same machine. With `--lan` it also answers other machines, but only those that hold the run's token, and only for the pages and the remote routes (§5.2). A remote can therefore start and stop sounds and playlists on the host, and nothing else. |
+| Touch | The player has no special handling: touch users may not be able to open the context menus. The remote page (§9.15) is built for a phone. |
 | Memory/CPU | Files stream over HTTP Range requests. The server never holds audio in memory. The browser holds decoded audio only for small sound effects, within a fixed memory budget. |
 | Target machine | MacBook Neo, 8 GB RAM, macOS, Safari as the likely browser, used at the table during RPG sessions (§12) |
 
@@ -363,7 +364,7 @@ The server knows nothing about playback state.
 | GET | `/api/waveforms` | `{ "missing": ["Boom.mp3", "Combat/1.mp3", …] }`: the ids with no current waveform, sounds first (`WaveformStore.missing`) |
 | GET | `/api/waveforms/<encoded id>` | The 2048 peak bytes as `application/octet-stream` (the header stays on the server). `404` when there is no current waveform or the id is not a sound or track. |
 | PUT | `/api/waveforms/<encoded id>` | Body: exactly 2048 bytes of peaks. Stored next to the audio file; `204`. `400` for another length, `404` for an unknown id, `413` for bodies over 4 KB. `415` unless the type is `application/octet-stream`. Ids are decoded as for tracks. |
-| GET | `/api/events` | Server-sent events (`text/event-stream`, `Cache-Control: no-store`), each a JSON object with a `type` (below). A `: keep-alive` comment every 30 s keeps the connection open. The stream stays open until the page goes away or the server stops. |
+| GET | `/api/events` | Server-sent events (`text/event-stream`, `Cache-Control: no-store`), each a JSON object with a `type` (below). A `: keep-alive` comment every 30 s keeps the connection open. The stream stays open until the page goes away or the server stops. A page that plays adds `?page=<id>` (its page id, §5.5); a remote adds `?role=remote` and gets only the remote messages below. |
 | GET | `/api/download` | `{ "tools": { "ytDlp": "2026.08.19", "ffmpeg": "7.1.1" }, "job": null }`: the tools found at startup (`null` for a missing one) and the current download (§5.4) with its whole `log`, or `null`. Without downloads at all (tests), both tools are `null`. |
 | POST | `/api/download/probe` | Body `{ url, playlist? }`. Looks the link up and returns it with a `probeId` (§5.4). `400` without a `url`, `422 { error }` for a link that can't be used (the message is meant for the user), `503` when the tools are missing. |
 | POST | `/api/download` | Body `{ probeId, target, chapters?, entries? }`: `target` is `{ kind: "sound" }`, `{ kind: "newPlaylist", title }` or `{ kind: "playlist", playlistId }`; `chapters` lists chapter indices to cut (null or missing keeps the video whole); `entries` lists the playlist entry ids to download. Starts the job and answers `202` with it. `400` for a request that doesn't fit the lookup (an unknown or forgotten `probeId`, no chapter or entry chosen, an empty title, a playlist that is gone), `409` while another job runs, `503` without the tools. |
@@ -371,6 +372,11 @@ The server knows nothing about playback state.
 | POST | `/api/changes/check` | A quick check of the directory, by size and modified time only (§5.3). Returns `{ "externalChanges": true }` or `false`. |
 | POST | `/api/refresh` | Rebuilds the library from the files (§3.6) and answers once it has finished: `200 {}`. `422 { "error": "Some options files are invalid", "errors": [{ "path": "Combat/1.mp3.json", "message": "…" }] }` with one entry per problem, the path relative to the root using `/`; the old library stays. `503` when `.soundboard` is gone ("Restart the app"), or when the server was started without a refresh (tests). |
 | GET, HEAD | `/media/<encoded id>` | The audio file, streamed |
+| GET | `/api/remote` | `{ "host": true }` or `false`: whether a page is the host (§5.5) |
+| PUT | `/api/remote/host` | Body `{ pageId, replace? }`. Makes that page the host and answers `200 {}`. `409` when another page is the host and `replace` is not `true`, `400` for a body without a page id or for a page with no event stream. |
+| DELETE | `/api/remote/host?page=<id>` | The host gives up the role; `200 {}`. |
+| PUT | `/api/remote/state` | Body `{ pageId, state }`, the host's `RemoteState` (§6.10); `200 {}`. `409` unless that page is the host, `413` over 512 KB. |
+| POST | `/api/remote/commands` | Body: a command (§6) for the host; `200 {}`. `400` unless it is one a remote may send, `409` when there is no host. |
 
 - API responses are JSON with `Cache-Control: no-store`. Errors are `{ "error": "message" }`.
 - A known path with the wrong method gets `405` with an `Allow` header. Unknown `/api/…` paths get a JSON `404`.
@@ -381,6 +387,11 @@ The server knows nothing about playback state.
 - **`Origin`** is present and is not `http://` plus one of those same names. Browsers send it on every cross-site request and on every request that is not a `GET`, so this stops cross-site `POST`s, including the ones with no body (`/api/refresh`, `/api/changes/check`) that a content-type rule can't cover. A request without `Origin` (the page's own `GET`s, `curl`, the tests) passes.
 
 The `415` rule above is the second line of defense: a page on another site can't send `application/json` or `application/octet-stream` without a preflight request, and the server sends no CORS headers and gives `OPTIONS` a `405`. The 403 body doesn't repeat the header that was refused.
+
+**LAN access** (`lan-access.js`). Without `--lan` the server listens on loopback and none of this applies. With it, the `Host` names above also include the addresses and the host name of this machine, and `checkAccess` runs after the guard for every request that does not come from a loopback address:
+- It needs the **token**: the cookie `soundboard-token`, or `?token=` in the URL. A request with the token in the URL is answered with a `302` to the same address without it, which sets the cookie (`HttpOnly`, `SameSite=Strict`). Without the token the answer is `403`.
+- It may only reach: `GET` and `HEAD` of the static files, `/api/remote…`, and `/api/events?role=remote`. Everything else (the library, settings, media, deletions, downloads, a page's own event stream) answers `403`, so a phone can see titles and send play commands, and never touches the files or hears the audio.
+- The token is compared in constant time. The remote page learns the titles from the host's state (§6.10), so it needs no `/api/library`.
 
 `/api/library`
 ```json
@@ -401,7 +412,7 @@ The `415` rule above is the second line of defense: a page on another site can't
 ```
 Each path segment of a media URL is percent-encoded separately. `source` is the stored one (§2.3) with `origin` filled in, or `null` for a file bootstrap hasn't given one. The library reflects changes made through `PATCH`, downloads, deletions and moves, so a reload shows them.
 
-**Event stream messages** (`src/http/events.js`). Every connection starts with `externalChanges`, `problems`, `trash` and, when downloads are available, a `download` message carrying the whole log, so a page that was away misses nothing.
+**Event stream messages** (`src/http/events.js`). Every connection from a page starts with `externalChanges`, `problems`, `trash` and, when downloads are available, a `download` message carrying the whole log, so a page that was away misses nothing.
 
 | `type` | Payload | Sent |
 |---|---|---|
@@ -412,6 +423,10 @@ Each path segment of a media URL is percent-encoded separately. `source` is the 
 | `trash` | `{ size, count }`: bytes, and the listed playlists plus sounds | on connect, then whenever a deletion, move, restore or purge changed it; each of those routes reloads `Trash` (§5.1) before it answers |
 | `problems` | `{ problems }`: the whole list (§5.1) | on connect, then whenever a dismissal, a deletion, a move or a refresh changed it |
 | `library.removed` | `{ soundId }`, `{ trackId, playlistId }` or `{ playlistId }` | once a deletion or a move has taken an item away; `LibraryChanges` (`library-changes.js`) hands them from the routes to every stream |
+| `remote.role` | `{ host, reason? }` | to a page stream on connect, then whenever it becomes the host or stops being it; `reason: 'replaced'` when another page took the role (§5.5) |
+| `command` | `{ command }` | to the host's stream: a command a remote sent (§5.5) |
+| `remote.host` | `{ connected }` | to a remote's stream on connect and whenever a host appears or goes |
+| `remote.state` | `{ state }` | to a remote's stream: the host's last `RemoteState`, on connect and whenever the host sends a new one |
 
 **Static files.** The path guard works on the raw request path, before any URL normalization: the path is percent-decoded, resolved against `public/`, and rejected unless it is still inside. Null bytes and malformed encoding are rejected too.
 
@@ -489,6 +504,17 @@ Each path segment of a media URL is percent-encoded separately. `source` is the 
 
 **Cancelling** aborts the running step: the program is killed, or the fetch is aborted. The items not finished are marked `cancelled`, and files already added stay. **Dismissing** a running job cancels it; dismissing a finished one forgets it (`download` with `job: null`).
 
+### 5.5 Remote relay (`src/remote/`)
+
+`RemoteRelay` connects the pages that play with the remotes. It holds no audio and no library, only who is the host and the last state it sent.
+
+- **Pages.** A page opens `/api/events?page=<id>` with an id it made up (§6.10); the relay knows the stream by that id (`attachPage`) and sends `remote.role` on connect. A page is `standalone` until `PUT /api/remote/host` makes it the host.
+- **One host.** `claimHost` fails with `HostTakenError` when another page holds the role, unless `replace` is set: then the old host gets `remote.role { host: false, reason: 'replaced' }` and the new page takes over. The first host keeps the role; nothing is handed down when it goes.
+- **Grace.** If the host's stream closes (a reload, a lost connection), it stays the host for `HOST_GRACE_MS` (10 s). A stream with the same id inside that time keeps the role; otherwise the host is gone and the remotes are told. `releaseHost` ends the role at once, which a closing page does with `keepalive`.
+- **Remotes** open `?role=remote` and get the host's state and whether there is a host. Any number may connect.
+- **Commands.** `sendCommand` forwards a remote's command to the host's stream and answers `NoHostError` without one. Only these may pass, anything else is a `NotRelayableError`: `panic.stop`, `sound.play`, `sound.stop`, `playlist.toggle`, `playlist.stop`, `playlist.pause`, `playlist.resume`, `playlist.next`, `playlist.previous`. Customizing, volumes, deleting and everything else stay on the host's page. The host runs a command as if its own UI had sent it (§6.1), so the relay needs no rules of its own.
+- Timers are injected so tests use `FakeClock`.
+
 ---
 
 ## 6. Frontend architecture
@@ -501,7 +527,7 @@ UI layer (DOM)  ──commands──▶  Soundboard (logic facade)  ──▶  A
                                                 (browser)                 (tests, fake clock)
 ```
 
-- `public/app/main.js` is the composition root. It creates the `WebAudioEngine`, the `WebAudioWaveformDecoder`, the `HttpBackendApi`, the `EventSourceServerEvents`, the browser clock and the `console` logger, passes them to `Soundboard`, and mounts the UI.
+- `public/app/main.js` is the composition root. It creates the page id, the `RemoteController` (§6.10), the `WebAudioEngine`, the `WebAudioWaveformDecoder`, the `HttpBackendApi`, the `EventSourceServerEvents`, the browser clock and the `console` logger, passes them to `Soundboard`, and mounts the UI.
 - `public/app/logic/**` **never touches** `window`, `document`, audio APIs or Node APIs. Everything it needs is injected through ports, whose types live in `public/app/logic/ports.js`:
   - the `AudioEngine` (§6.3);
   - a `Clock` (`now`, `setTimeout`, `clearTimeout`, `setInterval`, `clearInterval`); `now()` is a monotonic time in milliseconds, which the voice monitor (§6.5) uses to follow fades;
@@ -512,12 +538,13 @@ UI layer (DOM)  ──commands──▶  Soundboard (logic facade)  ──▶  A
   - for deletions and moves (§6.8), `deleteItem({ kind, id })` and `moveItem(id, to)`, which resolve with the server's `changes` and reject with its message alone;
   - for the trash (§6.8), `fetchTrash()`, `restoreFromTrash(target)`, which resolves with the `changes` like the two above, and `deleteFromTrash(target)`, where `target` is `{ kind, id }` or `'all'`;
   - for problems (§6.9), `dismissProblem(id)` and `dismissAllProblems()`;
+  - for the host role (§6.10), the `BackendApi` methods `fetchHostStatus()`, `claimHost(pageId, { replace })` ("ok" or "taken"), `releaseHost(pageId, { keepalive })`, `sendRemoteState(pageId, state)` and `sendRemoteCommand(command)`; `ServerEvents.connect(onMessage, params)` takes the query of the stream (`page` or `role`);
   - a `Logger` (`warn`, `error`);
   - optionally a `random` function for the random playback orders (§8.1), `Math.random` unless tests pass a seeded one.
 
   Node imports and tests this code directly; the type-checker and ESLint enforce the boundary (§10.1).
 - The UI calls only the facade's methods and listens to its events. It never reads logic internals. The one exception is stateless helpers with no state of their own: the UI imports `MAX_GAIN`, `gainToDb`, `dbToGain` and `sliderToGain` from `logic/volume.js`, `MAX_CROSSFADE` from `logic/playback-rules.js`, `MIN_CLIP_MS` from `logic/clip.js`, and `PLAYBACK_ORDERS` from `logic/order-strategies.js`, so the ranges, the list of orders and the volume math exist only once.
-- **Commands and events are plain, serializable objects.** Each facade method builds a command (`{ type: 'playlist.next', playlistId, transition: 'instant' }`) and passes it to `dispatch(command)`, which validates it first. Events are `{ type, ...payload }` and contain only JSON-safe values: an unknown duration is `null`, never `NaN`. **Extension point:** a remote control could forward commands and events over a connection unchanged ([roadmap](ROADMAP.md)).
+- **Commands and events are plain, serializable objects.** Each facade method builds a command (`{ type: 'playlist.next', playlistId, transition: 'instant' }`) and passes it to `dispatch(command)`, which validates it first. Events are `{ type, ...payload }` and contain only JSON-safe values: an unknown duration is `null`, never `NaN`. A remote control forwards a few of them to the host unchanged (§5.5, §6.10).
 - A UI event handler that throws never stops other handlers or leaves playback half-updated; the error is passed to the logger.
 
 ### 6.1 Facade API (`Soundboard`)
@@ -597,6 +624,10 @@ loadTrash() → Promise<TrashListing>       // what GET /api/trash answers
 restoreFromTrash(target) → Promise<void>  // saves everything pending first, then applies what came back
 deleteFromTrash(target) → Promise<void>   // for good
 
+// host mode (§6.10): not commands either
+becomeHost({ replace }) → Promise<'hosting' | 'taken' | 'failed'>   // asks the server for the role; 'taken' only when replace is false
+stopHosting({ keepalive })                // gives the role up; the page is standalone again
+isHosting()
 // problems (§6.9): not commands either
 getProblems()                             // [{ id, kind, severity, path, message, count }], errors and warnings
 dismissProblem(id)                        // forgets one; the server forgets its own for good until the next start
@@ -666,6 +697,7 @@ on(type, handler) → unsubscribe, off(type, handler)
 | `playlist.removed` | `{ playlistId }`, a playlist deleted, or left by its last track. A track that leaves a playlist that stays is announced as `playlist.changed`. |
 | `trash.changed` | `{ size, count }`, whenever the server's trash summary differs from the last one (§6.8) |
 | `problems.changed` | `{ count }`: the list from `getProblems()` changed (§6.9) |
+| `host.changed` | `{ hosting }`: the page became the host, or stopped being it (§6.10) |
 
 ### 6.3 AudioEngine port
 
@@ -807,8 +839,22 @@ The facade follows the server's download (§5.4) and takes in what it adds, so p
   - `play-failed`: `sound.error`, and `playlist.error` (by track, else playlist);
   - `save-failed`: `sound.saveFailed`, `playlist.saveFailed` and `track.saveFailed`. The next successful save of that item removes the row (`*.saved`);
   - `download-failed`: a failed download, one row for each of its failed items, by title, once per job (`download.changed` repeats).
+  - `host-failed` (a warning): the server did not make this page the host; the page stays standalone. `host-lost` (an error): another page took the role. Both have the path `host`, are removed when the page becomes the host, and have no item to forget (§6.10).
   - A repeat of the same kind and path raises `count` and replaces the message. `sound.removed` and `playlist.removed` forget the rows of the item, and of everything inside a playlist. These rows live only in the page and are gone after a reload.
 - **Order.** The server's problems come first, in its order, then the page's in the order they began.
+
+### 6.10 Host and remote
+
+A page runs in one of three modes, chosen on the splash (§9.0): **standalone** (the plain player), **host** (a player that remotes can control) and **remote** (§9.15). A standalone page can become the host later from the ☰ menu, and a host can stop being one.
+
+**Host mode** is part of `Soundboard`, because a host is a player.
+- `becomeHost({ replace })` calls `claimHost` and then waits up to 5 s for the first `remote.role` message of its stream. It resolves `'hosting'`, `'taken'` (another host and `replace` false; nothing was changed) or `'failed`' (the server did not answer or refused). On `'failed'` the page stays standalone and records `host-failed` (§6.9).
+- While hosting, the facade sends a `RemoteState` after every change that matters: `panic.changed`, `playlist.stateChanged`, `sound.activeChanged` and library changes (`playlist.changed`, `sound.changed`, `sound.added`, `playlist.added`, `sound.removed`, `playlist.removed`). Several changes in one tick are sent as one, and only one request is in flight at a time: if more changed meanwhile, the newest state follows as soon as it ends, so a slow answer never leaves a remote with an old state.
+- `RemoteState` (`remote-state.js`, `buildRemoteState`) is `{ panic, playlists: [{ id, title, playable }], sounds: [{ id, title, playable }], players: [{ id, title, state, trackTitle }], activeSounds }`: the titles and ids of the board, the playlists that load, play or are paused in start order, and what Panic Stop would do. It has no progress, volumes or audio details, so it changes only when someone does something.
+- A `command` message from the server (§5.5) goes to `dispatch` like any command from the UI. It is never run when the page is not the host.
+- `remote.role { host: false }` while hosting ends the role: the page is standalone, `host.changed { hosting: false }` is announced and `host-lost` is recorded if the reason was `replaced`. `stopHosting` does the same by request and tells the server; on `pagehide` the page calls it with `keepalive`, so a reload does not leave the next load facing a host that is already gone.
+
+**Remote mode** is not a `Soundboard`. `RemoteController` (`logic/remote-controller.js`) has the same kind of interface: `checkHost()` (`GET /api/remote`, used by the splash), `start()`, `stop()`, `state()`, `hostConnected()`, `panicState()`, command methods (`panicStop`, `playSound`, `stopSound`, `togglePlaylist`, `stopPlaylist`, `pausePlaylist`, `resumePlaylist`, `nextTrack`, `previousTrack`) and `on`. `start()` opens `?role=remote`. It emits `remote.hostChanged { connected }`, `remote.stateChanged { state }` and `panic.changed { state }`. A command is sent with `POST /api/remote/commands`; a failure is only logged, since the next state shows what happened. It creates no `AudioEngine` and never calls `unlockAudio`.
 
 ---
 
@@ -979,8 +1025,8 @@ Dark theme, plain and functional. Icons appear only on controls (play, pause, st
 
 Browsers only allow audio to start inside a user gesture, so the app starts behind a full-screen splash.
 
-- On page load the app does **nothing** except show the splash: the app name and **"Click anywhere to start"**. No audio context, no API requests.
-- The first click calls `soundboard.start()`, which creates and resumes the `AudioContext` **synchronously** inside the click. The splash shows "Loading…" while the library and settings are fetched.
+- On page load the app does **nothing** except show the splash: the app name and **"Choose how to start"** with three buttons, **Standalone**, **Host** and **Remote** (each with a line saying what it is). No audio context, and the only request is `GET /api/remote` (§5.2), which sets a note: under Host "Another page is the host. You will be asked before it is replaced." when there is one, under Remote "No host is running yet. It will work once one starts." when there is none.
+- **Standalone** and **Host** call `soundboard.start()`, which creates and resumes the `AudioContext` **synchronously** inside the click. **Host** then calls `becomeHost` (§6.10); when it answers `'taken'` the replace dialog (§9.15) opens over the board, because a held button is not a gesture that may start audio. **Remote** opens the remote page (§9.15) and never touches audio. The splash shows "Loading…" while the library and settings are fetched.
 - On `app.ready` the splash is hidden and the board is rendered. On `app.startFailed` the splash shows "Could not start the soundboard. Click to retry." with the error; clicking starts again.
 - **Restart needed.** When a refresh fails because `.soundboard` is gone (§6.7), the splash comes back for good as "The audio folder needs a restart. Restart the app, then reload this page.", with the server's message under it. Clicks do nothing.
 - **Re-locking.** If the system suspends audio later (the Mac sleeps, or another app takes the audio device), `audio.suspended` closes any open popup (an open Customize dialog stays, underneath the splash) and brings the splash back as "Audio paused by the system. Click to resume." A click calls `unlockAudio()`, and the splash hides on `audio.resumed`. Playlist state is kept.
@@ -1005,7 +1051,7 @@ Browsers only allow audio to start inside a user gesture, so the app starts behi
 
 ### 9.1 Layout
 
-- The page is a full-height column: header (the ☰ app menu button and the title, §9.3, then the Problems button while there are any (§9.14), the external changes button while there are any, the waveform progress while there is any, the Trash button while the trash holds anything, volume controls and the debug button, §9.8), a scrolling main area, then the footer.
+- The page is a full-height column: header (green-tinted with a green border while the page is the host) (the ☰ app menu button and the title, §9.3, then the role label "Host" while the page is the host (§9.15), then the Problems button while there are any (§9.14), the external changes button while there are any, the waveform progress while there is any, the Trash button while the trash holds anything, volume controls and the debug button, §9.8), a scrolling main area, then the footer.
 - The main area has a "Playlists" section above a "Sound Effects" section. Both are always shown, even empty, because their titles carry the add buttons: **+ Add playlist** in blue and **+ Add sound** in amber (`tileGrid`, §9.9). With no playlists and no sounds, a line above them says none were found in this folder, until a download adds one.
 - Tiles for sounds and playlists added by a download or a move (`sound.added`, `playlist.added`) appear at once in their sorted place. Tiles of sounds and playlists deleted or moved away (`sound.removed`, `playlist.removed`), in this tab or another, disappear at once, and a Customize dialog open for that item closes.
 - Tiles are `<button>`s in a grid of columns at least 10rem (160 px) wide, with titles clamped to 3 lines. The full title shows as a tooltip.
@@ -1019,7 +1065,7 @@ Browsers only allow audio to start inside a user gesture, so the app starts behi
 - Sound and playlist tiles show a new title as soon as `sound.changed` or `playlist.changed` arrives, but tiles are only moved into the new sorted order when the Customize dialog closes, so a tile never jumps around while it is being renamed. Player bars show a new playlist title at once, too, and keep their start order.
 - The footer shows **playlists only**. Sound effects never create a player bar.
 - The footer is **always visible**, so the layout doesn't shift when music starts or stops. It is at least one row of player bars tall; while no playlist is active, that row shows a muted "No playlist playing". Player bars sit in a three-column grid, in the order the playlists were started. The footer grows to at most two rows of bars; beyond that it scrolls vertically.
-- **Panic Stop** (`ui/panic-button.js`) has a fixed slot at the footer's right, as tall as one bar, so it never moves. It shows two lines, "Stop" and a smaller, centered "(Fade)" or "(NOW!)", following `panicState()` and `panic.changed` through a `data-state` attribute (`fade` or `now`). It is yellow (`notice`) in `fade` and a filled red in `now`, and always enabled.
+- **Panic Stop** (`ui/panic-button.js`) has a fixed slot at the footer's right, as tall as one bar, so it never moves. It shows "Stop All" or "STOP NOW!", following `panicState()` and `panic.changed` through a `data-state` attribute (`fade` or `now`). It is yellow (`notice`) in `fade` and a filled red in `now`, and always enabled.
   - *Fade:* a press stops every playlist the normal way and fades each sound out over its own fade-out (§7), so the players need no panic rules of their own. If anything is left fading, the state becomes `now`. If nothing is (no fade-outs), everything has stopped and the state stays `fade`.
   - *Now:* the facade checks every 100 ms. It goes back to `fade` when nothing is fading out any more, or when anything plays that is not fading out, such as a sound just started. A press stops everything at once and goes back to `fade`.
 - **Problems button** (`ui/problems-button.js`) sits left of the external changes button: an alert icon and "3 problems" ("1 problem"), outlined and colored red (`danger`) while any problem is an error and yellow (`notice`) while all are warnings, through `data-severity`. It is shown only while `getProblems()` is not empty, follows `problems.changed`, and opens the Problems dialog (§9.14).
@@ -1046,6 +1092,7 @@ One shared `Overlay` shows the context menus and the track list popover; opening
 - A full-screen backdrop (`black/35`) sits above the page. Presses on it are swallowed. A `click` or right-click on the backdrop **closes the popup**, so nothing on the page reacts. **Esc** also closes it. Closing on `click` rather than `pointerdown` keeps the whole press on the backdrop, so the element underneath never receives a stray click.
 - A popup opens at the cursor (the track list at its chevron button). Where it would overflow the window, it flips to the other side of that point, and as a last resort it is clamped inside an 8 px margin. It is placed again whenever its size changes, because Tailwind may only style a newly used class after the popup has been measured.
 - Right-clicking a tile suppresses the browser's own context menu. Choosing a menu item closes the menu first, then runs the action. Disabled items are greyed out.
+- The ☰ app menu has **Become host** while the page is standalone and **Stop hosting** while it hosts. Become host calls `becomeHost`; on `'taken'` the replace dialog opens (§9.15).
 
 **Sound menu**
 
@@ -1105,6 +1152,7 @@ UI components extend `Component` (`ui/component.js`): `render()` builds the elem
   - `raised-dim` and `line-dim` are opaque colors halfway between `raised` / `line` and the dialog's `panel`, for cards at rest (§9.7). They are opaque so a pill drawn over a border never lets the border show through.
   - `animate-warn` pulses a background between the app's red and a darker red twice a second, for settings that can't play out as set (§9.7).
   - `notice` is the yellow of the external changes button (§9.1), kept apart from the sound effects' amber so it doesn't read as a tile.
+  - `host` (green) and `remote` (purple) color the header of a host and of a remote page (§9.15).
 - Colors that a component picks at runtime (a dialog's accent) are looked up in small maps of complete class names (`ACCENTS`), because the browser build only generates classes it sees written out.
 - The browser build watches the DOM and generates CSS for class names as they first appear. Keeping that cheap:
   - Anything that changes several times a second (progress bars, time readouts) is updated through inline `style` or text, **never** by swapping classes.
@@ -1275,9 +1323,39 @@ In the footer: Play / Stop (`playSound`, or stopping all instances; it follows `
 
 `ui/problems-dialog.js`, opened by the Problems button (§9.1), titled "Problems". It lists everything `getProblems()` returns (§6.9), errors first and otherwise in that order.
 
-- **Rows** are cards with a left border in red (error) or yellow (warning), carrying `data-problem` (the id) and `data-severity`. Each shows the kind in small capitals ("Unknown duration", "Unsupported file", "Orphan options file", "Symbolic link", "Empty playlist", "Would not play", "Not saved", "Download failed"), with " ×N" when it happened more than once, then the path (ellipsis, full path as a tooltip), then the message in muted text, and a **Dismiss** button.
+- **Rows** are cards with a left border in red (error) or yellow (warning), carrying `data-problem` (the id) and `data-severity`. Each shows the kind in small capitals ("Unknown duration", "Unsupported file", "Orphan options file", "Symbolic link", "Empty playlist", "Would not play", "Not saved", "Download failed", "Could not become the host", "Not the host any more"), with " ×N" when it happened more than once, then the path (ellipsis, full path as a tooltip), then the message in muted text, and a **Dismiss** button.
 - **Footer.** **Dismiss all**, at the right, below the scrolling list.
 - **Following changes.** The list is drawn again on every `problems.changed`, and the dialog closes itself once nothing is left.
+
+### 9.15 Host, remote page and replace dialog
+
+**Header.** A host's header is tinted green and carries a green "Host" label next to the title. A standalone page's header is as before.
+
+**Replace dialog** (`ui/replace-host-dialog.js`). Opened when a page asks to become the host and another already is. It says the other page will become standalone and stop being controllable, and has **Cancel** and a `holdButton` (§9.7) "Hold to take over" that must be held for one second. Holding it calls `becomeHost({ replace: true })`; a failure there is recorded as `host-failed`.
+
+**The remote page** (`ui/remote-view.js`, `data-remote-view`) is what a phone shows. It has no volumes, ☰ menu, context menus, Customize, errors, Debug, trash, downloads or progress, and creates no audio.
+
+```
+┌──────────────────────────────────────────┐
+│ REMOTE ●                      [Stop All] │  header (purple), host status dot, Panic Stop
+├──────────────────────────────────────────┤
+│ Combat · Battle theme            [■] [⏭] │  one row per playing playlist
+│ Tavern · Drinking song           [■] [⏭] │
+├──────────────────────────────────────────┤
+│ PLAYLISTS                                │
+│ [Combat] [Tavern] [Ambient]              │  main (scrolls)
+│ SOUND EFFECTS                            │
+│ [Explosion] [Door creak] [Sword]         │
+│            [−] [+] [A−] [A+]             │  at the end of main, at the bottom of a short page
+└──────────────────────────────────────────┘
+```
+
+- **Header.** The label "Remote" on a purple background, then a small round status dot, green while a host is connected and red otherwise (`data-host-status`; the `title` says "Host connected" or "No host"), and Panic Stop (`PanicButton` with a `PanicSource`, which `RemoteController` also implements) in the corner. There is no title.
+- **Players.** A row for each playing playlist (the `players` of the state, §6.10): the playlist title above the track title, both with an ellipsis, and two buttons on the same row: **Stop** (`playlist.stop`) and **Next**. Rows that did not change are not rebuilt, so a press is never lost to an update.
+- **Buttons.** Playlist and sound buttons fill a grid of equal columns; each is a 4:3 box, so its height follows its width. A playlist button toggles its playlist (`playlist.toggle`) and shows only a color for playing; a sound button plays the sound, and stops it when pressed again while it plays (`sound.play` or `sound.stop`). Buttons of what cannot play are disabled. They are built again only when the titles or the lists change.
+- **Size.** At the end of the scrolling area, so they take no room while the page scrolls and sit at the bottom of the screen when the page is short: **−** and **+** set the number of columns (1 to 8, 3 at first), **A−** and **A+** set the text size (10 to 28 px, 14 at first). Both are remembered in `localStorage`. After each press the page scrolls to the end, so the buttons stay under the finger. Clicks less than 60 ms apart count once, because Firefox's touch emulation sends a double tap as three.
+- **No host.** A notice says no host is connected and every button is disabled; the page follows when one appears. It shows nothing from before the host left.
+- Everything changes only through the host's `remote.state` messages (§5.2), never by guessing.
 
 ---
 
@@ -1296,8 +1374,9 @@ src/
 	downloads/  download-service.js  probe.js  yt-dlp.js  ffmpeg.js  link-fetcher.js  process-runner.js  line-splitter.js
 	            tools.js  file-names.js  workspace.js  errors.js
 	metadata/   index.js  id3.js  ogg.js  mpeg.js  binary-reader.js
+	remote/     remote-relay.js
 	http/       server.js  router.js  responses.js  static-files.js  media.js  range.js  mime.js  request-log.js  events.js
-	            library-json.js  library-changes.js
+	            library-json.js  library-changes.js  lan-access.js  remote-routes.js
 public/
 	index.html  favicon.svg
 	vendor/     tailwindcss-browser-<version>.js  tailwindcss-browser.LICENSE   (excluded from lint and type-checking)
@@ -1307,7 +1386,7 @@ public/
 			ports.js  soundboard.js  commands.js  errors.js  event-emitter.js  library-model.js
 			playlist-player.js  playback-rules.js  transitions.js  order-strategies.js  play-history.js  problem-list.js
 			sound-player.js  buffer-cache.js  clip.js  volume.js  settings-sync.js  options-sync.js  sort.js
-			voice-monitor.js  fade-ramp.js  peaks.js  waveform-service.js
+			voice-monitor.js  fade-ramp.js  peaks.js  waveform-service.js  remote-state.js  remote-controller.js
 		audio/      web-audio-engine.js  web-audio-waveform-decoder.js
 		api/        backend-api.js  server-events.js
 		ui/         app.js  component.js  dom.js  icons.js  format.js  menus.js  position.js  external-changes-button.js
@@ -1316,7 +1395,7 @@ public/
 		            dialog.js  customize-parts.js  filled-field.js  sound-editor.js  playlist-editor.js  track-accordion.js
 		            gain-control.js  gain-scale.js  debug-view.js  waveform-indicator.js  waveform-draw.js  waveform-canvas.js
 		            seconds-control.js  seconds-scale.js  range-control.js  range-scale.js  add-dialog.js  download-dialog.js
-		            hold-button.js  move-dialog.js  trash-button.js  trash-dialog.js  metadata-dialog.js  source-fields.js  problems-button.js  problems-dialog.js
+		            hold-button.js  replace-host-dialog.js  remote-view.js  move-dialog.js  trash-button.js  trash-dialog.js  metadata-dialog.js  source-fields.js  problems-button.js  problems-dialog.js
 test/
 	backend/    cli/  downloads/  http/  library/  metadata/
 	frontend/   logic tests, backend-api.test.js, ui/ (pure UI helpers)
