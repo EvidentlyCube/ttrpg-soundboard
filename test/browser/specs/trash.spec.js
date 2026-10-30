@@ -32,7 +32,7 @@ test('a deleted sound can be restored from the trash', async ({ sounds, dialogs,
 	await header.expectNoTrash();
 });
 
-test('a click on Delete in the trash does nothing until the button is held', async ({ sounds, dialogs, header }) => {
+test('holding Delete in the trash deletes the item for good', async ({ sounds, dialogs, header }) => {
 	await sounds.useMenu('Base Connected', 'Customize');
 	await dialogs.soundEditor.holdToDelete();
 	await header.openTrash();
@@ -42,4 +42,14 @@ test('a click on Delete in the trash does nothing until the button is held', asy
 	await dialogs.trash.expectClosed();
 	await header.expectNoTrash();
 	await sounds.expectGone('Base Connected');
+});
+
+test('a quick press on Delete in the trash does nothing', async ({ sounds, dialogs, header }) => {
+	await sounds.useMenu('Base Connected', 'Customize');
+	await dialogs.soundEditor.holdToDelete();
+	await header.openTrash();
+
+	await dialogs.trash.tapDelete('Base Connected');
+
+	await dialogs.trash.expectHolding('Base Connected');
 });

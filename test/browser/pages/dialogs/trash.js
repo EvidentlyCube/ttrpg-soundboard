@@ -58,6 +58,11 @@ export class TrashPage {
 		await expect(this.#dialog.getByText(/ in total$/)).toHaveText(text);
 	}
 
+	/** Presses a row's Delete button for a moment only, which is not enough. @param {string} title */
+	async tapDelete(title) {
+		await this.#row(title).getByRole('button', { name: 'Delete' }).click({ delay: 100 });
+	}
+
 	/** Holds Restore all down for the two seconds it takes. */
 	async restoreAll() {
 		await this.#dialog.getByRole('button', { name: 'Restore all' }).click({ delay: 2300 });

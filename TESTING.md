@@ -85,6 +85,7 @@ test('a playlist starts from its tile and keeps time in the footer', async ({ so
 Lessons for whoever writes or changes a spec:
 
 - Locate by role and visible name first. The few `data-*` hooks used are ones the UI already has for its own state (`data-sound-id`, `data-playlist-id`, `data-player-bar`, `data-active`, `data-error`, `data-gain-readout`, …). Add a page-object method, not a locator in a spec.
+- Nothing in the suite runs `yt-dlp` or `ffmpeg` or reaches the network: with `downloadTools` at `'none'` the server has no downloads at all, and otherwise `FakeDownloads` supplies both the programs and the fetcher. This was checked by running the whole suite with shims in front of the tools and no network.
 - Several playlists can hold the same song, so `audio.script` sets every file with the title.
 - The red error ring on a tile lasts 2 s of real time (`window.setTimeout`), not of fake time. A debounced save (500 ms) and the waveform service's pause between files are on the fake clock; `audio.advance(500)` makes the save happen.
 - The screen uses a real minus sign (`−6.0 dB`); `expectVolume` converts. Bus volumes are saved as the slider's position, not as the gain.
