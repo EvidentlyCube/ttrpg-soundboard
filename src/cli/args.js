@@ -59,7 +59,8 @@ function parseLan(value) {
 	if (value !== '' && isIP(value) === 0) {
 		throw new UsageError(`Invalid address for --lan: "${value}".`);
 	}
-	return { address: value === '' ? null : value };
+	// A wildcard is not an address anyone can open, so it means the same as plain `--lan`: listen everywhere, link the real addresses.
+	return { address: value === '' || value === '0.0.0.0' || value === '::' ? null : value };
 }
 
 /** @param {string | undefined} value */

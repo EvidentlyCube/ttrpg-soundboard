@@ -13,7 +13,7 @@ const soundboard = new Soundboard({
 	engine: new WebAudioEngine(),
 	clock: browserClock,
 	api,
-	pageId: crypto.randomUUID(),
+	// No `crypto.randomUUID()` for the page id: it doesn't exist over plain http on a LAN address, which blanked the remote page.
 	decoder: new WebAudioWaveformDecoder(),
 	serverEvents,
 	logger: console,

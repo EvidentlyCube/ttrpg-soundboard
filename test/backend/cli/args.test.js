@@ -25,6 +25,11 @@ describe('parseArguments', () => {
 		assert.deepEqual(parseArguments(['/music', '--lan', '::1']).lan, { address: '::1' });
 	});
 
+	it('reads the wildcard addresses as every interface, so the links list real addresses', () => {
+		assert.deepEqual(parseArguments(['/music', '--lan=0.0.0.0']).lan, { address: null });
+		assert.deepEqual(parseArguments(['--lan', '::', '/music']).lan, { address: null });
+	});
+
 	it('rejects a --lan address that is not one', () => {
 		assert.throws(() => parseArguments(['/music', '--lan=nonsense']), new UsageError('Invalid address for --lan: "nonsense".'));
 	});
