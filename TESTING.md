@@ -6,7 +6,7 @@ How the app is tested: the automated suite that runs in Node, the Playwright sui
 
 - `npm test` runs every `*.test.js` with the built-in runner (`node --test`). A single file: `node --test test/backend/http/server.test.js`. Several: pass a glob in quotes, such as `node --test "test/frontend/*.test.js"`. A bare directory path does not work.
 - `npm run check` runs type-checking, lint and the tests. It must pass before every commit. `npm test` covers `test/backend`, `test/frontend` and `test/helpers`; the browser suite is not part of it.
-- `npm run test:browser` runs the Playwright suite (below). It needs the Playwright browsers (`npx playwright install chromium`) and is run on its own, as `npm run smoke` is. A single file or title: `npm run test:browser -- player-bar` or `npm run test:browser -- -g "pausing"`.
+- `npm run test:browser` runs the Playwright suite (below). It needs the Playwright browsers (`npx playwright install chromium`) and is run on its own. A single file or title: `npm run test:browser -- player-bar` or `npm run test:browser -- -g "pausing"`.
 
 ## Principles
 
@@ -109,18 +109,6 @@ node scripts/mutate.js public/app/logic/options-sync.js "if (entry.saving || !op
 ```
 
 `<find>` must occur exactly once in the file. It prints `CAUGHT:` with the failing tests and exits 0, or `SURVIVED:` and exits 1 when the tests still pass.
-
-## Browser smoke tests
-
-These older scripts are being replaced by the Playwright suite above and will be removed when it covers what they check. The ones that drive the real `WebAudioEngine` (fades, crossfades, loops, clip points) have no replacement yet.
-
-The real page has been driven in headless Chromium over the DevTools protocol, with real mouse input (`Input.dispatchMouseEvent`) and Node's built-in `WebSocket`, against the real server and a copy of the example fixture. The scripts are in `scripts/browser-smoke/`: `harness.js` starts the server and Chromium, and each other file checks one feature and prints `"check": "ok"` or `"FAIL …"` lines. They always exit 0, so `npm run smoke [name filter]` runs them and counts the failures. It needs `chromium-browser` on `PATH` and stays out of `npm run check`. Screenshots go to a temp folder, never the repository. The scripts are excluded from the backend type-check, since they are throwaway driving code. Some assertions describe earlier versions of the UI and fail now (`clip-ui`, `crossfade-smoke`, `tracks-smoke`, `ui-smoke`; [`ROADMAP.md`](ROADMAP.md)); the others pass. Lessons for whoever writes or changes one:
-
-- Mouse events need the `buttons` bitmask (1 left, 2 right, 0 on release). Without it Chromium believes a button is still held after a right-click and drops the next click.
-- To test "clicking outside a popup", first check with `elementFromPoint` that the backdrop really is under the point, since a menu can sit on top of tiles.
-- Disabled buttons receive pointer events but no `click`.
-- Text that spills out of a block element leaves the element's own box unchanged, so measure overflowing text with a `Range` over its contents, not with `getBoundingClientRect()` on the element. Hidden tab panels report 0×0 boxes; skip them.
-- The fake engine only records `rampGain` calls, so how the real `WebAudioEngine` turns them into `AudioParam` automation must be checked in a browser. Wrapping `AudioContext.prototype.createGain` in a test page gives access to every gain node; sample `gain.value` over a few seconds. Reading `gain.value` right after scheduling a change still returns the old value, because the audio thread hasn't run yet. That is how a fade-in once started from full volume.
 
 ## Manual checklist
 
