@@ -87,7 +87,7 @@ export function toProbe(info, link) {
 		};
 	}
 	if (info.is_live === true || info.live_status === 'is_live' || info.live_status === 'is_upcoming') {
-		throw new UnusableLinkError('Live streams can\'t be downloaded.');
+		throw new UnusableLinkError("Live streams can't be downloaded.");
 	}
 	const duration = seconds(info.duration);
 	return {

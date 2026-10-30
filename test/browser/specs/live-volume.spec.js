@@ -7,7 +7,7 @@ test.beforeEach(async ({ soundboard, playlists, audio }) => {
 	await audio.expectPlaying('Piece by Piece');
 });
 
-test('the player bar\'s live volume changes what plays, and the tile shows an orange icon while it is turned down', async ({ playlists, footer, audio }) => {
+test("the player bar's live volume changes what plays, and the tile shows an orange icon while it is turned down", async ({ playlists, footer, audio }) => {
 	await playlists.expectLevelIcon('Music MP3', false);
 
 	await footer.player('Music MP3').setLevel(0.5);
@@ -16,7 +16,7 @@ test('the player bar\'s live volume changes what plays, and the tile shows an or
 	await playlists.expectLevelIcon('Music MP3', true);
 });
 
-test('double-clicking the bar or the tile\'s icon brings the volume back to full', async ({ playlists, footer, audio }) => {
+test("double-clicking the bar or the tile's icon brings the volume back to full", async ({ playlists, footer, audio }) => {
 	await footer.player('Music MP3').setLevel(0.3);
 	await playlists.expectLevelIcon('Music MP3', true);
 

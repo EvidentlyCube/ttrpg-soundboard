@@ -133,7 +133,7 @@ describe('VoiceMonitor', () => {
 	});
 
 	describe('volume', () => {
-		it('is the voice\'s own gain until something changes it', () => {
+		it("is the voice's own gain until something changes it", () => {
 			const { stream, only } = setup();
 			const voice = stream({ gain: 0.8 });
 			assert.equal(only().volume, 0.8);
@@ -277,7 +277,7 @@ describe('VoiceMonitor', () => {
 			assert.equal(voice.duration, 10);
 		});
 
-		it('delivers the real voice\'s events to whoever listens to its wrapper', () => {
+		it("delivers the real voice's events to whoever listens to its wrapper", () => {
 			const { stream, clock } = setup();
 			const voice = stream({ endAt: 1 });
 			/** @type {string[]} */

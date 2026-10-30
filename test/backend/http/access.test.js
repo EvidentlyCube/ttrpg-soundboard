@@ -171,14 +171,14 @@ describe('the pairing routes', () => {
 });
 
 describe('the connect links', () => {
-	it('are the server\'s addresses with its port', async () => {
+	it("are the server's addresses with its port", async () => {
 		const { url } = await setup();
 		const port = new URL(url).port;
 		assert.deepEqual((await call(url, 'GET', '/api/access/links')).body, { links: [`http://192.168.1.20:${port}/`] });
 	});
 });
 
-describe('the pairing requests on a page\'s event stream', () => {
+describe("the pairing requests on a page's event stream", () => {
 	it('arrive on connect, after every change, and empty once answered', async () => {
 		const { url } = await setup();
 		const { body: { code } } = await call(url, 'POST', '/api/access/requests');
@@ -215,7 +215,7 @@ describe('HttpBackendApi', () => {
 		assert.deepEqual(await new HttpBackendApi(plain.url).fetchConnectLinks(), []);
 	});
 
-	it('answers a request, and rejects with the server\'s message when it is gone', async () => {
+	it("answers a request, and rejects with the server's message when it is gone", async () => {
 		const { url } = await setup();
 		const api = new HttpBackendApi(url);
 		await call(url, 'POST', '/api/access/requests');

@@ -96,7 +96,7 @@ describe('RemoteRelay', () => {
 			assert.equal(old.messages.some((message) => 'command' in message), false);
 		});
 
-		it('drops the old host\'s state when it is replaced', () => {
+		it("drops the old host's state when it is replaced", () => {
 			const { relay } = setup();
 			openPage(relay, 'a');
 			openPage(relay, 'b');
@@ -145,7 +145,7 @@ describe('RemoteRelay', () => {
 			assert.equal(relay.hasHost, true);
 		});
 
-		it('keeps the role while the host\'s stream is closed for less than the grace period', () => {
+		it("keeps the role while the host's stream is closed for less than the grace period", () => {
 			const { relay, clock } = setup();
 			const page = openPage(relay, 'a');
 			relay.claimHost('a');
@@ -309,7 +309,7 @@ describe('RemoteRelay', () => {
 			assert.throws(() => relay.sendCommand({ type: 'panic.stop' }), NoHostError);
 		});
 
-		it('refuses it while the host\'s stream is closed, though it still has the role', () => {
+		it("refuses it while the host's stream is closed, though it still has the role", () => {
 			const { relay } = setup();
 			const host = openPage(relay, 'a');
 			relay.claimHost('a');

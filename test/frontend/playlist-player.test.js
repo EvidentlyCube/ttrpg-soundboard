@@ -180,7 +180,7 @@ describe('PlaylistPlayer', () => {
 			assert.equal(engine.voices[0].playCalls, 1);
 		});
 
-		it('labels each voice with the track\'s title', () => {
+		it("labels each voice with the track's title", () => {
 			const { player, engine } = setup();
 			player.play();
 			assert.equal(engine.voices[0].label, 'Track 0');
@@ -1132,7 +1132,7 @@ describe('PlaylistPlayer', () => {
 			advance(5);
 			player.next('instant');
 			advance(3.5);
-			assert.equal(engine.voices.length, 2, 'no crossfade from the old track\'s end');
+			assert.equal(engine.voices.length, 2, "no crossfade from the old track's end");
 			advance(5);
 			assert.equal(engine.voices.length, 3, 'the new track crossfades at its own end');
 		});
@@ -1360,7 +1360,7 @@ describe('PlaylistPlayer', () => {
 		/** @param {Parameters<typeof setup>[0]} [options] a playlist whose first track plays 2 s to 8 s of its 10 s */
 		const trimmed = (options = {}) => setup({ ...options, gains: { points: [{ startAt: 2, endAt: 8 }] } });
 
-		it('gives the voice the track\'s points and reports positions within them', () => {
+		it("gives the voice the track's points and reports positions within them", () => {
 			const { player, engine, advance } = trimmed();
 			player.play();
 			assert.deepEqual([engine.voices[0].startAt, engine.voices[0].endAt], [2, 8]);

@@ -329,7 +329,7 @@ describe('Soundboard', () => {
 			assert.equal(eventsOf('voices.changed').length, 3);
 		});
 
-		it('shows a playlist\'s fade-out while the old track is still sounding', async () => {
+		it("shows a playlist's fade-out while the old track is still sounding", async () => {
 			const { soundboard, advance } = await started();
 			soundboard.customizePlaylist('Combat', { fadeOut: 2 });
 			soundboard.playPlaylist('Combat', { transition: 'instant' });
@@ -712,7 +712,7 @@ describe('Soundboard', () => {
 			assert.deepEqual(soundboard.getDownload(), { job: job(), log: ['one', 'two'] });
 		});
 
-		it('starts without download information when the server can\'t give it', async () => {
+		it("starts without download information when the server can't give it", async () => {
 			const { soundboard, api, eventsOf } = setup();
 			api.fetchDownload = async () => {
 				throw new Error('offline');
@@ -823,7 +823,7 @@ describe('Soundboard', () => {
 			]);
 		});
 
-		it('rejects with the server\'s message and changes nothing', async () => {
+		it("rejects with the server's message and changes nothing", async () => {
 			const { soundboard, api, eventsOf } = await started();
 			api.rearrangement = new Error('The track is already in that playlist');
 			await assert.rejects(soundboard.moveTrack('Combat/1.mp3', 'Combat'), /already in that playlist/);
@@ -876,7 +876,7 @@ describe('Soundboard', () => {
 			assert.deepEqual(changed?.type === 'playlist.changed' && changed.playlist.tracks.map((track) => track.id), ['Combat/1.mp3', 'Combat/2.ogg', 'Combat/Boom.mp3']);
 		});
 
-		it('decodes a new file at a removed sound\'s URL afresh', async () => {
+		it("decodes a new file at a removed sound's URL afresh", async () => {
 			const { soundboard, serverEvents, engine, advance } = await started();
 			soundboard.playSound('Boom.mp3');
 			await advance(1);
@@ -889,7 +889,7 @@ describe('Soundboard', () => {
 	});
 
 	describe('regenerating waveforms', () => {
-		it('makes every sound\'s and track\'s waveform again, sounds first', async () => {
+		it("makes every sound's and track's waveform again, sounds first", async () => {
 			const { soundboard, api, advance } = await started();
 			// Each file rests a while before the next, so time moves on in steps.
 			const finish = async () => {
@@ -909,7 +909,7 @@ describe('Soundboard', () => {
 	describe('problems', () => {
 		const serverProblem = { id: 'symlink:Link.mp3', kind: 'symlink', severity: /** @type {const} */ ('warning'), path: 'Link.mp3', message: 'Ignored.' };
 
-		it('lists the server\'s problems, announcing only real changes', async () => {
+		it("lists the server's problems, announcing only real changes", async () => {
 			const { soundboard, serverEvents, eventsOf } = await started();
 			assert.deepEqual(soundboard.getProblems(), []);
 			serverEvents.send({ type: 'problems', problems: [serverProblem] });
@@ -976,7 +976,7 @@ describe('Soundboard', () => {
 	});
 
 	describe('the trash', () => {
-		it('follows the server\'s summary, announcing only real changes', async () => {
+		it("follows the server's summary, announcing only real changes", async () => {
 			const { soundboard, serverEvents, eventsOf } = await started();
 			assert.deepEqual(soundboard.trashSummary(), { size: 0, count: 0 });
 			serverEvents.send({ type: 'trash', size: 2000, count: 1 });
@@ -1004,7 +1004,7 @@ describe('Soundboard', () => {
 			assert.deepEqual(eventsOf('sound.added').map((event) => event.type === 'sound.added' && event.sound.id), ['Old.mp3']);
 		});
 
-		it('deletes for good, and rejects with the server\'s message', async () => {
+		it("deletes for good, and rejects with the server's message", async () => {
 			const { soundboard, api } = await started();
 			await soundboard.deleteFromTrash('all');
 			assert.deepEqual(api.trashRequests, [{ purge: 'all' }]);
@@ -1207,7 +1207,7 @@ describe('Soundboard', () => {
 			assert.deepEqual(eventsOf('panic.changed'), []);
 		});
 
-		it('keeps what a playlist\'s stop mode remembers', async () => {
+		it("keeps what a playlist's stop mode remembers", async () => {
 			const { soundboard } = await playing();
 			soundboard.customizePlaylist('Combat', { stopMode: 'pause' });
 			soundboard.panicStop();

@@ -81,6 +81,6 @@ export class YtDlp {
  * @param {string[]} args
  */
 export function commandLine(command, args) {
-	const quote = (/** @type {string} */ arg) => (/^[\w@%+=:,./-]+$/.test(arg) ? arg : `'${arg.replaceAll('\'', '\'\\\'\'')}'`);
+	const quote = (/** @type {string} */ arg) => (/^[\w@%+=:,./-]+$/.test(arg) ? arg : `'${arg.replaceAll("'", "'\\''")}'`);
 	return `$ ${[command, ...args].map(quote).join(' ')}`;
 }

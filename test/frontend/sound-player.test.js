@@ -53,7 +53,7 @@ describe('SoundPlayer', () => {
 			assert.deepEqual(activity(), [{ type: 'sound.activeChanged', soundId: 'Boom.mp3', active: true }]);
 		});
 
-		it('labels the voice with the sound\'s title', async () => {
+		it("labels the voice with the sound's title", async () => {
 			const { player, engine, advance } = setup();
 			player.play({ ...SMALL, title: 'Big Boom' });
 			await advance(0.05);
@@ -102,7 +102,7 @@ describe('SoundPlayer', () => {
 	});
 
 	describe('large sounds', () => {
-		it('labels the voice with the sound\'s title', () => {
+		it("labels the voice with the sound's title", () => {
 			const { player, engine } = setup();
 			player.play({ ...LARGE, title: 'Heavy Rain' });
 			assert.equal(engine.voices[0].label, 'Heavy Rain');
@@ -212,7 +212,7 @@ describe('SoundPlayer', () => {
 	});
 
 	describe('gain', () => {
-		it('starts streamed and buffered instances at the sound\'s gain', async () => {
+		it("starts streamed and buffered instances at the sound's gain", async () => {
 			const { player, engine, advance } = setup();
 			player.play({ ...LARGE, gain: 2 });
 			player.play({ ...SMALL, gain: 0.5 });
@@ -253,7 +253,7 @@ describe('SoundPlayer', () => {
 	});
 
 	describe('start and end points', () => {
-		it('plays buffered and streamed instances between the sound\'s points', async () => {
+		it("plays buffered and streamed instances between the sound's points", async () => {
 			const { player, engine, advance } = setup();
 			player.play(sound('Rain.mp3', LARGE.size, { startAt: 1, endAt: 1.5 }));
 			player.play(sound('Boom.mp3', SMALL.size, { startAt: 0.25, endAt: null }));
@@ -333,7 +333,7 @@ describe('SoundPlayer', () => {
 		const slow = sound('Rain.mp3', LARGE.size, { fadeOut: 0.5 });
 		const abrupt = sound('Hit.mp3', LARGE.size);
 
-		it('fades every instance out over its own sound\'s fade-out, then removes it', async () => {
+		it("fades every instance out over its own sound's fade-out, then removes it", async () => {
 			const { player, engine, advance, activity } = setup();
 			player.play(slow);
 			player.play(abrupt);

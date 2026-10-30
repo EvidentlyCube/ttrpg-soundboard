@@ -133,7 +133,7 @@ describe('the remote routes', () => {
 		assert.equal((await call(url, 'DELETE', '/api/remote/host')).status, 400);
 	});
 
-	it('carry the host\'s state to the remotes, and its commands the other way', async () => {
+	it("carry the host's state to the remotes, and its commands the other way", async () => {
 		const { url } = await setup();
 		const page = openEvents(url, 'page=a', 'command');
 		const remote = openEvents(url, 'role=remote', 'remote.state');

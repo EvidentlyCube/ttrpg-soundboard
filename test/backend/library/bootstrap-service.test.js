@@ -290,7 +290,7 @@ describe('BootstrapService', () => {
 		const ID = 'dQw4w9WgXcQ';
 		const FROM_NAME = { origin: 'fileName', url: `https://www.youtube.com/watch?v=${ID}`, extractor: 'Youtube', videoId: ID };
 
-		it('finds a yt-dlp id in a new file\'s name and takes it out of the title', async () => {
+		it("finds a yt-dlp id in a new file's name and takes it out of the title", async () => {
 			const root = await tree({ '.soundboard': SETTINGS, [`Battle [${ID}].ogg`]: 'audio' });
 			await bootstrap(root);
 			assert.deepEqual(await readOptions(root, `Battle [${ID}].ogg.json`), { title: 'Battle', source: FROM_NAME });

@@ -58,7 +58,7 @@ describe('takeSnapshot', () => {
 		].toSorted());
 	});
 
-	it('records each file\'s size and modified time', async () => {
+	it("records each file's size and modified time", async () => {
 		const { root } = await bootstrapped();
 		const stamp = (await takeSnapshot(root)).get(join(root, 'Boom.mp3'));
 		const { size, modified } = await stampFile(join(root, 'Boom.mp3'));

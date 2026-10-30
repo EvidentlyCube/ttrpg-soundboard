@@ -183,7 +183,7 @@ describe('HttpBackendApi downloads against the real server', () => {
 		assert.deepEqual(await api.fetchDownload(), { tools: { ytDlp: '2026.08.19', ffmpeg: '7.1' }, job: null });
 	});
 
-	it('looks links up and rejects with the server\'s message alone', async () => {
+	it("looks links up and rejects with the server's message alone", async () => {
 		const probe = await api.probeLink('https://example.com/watch?v=v', { playlist: false });
 		assert.equal(probe.kind === 'video' && probe.title, 'Video');
 		await assert.rejects(api.probeLink('ftp://example.com/', { playlist: false }), (error) => error instanceof Error && error.message === 'Only http and https links can be downloaded.');

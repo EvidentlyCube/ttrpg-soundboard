@@ -148,7 +148,7 @@ describe('LibraryEditor restoring from the trash', () => {
 		].toSorted());
 	});
 
-	it('restores a playlist\'s tracks into the one of the same name, flattened, ignoring its trashed options', async () => {
+	it("restores a playlist's tracks into the one of the same name, flattened, ignoring its trashed options", async () => {
 		const { root, library, editor } = await setup({
 			'Combat': { 'a.mp3': 'old a', 'Boss': { '1.mp3': 'boss' }, 'cover.jpg': 'jpeg' },
 			'Combat.json': JSON.stringify({ title: 'Renamed', gain: 0.1 }),
@@ -176,7 +176,7 @@ describe('LibraryEditor restoring from the trash', () => {
 		assert.equal(library.playlists.some((playlist) => playlist.id === 'Tavern'), false);
 	});
 
-	it('rejects what the trash doesn\'t hold', async () => {
+	it("rejects what the trash doesn't hold", async () => {
 		const { editor } = await setup({ 'Boom.mp3': 'boom' });
 		await assert.rejects(editor.restoreFromTrash({ kind: 'sound', id: 'Rain.mp3' }), UnknownTrashItemError);
 		await assert.rejects(editor.restoreFromTrash({ kind: 'playlist', id: 'Boom.mp3' }), UnknownTrashItemError);
@@ -204,7 +204,7 @@ describe('LibraryEditor deleting from the trash', () => {
 		assert.deepEqual(await filesIn(join(root, '.trash')), ['Boom.mp3']);
 	});
 
-	it('empties the whole trash, files it doesn\'t list included', async () => {
+	it("empties the whole trash, files it doesn't list included", async () => {
 		const { root, editor } = await setup({ 'Boom.mp3': 'boom', '.DS_Store': 'x', 'Artwork': { 'cover.jpg': 'jpeg' } });
 		await editor.purgeFromTrash('all');
 		assert.deepEqual(await readdir(root).then((names) => names.includes('.trash')), false);

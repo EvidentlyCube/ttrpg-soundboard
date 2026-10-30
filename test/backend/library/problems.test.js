@@ -30,7 +30,7 @@ describe('startupProblems', () => {
 		]);
 	});
 
-	it('is what bootstrap returns for a directory with files that can\'t be used', async () => {
+	it("is what bootstrap returns for a directory with files that can't be used", async () => {
 		const tree = await createTmpTree({ '.soundboard': JSON.stringify({ version: 1 }), 'Boom.mp3': 'boom', 'Song.wav': 'wav' });
 		trees.push(tree);
 		const outcome = await new BootstrapService({ prompter: new FakePrompter(), reporter: new FakeReporter() }).run(tree.root);
@@ -61,7 +61,7 @@ describe('Problems', () => {
 		assert.deepEqual(counts, [2, 0]);
 	});
 
-	it('forgets a file\'s problems, and a directory\'s with everything in it', () => {
+	it("forgets a file's problems, and a directory's with everything in it", () => {
 		const problems = new Problems([problem('Combat/1.mp3'), problem('Combat'), problem('Combat2/1.mp3'), problem('Boom.mp3')]);
 		problems.removeFor('Combat');
 		assert.deepEqual(problems.list.map((entry) => entry.path), ['Combat2/1.mp3', 'Boom.mp3']);

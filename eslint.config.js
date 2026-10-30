@@ -25,6 +25,17 @@ export default [
 				'before',
 				{ overrides: Object.fromEntries(ASSIGNMENT_OPERATORS.map((operator) => [operator, 'after'])) },
 			],
+			// Single quotes, but never a backslash to get one in: double quotes if the text has a single quote, backticks if
+			// it has both.
+			'@stylistic/quotes': ['error', 'single', { avoidEscape: true, allowTemplateLiterals: 'avoidEscape' }],
+			'no-restricted-syntax': [
+				'error',
+				{
+					// An odd number of backslashes before the quote; an even number is escaped backslashes (`"'\\''"`).
+					selector: `Literal[raw=/(^|[^\\\\])(\\\\\\\\)*\\\\['"]/]`,
+					message: 'Avoid escaping a quote: use double quotes for text with a single quote, and backticks for text with both.',
+				},
+			],
 			'no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
 		},
 	},

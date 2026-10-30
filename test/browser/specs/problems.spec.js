@@ -1,7 +1,7 @@
 import { expect } from '@playwright/test';
 import { test } from '../support/fixtures.js';
 
-test.describe('a folder with files that can\'t be used', () => {
+test.describe("a folder with files that can't be used", () => {
 	test.use({ library: { 'Song.wav': 'not audio', 'Boom.mp3': 'not really audio' } });
 
 	test.beforeEach(async ({ soundboard }) => {

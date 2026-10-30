@@ -78,7 +78,7 @@ describe('LibraryEditor deletions', () => {
 		assert.equal(await readFile(join(root, '.trash', 'Boom (2).mp3'), 'utf8'), 'boom');
 	});
 
-	it('keeps a track\'s path inside the trash', async () => {
+	it("keeps a track's path inside the trash", async () => {
 		const { root, library, editor } = await setup();
 		const result = await editor.deleteTrack('Combat/Boss/1.mp3');
 		assert.deepEqual(await filesIn(join(root, '.trash')), ['Combat/Boss/1.mp3', 'Combat/Boss/1.mp3.json']);
@@ -94,7 +94,7 @@ describe('LibraryEditor deletions', () => {
 		assert.equal(library.playlists.some((playlist) => playlist.id === 'Tavern'), false);
 	});
 
-	it('moves a playlist\'s whole folder and its options file into the trash', async () => {
+	it("moves a playlist's whole folder and its options file into the trash", async () => {
 		const { root, library, editor } = await setup();
 		await writeFile(join(root, 'Combat', 'cover.jpg'), 'image');
 		const result = await editor.deletePlaylist('Combat');
@@ -201,7 +201,7 @@ describe('LibraryEditor moves', () => {
 	it('renames a track whose name is taken in the other playlist', async () => {
 		const { root, library, editor } = await setup();
 		await mkdir(join(root, 'Tavern'), { recursive: true });
-		await writeFile(join(root, 'Tavern', 'a.mp3.wf'), 'someone else\'s');
+		await writeFile(join(root, 'Tavern', 'a.mp3.wf'), "someone else's");
 		await editor.moveTrack('Combat/a.mp3', 'Tavern');
 		assert.ok(library.files.has('Tavern/a (2).mp3'));
 		assert.deepEqual(await filesIn(join(root, 'Tavern')), ['a (2).mp3', 'a (2).mp3.json', 'a.mp3.wf', 'song.mp3', 'song.mp3.json']);

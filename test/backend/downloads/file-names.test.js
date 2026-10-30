@@ -40,7 +40,7 @@ describe('chapterFileName', () => {
 });
 
 describe('titleFromFileName', () => {
-	it('drops the extension and only the downloaded video\'s own id tag', () => {
+	it("drops the extension and only the downloaded video's own id tag", () => {
 		assert.equal(titleFromFileName('Song [Live] [jNQXAC9IVRw].ogg', 'jNQXAC9IVRw'), 'Song [Live]');
 		assert.equal(titleFromFileName('Me at the zoo - 001 Intro [jNQXAC9IVRw].ogg', 'jNQXAC9IVRw'), 'Me at the zoo - 001 Intro');
 		assert.equal(titleFromFileName('Rain.loop.mp3', null), 'Rain.loop');

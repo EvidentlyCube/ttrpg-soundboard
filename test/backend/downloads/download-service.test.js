@@ -236,7 +236,7 @@ describe('DownloadService', () => {
 			assert.deepEqual(await readdir(join(root, WORKSPACE_NAME)), []);
 		});
 
-		it('converts a whole video to Ogg Vorbis when its audio can\'t be copied', async () => {
+		it("converts a whole video to Ogg Vorbis when its audio can't be copied", async () => {
 			const { service, ffmpeg, finished, options } = await setup();
 			ffmpeg.remuxFails = true;
 			const { probeId } = await service.probe('https://www.youtube.com/watch?v=zoo');
@@ -343,7 +343,7 @@ describe('DownloadService', () => {
 			await finished();
 		});
 
-		it('rejects requests that don\'t fit the lookup', async () => {
+		it("rejects requests that don't fit the lookup", async () => {
 			const { service, ytDlp } = await setup();
 			const { probeId } = await service.probe('https://www.youtube.com/watch?v=zoo');
 			assert.throws(() => service.start({ probeId: 'unknown', target: { kind: 'sound' } }), InvalidDownloadError);

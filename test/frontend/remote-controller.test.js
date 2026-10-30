@@ -48,7 +48,7 @@ function setup() {
 }
 
 describe('RemoteController', () => {
-	it('asks the server whether a page is the host, and says nothing when it can\'t tell', async () => {
+	it("asks the server whether a page is the host, and says nothing when it can't tell", async () => {
 		const { api, remote, logged } = setup();
 		assert.equal(await remote.checkHost(), false);
 		api.hostPresent = true;

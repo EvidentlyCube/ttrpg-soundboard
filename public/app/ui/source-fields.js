@@ -13,7 +13,7 @@
 const ORIGIN_LABELS = {
 	download: 'Downloaded',
 	fileName: 'Found in the file name',
-	tags: 'Found in the file\'s tags',
+	tags: "Found in the file's tags",
 	unknown: 'Unknown',
 	edited: 'Entered by hand',
 };

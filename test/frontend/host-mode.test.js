@@ -138,7 +138,7 @@ describe('becoming the host', () => {
 		return { clock, api, serverEvents, soundboard };
 	}
 
-	it('waits for the page\'s stream to open before it claims', async () => {
+	it("waits for the page's stream to open before it claims", async () => {
 		const { api, serverEvents, soundboard } = await startedWithoutRole('p');
 		const result = soundboard.becomeHost();
 		await new Promise((resolve) => setImmediate(resolve));

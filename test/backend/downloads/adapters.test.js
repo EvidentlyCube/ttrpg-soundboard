@@ -79,7 +79,7 @@ describe('Ffmpeg', () => {
 		assert.deepEqual(calls[0].args, ['-hide_banner', '-nostdin', '-y', '-i', 'in.webm', '-map', '0:a:0', '-c:a', 'copy', 'out.opus']);
 	});
 
-	it('fails with ffmpeg\'s last line', async () => {
+	it("fails with ffmpeg's last line", async () => {
 		const { run } = fakeProcessRunner((_command, _args, process) => {
 			process.line('in.webm: No such file or directory');
 			return { code: 1 };
@@ -111,6 +111,6 @@ describe('Ffmpeg', () => {
 
 describe('commandLine', () => {
 	it('quotes arguments the way a shell would need them', () => {
-		assert.equal(commandLine('yt-dlp', ['-o', '%(title)s [%(id)s].%(ext)s', '--', 'https://x/?a=1&b=it\'s']), '$ yt-dlp -o \'%(title)s [%(id)s].%(ext)s\' -- \'https://x/?a=1&b=it\'\\\'\'s\'');
+		assert.equal(commandLine('yt-dlp', ['-o', '%(title)s [%(id)s].%(ext)s', '--', "https://x/?a=1&b=it's"]), "$ yt-dlp -o '%(title)s [%(id)s].%(ext)s' -- 'https://x/?a=1&b=it'\\''s'");
 	});
 });

@@ -36,7 +36,7 @@ function comment(text) {
 }
 
 describe('readId3SourceLink', () => {
-	it('reads a user link frame, whatever the description\'s encoding', async () => {
+	it("reads a user link frame, whatever the description's encoding", async () => {
 		assert.equal(await linkOf([userLink(VIDEO)]), VIDEO);
 		assert.equal(await linkOf([userLink(VIDEO, 1)]), VIDEO);
 	});

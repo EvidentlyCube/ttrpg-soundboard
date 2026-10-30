@@ -37,7 +37,7 @@ describe('httpLinkFetcher', () => {
 		assert.deepEqual(await httpLinkFetcher.inspect(`${base}/rain`), { contentType: 'audio/mpeg', size: 4, name: 'Rain loop.mp3' });
 	});
 
-	it('gives nothing for a link that doesn\'t answer successfully', async () => {
+	it("gives nothing for a link that doesn't answer successfully", async () => {
 		assert.equal(await httpLinkFetcher.inspect(`${base}/missing`), null);
 		assert.equal(await httpLinkFetcher.inspect('http://127.0.0.1:1/'), null);
 	});
@@ -71,7 +71,7 @@ describe('httpLinkFetcher', () => {
 
 describe('nameFromDisposition and nameFromUrl', () => {
 	it('prefer the encoded name, then the plain one', () => {
-		assert.equal(nameFromDisposition('attachment; filename*=UTF-8\'\'R%C3%A9gen.mp3; filename="Regen.mp3"'), 'Régen.mp3');
+		assert.equal(nameFromDisposition(`attachment; filename*=UTF-8''R%C3%A9gen.mp3; filename="Regen.mp3"`), 'Régen.mp3');
 		assert.equal(nameFromDisposition('attachment; filename=plain.ogg'), 'plain.ogg');
 		assert.equal(nameFromDisposition('inline'), null);
 		assert.equal(nameFromDisposition(null), null);

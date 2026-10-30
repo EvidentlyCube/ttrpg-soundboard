@@ -89,7 +89,7 @@ describe('checkAccess', () => {
 		}
 	});
 
-	it('lets the pages, the remote routes and a remote\'s event stream through for an allowed device', () => {
+	it("lets the pages, the remote routes and a remote's event stream through for an allowed device", () => {
 		const { control, cookie } = allowedDevice();
 		for (const [url, method] of [
 			['/', 'GET'],

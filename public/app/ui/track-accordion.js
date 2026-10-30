@@ -104,7 +104,7 @@ export class TrackAccordion extends Component {
 			}, 'Cropped');
 			const volume = h('span', {
 				'class': 'shrink-0 rounded-full px-2 py-0.5 text-[0.65rem] font-semibold tabular-nums data-[change=louder]:bg-boost/20 data-[change=louder]:text-boost data-[change=quieter]:bg-cyan-400/20 data-[change=quieter]:text-cyan-300',
-				'title': 'This track\'s volume differs from the file',
+				'title': "This track's volume differs from the file",
 				'data-track-volume': track.id,
 			});
 			showVolume(volume, track);

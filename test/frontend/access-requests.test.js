@@ -59,7 +59,7 @@ describe('connection requests', () => {
 		assert.deepEqual(announced, [[phone], []]);
 	});
 
-	it('sends the answer to the server, and leaves the list to the server\'s next message', async () => {
+	it("sends the answer to the server, and leaves the list to the server's next message", async () => {
 		const { soundboard, api, send, settle } = await started();
 		const phone = { address: '192.168.1.50', code: '482' };
 		send({ type: 'access.requests', requests: [phone] });

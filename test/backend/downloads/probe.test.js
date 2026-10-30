@@ -82,7 +82,7 @@ describe('toProbe', () => {
 		assert.throws(() => toProbe({ ...VIDEO, live_status: 'is_upcoming' }, VIDEO_LINK), /Live streams/);
 	});
 
-	it('lists a playlist\'s entries with the site of each', () => {
+	it("lists a playlist's entries with the site of each", () => {
 		assert.deepEqual(toProbe(playlist(2), VIDEO_LINK), {
 			kind: 'playlist',
 			url: 'https://www.youtube.com/playlist?list=UU4QobU6STFB0P71PMvOGN5A',
@@ -96,7 +96,7 @@ describe('toProbe', () => {
 		});
 	});
 
-	it('skips entries that are lists themselves, such as a channel\'s tabs', () => {
+	it("skips entries that are lists themselves, such as a channel's tabs", () => {
 		const probe = toProbe(playlist(1, {
 			entries: [...playlist(1).entries, { _type: 'url', ie_key: 'YoutubeTab', id: 'tab', url: 'https://www.youtube.com/@x/shorts' }],
 		}), VIDEO_LINK);
@@ -115,7 +115,7 @@ describe('toProbe', () => {
 });
 
 describe('failureMessage', () => {
-	it('takes yt-dlp\'s last error line without its prefix', () => {
+	it("takes yt-dlp's last error line without its prefix", () => {
 		assert.equal(failureMessage(['WARNING: slow', 'ERROR: [generic] Unsupported URL: https://example.com/', 'done']), '[generic] Unsupported URL: https://example.com/');
 		assert.equal(failureMessage(['something broke', '']), 'something broke');
 		assert.equal(failureMessage([]), 'yt-dlp failed without saying why.');

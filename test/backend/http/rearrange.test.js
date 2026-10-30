@@ -154,7 +154,7 @@ describe('deleting and moving over HTTP', () => {
 		assert.equal(response.body.changes[1].sound.url, '/media/1.mp3');
 	});
 
-	it('refuses a move to where the item already is, or one it can\'t read', async () => {
+	it("refuses a move to where the item already is, or one it can't read", async () => {
 		const { call } = await setup();
 		assert.equal((await call('/api/move', { method: 'POST', body: { id: 'Boom.mp3', to: null } })).status, 400);
 		assert.equal((await call('/api/move', { method: 'POST', body: { id: 'Combat/1.mp3', to: 'Combat' } })).status, 400);
@@ -217,7 +217,7 @@ describe('the trash over HTTP', () => {
 		assert.equal(await exists(join(root, '.trash', 'Boom.mp3')), false);
 	});
 
-	it('answers 400 for a bad body and 404 for what the trash doesn\'t hold', async () => {
+	it("answers 400 for a bad body and 404 for what the trash doesn't hold", async () => {
 		const { call } = await setup();
 		assert.equal((await call('/api/trash/restore', { method: 'POST', body: { kind: 'song', id: 'x' } })).status, 400);
 		assert.equal((await call('/api/trash/delete', { method: 'POST', body: {} })).status, 400);

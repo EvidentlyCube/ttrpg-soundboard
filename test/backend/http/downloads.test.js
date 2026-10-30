@@ -121,7 +121,7 @@ describe('downloads over HTTP', () => {
 		assert.deepEqual(await call('/api/download'), { status: 200, body: { tools: { ytDlp: '2026.08.19', ffmpeg: '7.1' }, job: null } });
 	});
 
-	it('looks a link up, or says why it can\'t', async () => {
+	it("looks a link up, or says why it can't", async () => {
 		const { call } = await setup();
 		const found = await call('/api/download/probe', { method: 'POST', body: { url: 'https://www.youtube.com/watch?v=zoo' } });
 		assert.equal(found.status, 200);

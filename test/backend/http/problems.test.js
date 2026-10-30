@@ -88,7 +88,7 @@ describe('problems over HTTP', () => {
 		assert.deepEqual((await events.messages(3))[2], []);
 	});
 
-	it('answers 404 for a problem it doesn\'t have and 405 for other methods', async () => {
+	it("answers 404 for a problem it doesn't have and 405 for other methods", async () => {
 		const server = await setup();
 		assert.equal((await fetch(`${server.url}/api/problems/nope`, { method: 'DELETE' })).status, 404);
 		assert.equal((await fetch(`${server.url}/api/problems`)).status, 405);

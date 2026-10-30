@@ -143,7 +143,7 @@ describe('external changes over HTTP', () => {
 			assert.equal((await call('/api/changes/check')).status, 405);
 		});
 
-		it('does not count the app\'s own saves', async () => {
+		it("does not count the app's own saves", async () => {
 			const { call } = await setup();
 			const patch = { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'Big Boom' }) };
 			assert.equal((await call('/api/sounds/Boom.mp3', patch)).status, 200);
