@@ -77,7 +77,7 @@ Open a terminal in the unpacked folder (on Windows, right-click inside it and ch
 node index.js <path-to-audio-directory> [--port <number>] [--lan [<address>]] [--verbose]
 ```
 
-Then open the address it prints (`http://127.0.0.1:3000` by default). To stop the app, press Ctrl+C in the terminal. Closing the terminal window also stops it, and the music with it, so keep it open during a session.
+Then open the address it prints (`http://127.0.0.1:3000` by default). To stop the app, press Ctrl+C in the terminal, or type `exit` and press Enter. Closing the terminal window also stops it, and the music with it, so keep it open during a session.
 
 The audio directory holds `.mp3`, `.ogg` and `.opus` files. Other formats (`.wav`, `.flac`, `.m4a`, `.aac` and so on) are not supported: the app lists them as warnings at startup and skips them. You can convert them with ffmpeg, for example `ffmpeg -i input.wav -c:a libvorbis -q:a 5 output.ogg`.
 

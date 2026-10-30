@@ -17,7 +17,7 @@ node index.js <path-to-audio-directory> [--port <number>] [--lan [<address>]] [-
 - The server listens on `127.0.0.1` only. The default port is `3000`; `--port` accepts 1–65535.
 - With **`--lan`** it listens on all interfaces instead, or only on `<address>` when one is given (the next argument counts as the address only if it is an IP address). It prints one address per network address of this machine (`http://192.168.1.20:3000/`; Docker, bridge and virtual machine interfaces are left out) for opening the app on a phone as a remote control (§5.5, §9.15). A device that opens it must be allowed from this machine first (§5.6), and can then reach only the pages and the remote routes (§5.2). The terminal prints `Connection request from <address>, code <code>` for every new request.
 - Output is quiet by default: the startup summary, warnings and errors. `--verbose` also logs every HTTP request (§5.2).
-- After startup it prints `Soundboard running at http://127.0.0.1:3000` and `Press Ctrl+C to stop.` The user opens that URL themselves.
+- After startup it prints `Soundboard running at http://127.0.0.1:3000` and `Press Ctrl+C or type exit and press Enter to stop.` The user opens that URL themselves.
 - While it runs, it watches the directory. Files added, removed or changed from outside the app are not loaded by themselves: the page offers a refresh, which rebuilds the library as a restart would (§3.6, §5.3).
 - It can add sounds, playlists and tracks from a pasted link. The server downloads it with `yt-dlp`, or fetches a direct link to a file itself, keeps its Opus audio as `.opus` or converts it to `.ogg` with `ffmpeg`, and the page shows each new file at once (§5.4, §9.9).
 - It is always started by hand from a terminal. There is no unattended mode.
@@ -205,6 +205,7 @@ Bootstrap runs before the HTTP server starts. The decision logic is the domain s
 - **Prompts** (`TerminalPrompter`) print `Question? [y/N] `. Only `y` or `yes` (any case) means yes; anything else, including just Enter or closed input, means no. Lines typed ahead are queued for the following questions rather than lost.
 - **Output** (`ConsoleReporter`) shows paths relative to the root. Colors use ANSI codes: red for nested directories and errors, yellow for warnings, bold for headings. Colors are off when `NO_COLOR` is set to a non-empty value or stdout is not a TTY.
 - **Ctrl+C** during the questions ends the process immediately. That is safe because every write is atomic and `.soundboard` is written last.
+- **Typing `exit`** only works once the server runs: `main` then reads stdin line by line, and a line that is `exit` (any case, spaces around it ignored) shuts down like SIGINT. Other lines are ignored, and closed input does not stop the app.
 
 ### 3.1 Steps common to both modes
 
@@ -450,7 +451,7 @@ Each path segment of a media URL is percent-encoded separately. `source` is the 
 - Unexpected errors (500s, failed streams) are always printed to stderr with their stack trace.
 - With `--verbose`, each request is logged to stdout when its response finishes or the client disconnects: `GET /media/Combat/01%20Battle.mp3 206 bytes=0-1023 12ms`. That is the method, the raw path, the status, the `Range` header if there was one, and the duration. A request whose client disconnected first ends with `(aborted)`.
 - If the port is in use, or not allowed, print a clear message and exit `1`.
-- On SIGINT or SIGTERM, stop the change watcher, close the server, including open media streams and event streams, print `Stopped.` and exit `0`.
+- On SIGINT, SIGTERM or a typed `exit` (§3), stop the change watcher, close the server, including open media streams and event streams, print `Stopped.` and exit `0`.
 
 ### 5.3 Change watcher (`ChangeWatcher`)
 
