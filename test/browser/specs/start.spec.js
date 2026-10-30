@@ -3,54 +3,81 @@ import { expect, test } from '../support/fixtures.js';
 test('the page shows the splash and only asks whether a host exists before the click', async ({ page, soundboard, splash }) => {
 	/** @type {string[]} */
 	const requests = [];
-	page.on('request', (request) => requests.push(new URL(request.url()).pathname));
 
-	await soundboard.open();
+	await test.step('Record the requests and open the page', async () => {
+		page.on('request', (request) => requests.push(new URL(request.url()).pathname));
+		await soundboard.open();
+	});
 
-	await splash.expectVisible();
-	await expect.poll(() => requests.filter((path) => path.startsWith('/api/'))).toEqual(['/api/remote']);
+	await test.step('The splash is shown and the only API call was the host check', async () => {
+		await splash.expectVisible();
+		await expect.poll(() => requests.filter((path) => path.startsWith('/api/'))).toEqual(['/api/remote']);
+	});
 });
 
 test('clicking the splash loads the soundboard with the library', async ({ soundboard, splash, playlists }) => {
-	await soundboard.open();
-	await splash.click();
-	await soundboard.waitUntilLoaded();
+	await test.step('Open the page and click the splash', async () => {
+		await soundboard.open();
+		await splash.click();
+		await soundboard.waitUntilLoaded();
+	});
 
-	await playlists.expectShown('Music MP3', 'Music Mix', 'Music Ogg', 'Music Order');
+	await test.step('The playlists are shown', async () => {
+		await playlists.expectShown('Music MP3', 'Music Mix', 'Music Ogg', 'Music Order');
+	});
 });
 
 test('starting plays no audio and asks for no media files', async ({ page, soundboard }) => {
 	/** @type {string[]} */
 	const media = [];
-	page.on('request', (request) => request.url().match(/\.(mp3|ogg)$/i) && media.push(request.url()));
 
-	await soundboard.startAndWaitUntilLoaded();
+	await test.step('Record media requests and start the page', async () => {
+		page.on('request', (request) => request.url().match(/\.(mp3|ogg)$/i) && media.push(request.url()));
+		await soundboard.startAndWaitUntilLoaded();
+	});
 
-	expect(media).toEqual([]);
+	await test.step('No media file was requested', async () => {
+		expect(media).toEqual([]);
+	});
 });
 
 test.describe('with a library of its own', () => {
 	test.use({ library: { Rain: { 'drops.mp3': 'not really audio', 'storm.mp3': 'not really audio' } } });
 
 	test('shows that library', async ({ soundboard, playlists }) => {
-		await soundboard.startAndWaitUntilLoaded();
+		await test.step('Open the page', async () => {
+			await soundboard.startAndWaitUntilLoaded();
+		});
 
-		await playlists.expectShown('Rain');
+		await test.step('The playlist from that library is shown', async () => {
+			await playlists.expectShown('Rain');
+		});
 	});
 });
 
 test('the page runs on the fake audio engine, which the click unlocks', async ({ page, soundboard }) => {
-	await soundboard.startAndWaitUntilLoaded();
+	await test.step('Open the page', async () => {
+		await soundboard.startAndWaitUntilLoaded();
+	});
 
-	const unlocks = await page.evaluate(() => soundboardTest.engine.unlockCount);
-	expect(unlocks).toBe(1);
+	await test.step('The engine was unlocked exactly once', async () => {
+		const unlocks = await page.evaluate(() => soundboardTest.engine.unlockCount);
+		expect(unlocks).toBe(1);
+	});
 });
 
 test('the page works when opened as localhost, which is the same server under another name', async ({ page, soundboard, splash, playlists }) => {
-	await soundboard.open();
-	await page.goto(page.url().replace('127.0.0.1', 'localhost'));
-	await splash.click();
-	await soundboard.waitUntilLoaded();
+	await test.step('Open the page, then open it again as localhost', async () => {
+		await soundboard.open();
+		await page.goto(page.url().replace('127.0.0.1', 'localhost'));
+	});
 
-	await playlists.expectShown('Music MP3', 'Music Mix', 'Music Ogg', 'Music Order');
+	await test.step('Click the splash', async () => {
+		await splash.click();
+		await soundboard.waitUntilLoaded();
+	});
+
+	await test.step('The playlists are shown', async () => {
+		await playlists.expectShown('Music MP3', 'Music Mix', 'Music Ogg', 'Music Order');
+	});
 });
