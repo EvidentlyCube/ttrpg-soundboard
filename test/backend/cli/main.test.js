@@ -90,7 +90,7 @@ describe('main', () => {
 		const port = await findFreePort();
 		const lan = await run([root, '--port', String(port), '--lan', '127.0.0.1'], {
 			whileRunning: async (output) => {
-				assert.match(output(), new RegExp(`Open one of these on another device.*\\n  http://127\\.0\\.0\\.1:${port}/\\?token=[0-9a-f]{32}\\n`));
+				assert.match(output(), new RegExp(`Open one of these on another device.*\\n  http://127\\.0\\.0\\.1:${port}/\\?token=\\d{6}\\n`));
 				assert.equal((await fetch(`http://127.0.0.1:${port}/api/remote`)).status, 200);
 			},
 		});

@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { randomInt } from 'node:crypto';
 import { stat } from 'node:fs/promises';
 import { hostname, networkInterfaces } from 'node:os';
 import { resolve } from 'node:path';
@@ -79,7 +79,7 @@ export async function main(argv, { input, output, errorOutput, env, waitForShutd
 			options: {
 				address: args.lan.address ?? '0.0.0.0',
 				names: [...addresses, ...(args.lan.address ? [] : [hostname(), `${hostname()}.local`])].map((name) => (name.includes(':') ? `[${name}]` : name)),
-				token: randomBytes(16).toString('hex'),
+				token: String(randomInt(1_000_000)).padStart(6, '0'),
 			},
 		};
 	}
