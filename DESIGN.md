@@ -15,7 +15,7 @@ node index.js <path-to-audio-directory> [--port <number>] [--lan [<address>]] [-
 ```
 
 - The server listens on `127.0.0.1` only. The default port is `3000`; `--port` accepts 1–65535.
-- With **`--lan`** it listens on all interfaces instead, or only on `<address>` when one is given (the next argument counts as the address only if it is an IP address). It also makes up a token for the run and prints one link per network address (`http://192.168.1.20:3000/?token=…`) for opening the app on a phone as a remote control (§5.5, §9.15). Requests from other machines need the token and can reach only the pages and the remote routes (§5.2).
+- With **`--lan`** it listens on all interfaces instead, or only on `<address>` when one is given (the next argument counts as the address only if it is an IP address). It prints one address per network address of this machine (`http://192.168.1.20:3000/`; Docker, bridge and virtual machine interfaces are left out) for opening the app on a phone as a remote control (§5.5, §9.15). A device that opens it must be allowed from this machine first (§5.6), and can then reach only the pages and the remote routes (§5.2). The terminal prints `Connection request from <address>, code <code>` for every new request.
 - Output is quiet by default: the startup summary, warnings and errors. `--verbose` also logs every HTTP request (§5.2).
 - After startup it prints `Soundboard running at http://127.0.0.1:3000` and `Press Ctrl+C to stop.` The user opens that URL themselves.
 - While it runs, it watches the directory. Files added, removed or changed from outside the app are not loaded by themselves: the page offers a refresh, which rebuilds the library as a restart would (§3.6, §5.3).
@@ -37,7 +37,7 @@ node index.js <path-to-audio-directory> [--port <number>] [--lan [<address>]] [-
 | Module system | ES modules everywhere (`"type": "module"`) |
 | Tests | `node --test` with `node:assert/strict`, and Playwright for the UI ([`TESTING.md`](TESTING.md)) |
 | Browsers | Current desktop Chrome, Firefox and **Safari** |
-| Trust | The server listens on the loopback address only and trusts whoever can reach it: it has no login. It protects against other web pages open in the same browser (the request guard, §5.2), not against other programs or users on the same machine. With `--lan` it also answers other machines, but only those that hold the run's token, and only for the pages and the remote routes (§5.2). A remote can therefore start and stop sounds and playlists on the host, and nothing else. |
+| Trust | The server listens on the loopback address only and trusts whoever can reach it: it has no login. It protects against other web pages open in the same browser (the request guard, §5.2), not against other programs or users on the same machine. With `--lan` it also answers other machines, but only those that were allowed from this machine (§5.6), and only for the pages and the remote routes (§5.2). A remote can therefore start and stop sounds and playlists on the host, and nothing else. |
 | Touch | The player has no special handling: touch users may not be able to open the context menus. The remote page (§9.15) is built for a phone. |
 | Memory/CPU | Files stream over HTTP Range requests. The server never holds audio in memory. The browser holds decoded audio only for small sound effects, within a fixed memory budget. |
 | Target machine | MacBook Neo, 8 GB RAM, macOS, Safari as the likely browser, used at the table during RPG sessions (§12) |
@@ -377,6 +377,10 @@ The server knows nothing about playback state.
 | DELETE | `/api/remote/host?page=<id>` | The host gives up the role; `200 {}`. |
 | PUT | `/api/remote/state` | Body `{ pageId, state }`, the host's `RemoteState` (§6.10); `200 {}`. `409` unless that page is the host, `413` over 512 KB. |
 | POST | `/api/remote/commands` | Body: a command (§6) for the host; `200 {}`. `400` unless it is one a remote may send, `409` when there is no host. |
+| POST | `/api/access/requests` | With `--lan` only (`404` without). Starts pairing for the caller's address, or finds the request it already has, and answers `{ status: 'pending', code }`, or `{ status: 'banned' }` when this request was one too many (§5.6). The only route that counts toward the limit. |
+| GET | `/api/access/requests/mine` | With `--lan` only. Polled by the connect page: `{ status: 'none' \| 'pending' \| 'allowed' \| 'denied' \| 'banned', code? }`. The first answer that reports `allowed` also sets the device cookie. Not counted. |
+| POST | `/api/access/requests/answer` | With `--lan` only, and for this machine only. Body `{ address, decision: 'allow' \| 'deny' }`; `200 {}`. `400` for anything else, `404` when that address has no pending request. |
+| GET | `/api/access/links` | With `--lan` only, and for this machine only. `{ links: ['http://192.168.1.20:3000/'] }`: the addresses that open the app from another device, for the QR code (§9.16). |
 
 - API responses are JSON with `Cache-Control: no-store`. Errors are `{ "error": "message" }`.
 - A known path with the wrong method gets `405` with an `Allow` header. Unknown `/api/…` paths get a JSON `404`.
@@ -389,9 +393,11 @@ The server knows nothing about playback state.
 The `415` rule above is the second line of defense: a page on another site can't send `application/json` or `application/octet-stream` without a preflight request, and the server sends no CORS headers and gives `OPTIONS` a `405`. The 403 body doesn't repeat the header that was refused.
 
 **LAN access** (`lan-access.js`). Without `--lan` the server listens on loopback and none of this applies. With it, the `Host` names above also include the addresses and the host name of this machine, and `checkAccess` runs after the guard for every request that does not come from a loopback address:
-- It needs the **token**: the cookie `soundboard-token`, or `?token=` in the URL. A request with the token in the URL is answered with a `302` to the same address without it, which sets the cookie (`HttpOnly`, `SameSite=Strict`). Without the token the answer is `403`.
-- It may only reach: `GET` and `HEAD` of the static files, `/api/remote…`, and `/api/events?role=remote`. Everything else (the library, settings, media, deletions, downloads, a page's own event stream) answers `403`, so a phone can see titles and send play commands, and never touches the files or hears the audio.
-- The token is compared in constant time. The remote page learns the titles from the host's state (§6.10), so it needs no `/api/library`.
+- A **banned** address (§5.6) gets `403 { "error": "This address is blocked" }` for everything. The connect page tells this refusal from the others by its text.
+- A device needs the cookie **`soundboard-device`** (`HttpOnly`, `SameSite=Lax`) that it got when it was allowed (§5.6). `Lax` and not `Strict`, because a link opened from another app, such as a camera scanning a QR code, is a cross-site navigation, and the cookie would be left out of it.
+- A device **with** the cookie may only reach: `GET` and `HEAD` of the static files, `/api/remote…`, and `/api/events?role=remote`. Everything else (the library, settings, media, deletions, downloads, the pairing routes, a page's own event stream) answers `403`, so a phone can see titles and send play commands, and never touches the files or hears the audio.
+- A device **without** it may only reach the connect page, which is what `GET /` and `GET /index.html` answer instead of the app (`public/connect.html`), the files the connect page loads (`/favicon.svg`, the Tailwind file, `/app/connect.js`, `/app/browser-clock.js`, `/app/logic/access-requester.js` and `/app/ui/dom.js`), `POST /api/access/requests` and `GET /api/access/requests/mine`. Everything else answers `403`.
+- The remote page learns the titles from the host's state (§6.10), so it needs no `/api/library`.
 
 `/api/library`
 ```json
@@ -423,6 +429,7 @@ Each path segment of a media URL is percent-encoded separately. `source` is the 
 | `trash` | `{ size, count }`: bytes, and the listed playlists plus sounds | on connect, then whenever a deletion, move, restore or purge changed it; each of those routes reloads `Trash` (§5.1) before it answers |
 | `problems` | `{ problems }`: the whole list (§5.1) | on connect, then whenever a dismissal, a deletion, a move or a refresh changed it |
 | `library.removed` | `{ soundId }`, `{ trackId, playlistId }` or `{ playlistId }` | once a deletion or a move has taken an item away; `LibraryChanges` (`library-changes.js`) hands them from the routes to every stream |
+| `access.requests` | `{ requests: [{ address, code }] }`: all the pairing requests waiting for an answer (§5.6) | with `--lan`, to a page stream on connect and whenever the list changes; never to a remote |
 | `remote.role` | `{ host, reason? }` | to a page stream on connect, then whenever it becomes the host or stops being it; `reason: 'replaced'` when another page took the role (§5.5) |
 | `command` | `{ command }` | to the host's stream: a command a remote sent (§5.5) |
 | `remote.host` | `{ connected }` | to a remote's stream on connect and whenever a host appears or goes |
@@ -515,6 +522,16 @@ Each path segment of a media URL is percent-encoded separately. `source` is the 
 - **Commands.** `sendCommand` forwards a remote's command to the host's stream and answers `NoHostError` without one. Only these may pass, anything else is a `NotRelayableError`: `panic.stop`, `sound.play`, `sound.stop`, `playlist.toggle`, `playlist.stop`, `playlist.pause`, `playlist.resume`, `playlist.next`, `playlist.previous`. Customizing, volumes, deleting and everything else stay on the host's page. The host runs a command as if its own UI had sent it (§6.1), so the relay needs no rules of its own.
 - Timers are injected so tests use `FakeClock`.
 
+### 5.6 Access control (`src/http/access-control.js`)
+
+With `--lan`, a device on the network must be allowed from this machine before it can use the remote. `AccessControl` holds who asked, who was allowed and who is banned. Time and randomness are injected. Everything lives in memory: a restart forgets approvals and bans, and a phone with an old cookie simply asks again.
+
+- **Pairing.** The device's address is its identity (`::ffff:a.b.c.d` is read as `a.b.c.d`). `request(address)` gives it a pending request with a code of three digits that no other pending request uses. Asking again while a request is pending, for example from a second tab, returns the same request and code. A request that was answered or has expired is replaced by a new one. A request, and an answer nobody collected, are forgotten after 2 minutes (`REQUEST_LIFETIME_MS`).
+- **Answering.** `answer(address, 'allow' | 'deny')` works on a pending request only. Allowing makes up a secret (128 random bits) for the device, keeps only its SHA-256 hash, and hands the secret out once, with the first `status(address)` after the answer; the route puts it in the cookie (§5.2). A denied request stays "denied" until it expires or the device asks again.
+- **The limit.** `request(address)` and `strike(address)` count one request for the address. More than 5 within 60 s (`MAX_REQUESTS`, `RATE_WINDOW_MS`) bans it at once, with no prompt, and drops its request. A banned address stays banned until the server restarts. Polling the answer (`status`) does not count. The address is the only identity there is, so a ban also hits other devices behind the same address, which on a home IPv4 network is the same device.
+- **Events.** `onChange` fires whenever the list of pending requests changes, and the event streams send it to the pages (`access.requests`, §5.2). `onRequest` fires for every request that is new, not for a repeat, and the CLI prints it (§1).
+- **Who answers.** Requests from this machine are never checked (§5.2), so only the pages here can reach the answer route. A device cannot allow itself or another.
+
 ---
 
 ## 6. Frontend architecture
@@ -538,7 +555,9 @@ UI layer (DOM)  ──commands──▶  Soundboard (logic facade)  ──▶  A
   - for deletions and moves (§6.8), `deleteItem({ kind, id })` and `moveItem(id, to)`, which resolve with the server's `changes` and reject with its message alone;
   - for the trash (§6.8), `fetchTrash()`, `restoreFromTrash(target)`, which resolves with the `changes` like the two above, and `deleteFromTrash(target)`, where `target` is `{ kind, id }` or `'all'`;
   - for problems (§6.9), `dismissProblem(id)` and `dismissAllProblems()`;
-  - for the host role (§6.10), the `BackendApi` methods `fetchHostStatus()`, `claimHost(pageId, { replace })` ("ok" or "taken"), `releaseHost(pageId, { keepalive })`, `sendRemoteState(pageId, state)` and `sendRemoteCommand(command)`; `ServerEvents.connect(onMessage, params)` takes the query of the stream (`page` or `role`);
+  - for the host role (§6.10), the `BackendApi` methods `fetchHostStatus()`, `claimHost(pageId, { replace })` ("ok" or "taken"), `releaseHost(pageId, { keepalive })`, `sendRemoteState(pageId, state)` and `sendRemoteCommand(command)`;
+  - for pairing devices (§5.6, §9.16), the `BackendApi` methods `answerAccessRequest(address, decision)` and `fetchConnectLinks()` (empty without `--lan`). The facade gives the pages `accessRequests()`, the list of the last `access.requests` message, announced as `access.requestsChanged { requests }`; `answerAccessRequest(address, decision)`, which only sends the answer, since the new list comes from the server; and `fetchConnectLinks()`. A failed answer is logged as a warning;
+  - `ServerEvents.connect(onMessage, params)` takes the query of the stream (`page` or `role`);
   - a `Logger` (`warn`, `error`);
   - optionally a `random` function for the random playback orders (§8.1), `Math.random` unless tests pass a seeded one.
 
@@ -1123,7 +1142,9 @@ Tracks are added from the Tracks tab of the playlist dialog (§9.9), so the menu
 
 | Item | Behavior |
 |---|---|
-| Regenerate Waves | `regenerateWaveforms` (§6.6) |
+| Regenerate waveforms | `regenerateWaveforms` (§6.6) |
+| Become host / Stop hosting | `becomeHost` / `stopHosting` (§6.10) |
+| Connect a phone | opens the QR code dialog (§9.16) |
 
 "Active" means `loading`, `playing` or `paused`. The plain items follow the playlist's fades and crossfade; with those off, each behaves like its "(Instant)" twin, except for cutting voices already fading out. Separators divide the groups.
 
@@ -1357,6 +1378,22 @@ In the footer: Play / Stop (`playSound`, or stopping all instances; it follows `
 - **No host.** A notice says no host is connected and every button is disabled; the page follows when one appears. It shows nothing from before the host left.
 - Everything changes only through the host's `remote.state` messages (§5.2), never by guessing.
 
+### 9.16 Connecting devices
+
+With `--lan` (§5.6) a phone pairs with the server by approval. Nothing here is shown or changes without `--lan`, except the menu item.
+
+**The requests banner** (`ui/access-requests-banner.js`, `data-access-requests`) sits under the header of the board, in every standalone or host page on the server. It is part of the page, not a layer over it, so the sounds stay usable while a request waits. It is hidden when there are no requests, and shows one card per request (`data-access-request="<address>"`): "A device asks to connect: <address>", the code (`data-access-code`) and two buttons, **Allow** (green) and **Deny** (`data-access-decision`). A button calls `answerAccessRequest` (§6.1); the card goes when the server's next `access.requests` message no longer lists it, so with two pages open, the first answer removes the card in both.
+
+**The connect page** (`public/connect.html`, `public/app/connect.js`) is what a device that is not allowed gets for `GET /` (§5.2). It shows the app name, then:
+- the code in large digits (`data-pairing-code`) and "Waiting for approval…" with a line telling the person to allow the device on the server, where the same code shows;
+- "Allowed", then a reload that opens the app, once the server allowed it;
+- "Denied" and "The request expired", each with **Try again**, which pairs afresh;
+- "Blocked" when the address was banned.
+
+`AccessRequester` (`logic/access-requester.js`) is its state machine, with a `ConnectApi` (`request()`, `poll()`) and a `Clock`: it asks to be paired with `POST /api/access/requests`, polls `GET /api/access/requests/mine` once a second (`POLL_MS`) and stops at the first answer that is final. `none` after the request means it expired. A failed request or poll is tried again. `connect.js` reads a `403` with the text "This address is blocked" as a ban. Any other `403` means the device was allowed in another tab while this page was open, so it reloads once per tab (`sessionStorage`), and an unexpected refusal never loops.
+
+**Connect a phone** (☰ menu, `ui/connect-phone-dialog.js`, `data-connect-phone`) is a dialog with a QR code (`canvas[data-qr-code]`) of the first address from `GET /api/access/links`, followed by every address as selectable text (`data-connect-link`). Without `--lan` it says to start the app with `--lan`. The code is drawn by `logic/qr-code.js` (`encodeQr(text) → boolean[][]`), a small encoder of its own, since the app has no runtime dependencies: byte mode, the lowest error correction (L), versions 1 to 6 (up to 134 bytes; a longer text throws `QrTooLongError`), and the mask with the fewest long runs. It is drawn with a four-module white border.
+
 ---
 
 ## 10. Project structure
@@ -1376,17 +1413,19 @@ src/
 	metadata/   index.js  id3.js  ogg.js  mpeg.js  binary-reader.js
 	remote/     remote-relay.js
 	http/       server.js  router.js  responses.js  static-files.js  media.js  range.js  mime.js  request-log.js  events.js
-	            library-json.js  library-changes.js  lan-access.js  remote-routes.js
+	            library-json.js  library-changes.js  lan-access.js  remote-routes.js  access-control.js  access-routes.js
 public/
-	index.html  favicon.svg
+	index.html  connect.html  favicon.svg
 	vendor/     tailwindcss-browser-<version>.js  tailwindcss-browser.LICENSE   (excluded from lint and type-checking)
 	app/
 		main.js  browser-clock.js       composition root and the browser Clock
+		connect.js                      the connect page's script (§9.16)
 		logic/                          no DOM, audio or Node APIs
 			ports.js  soundboard.js  commands.js  errors.js  event-emitter.js  library-model.js
 			playlist-player.js  playback-rules.js  transitions.js  order-strategies.js  play-history.js  problem-list.js
 			sound-player.js  buffer-cache.js  clip.js  volume.js  settings-sync.js  options-sync.js  sort.js
 			voice-monitor.js  fade-ramp.js  peaks.js  waveform-service.js  remote-state.js  remote-controller.js
+			access-requester.js  qr-code.js
 		audio/      web-audio-engine.js  web-audio-waveform-decoder.js
 		api/        backend-api.js  server-events.js
 		ui/         app.js  component.js  dom.js  icons.js  format.js  menus.js  position.js  external-changes-button.js
@@ -1396,6 +1435,7 @@ public/
 		            gain-control.js  gain-scale.js  debug-view.js  waveform-indicator.js  waveform-draw.js  waveform-canvas.js
 		            seconds-control.js  seconds-scale.js  range-control.js  range-scale.js  add-dialog.js  download-dialog.js
 		            hold-button.js  replace-host-dialog.js  remote-view.js  move-dialog.js  trash-button.js  trash-dialog.js  metadata-dialog.js  source-fields.js  problems-button.js  problems-dialog.js
+		            access-requests-banner.js  connect-phone-dialog.js
 test/
 	backend/    cli/  downloads/  http/  library/  metadata/
 	frontend/   logic tests, backend-api.test.js, ui/ (pure UI helpers)

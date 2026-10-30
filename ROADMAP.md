@@ -29,44 +29,7 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## Proposals
 
-### Approve LAN devices instead of typing a token
-
-**Goal.** Starting with `--lan`, the user opens the app on the server (the machine that runs it), then opens one unchanging address on the phone (`http://192.168.1.20:3000/`) and taps nothing else. Opening that page *starts pairing*: the phone shows a short code and "Waiting for approval". Every page on the server (host or standalone) shows the request: the phone's address and the same code. The user chooses **Allow** or **Deny**, and on Allow the phone opens the remote page by itself and stays approved for the rest of the run.
-
-Kept deliberately simple, for home networks:
-- **One code per address.** A second tab (or a reload) from the same address gets the same code and the same pending request, not a new one.
-- **Flooding bans at once.** An address that makes more than 5 pairing requests within a minute is banned immediately, with no prompt. A banned address gets `403` for everything until the server restarts.
-- The run token link stays as it is today (it still works with no page open). Wrong tokens count toward the same limit, so guessing the 6 digits gets an address banned after 5 tries.
-
-The code is not a secret; it lets the user see that the request on the screen is the one on the phone. The address is the identity of the device: on a home IPv4 network that is one device. Traffic is still plain HTTP, so this is for a home network, not a hostile one (as in `DESIGN.md` §5.2 today).
-
-**Design changes.**
-- **§1 (command line) and the Trust row of the constraints table in §1.1:** `--lan` prints one plain address per network address, then the fallback link with the token. Requests from other machines need approval or the token.
-- **§5.2, "LAN access":** `checkAccess` also lets through the cookie of an approved device (`soundboard-device`, `HttpOnly`, `SameSite=Strict`, a random secret per device, stored on the server only as a hash). Without a valid cookie or token, a request from another machine reaches only the *connect* routes and files: `GET /` answers the connect page instead of the remote page, plus the vendored Tailwind file, the favicon and the connect script. Banned addresses (matched after turning `::ffff:a.b.c.d` into `a.b.c.d`) get `403` for everything. New routes under `/api/access/`:
-  - `POST /api/access/requests` starts pairing for the caller's address, or finds the one already pending, and answers `{ status, code }`. This is the only request that counts toward the limit.
-  - `GET /api/access/requests/mine` (polled once a second by the connect page, not counted) answers `{ status: 'none' | 'pending' | 'allowed' | 'denied' | 'banned', code? }`. The answer that first reports `allowed` also sets the device cookie.
-  - `POST /api/access/requests/answer { address, decision: 'allow' | 'deny' }` is **for requests from this machine only**, like deletions and downloads today.
-- **§5.2 events:** the stream of a page carries `access.requests { requests: [{ address, code }] }`, the full list of pending requests, on connect and after every change. Remotes and unapproved devices never receive it. The first answer wins; the other pages see the request disappear.
-- **New §5.6 "Access control" (`src/http/access-control.js`):** `AccessControl` holds the pending requests (one per address, with a three-digit code that no other pending request uses), the approved devices and the banned addresses. Time and randomness are injected. A request expires after 2 minutes. More than 5 counted requests from an address within 60 s bans it. Everything lives in memory: a restart forgets approvals and bans, and a phone with an old cookie simply asks again.
-- **§6.1 and §6.10:** `Soundboard` gets `accessRequests()`, `answerAccessRequest(address, decision)` and the event `access.requestsChanged { requests }`. `BackendApi` and `ServerEvents` get the matching method and message, with fakes.
-- **New §9.16 "Connection requests":** on the server, a non-blocking banner at the top of the page, one card per request (address, code, **Allow**, **Deny**). On the phone, the connect page (`public/connect.html`, a small state machine in `public/app/logic/access-requester.js`) shows the code, "Waiting for approval…", and the outcomes "Denied", "Expired, try again" and "Blocked". On `allowed` it reloads into the remote page.
-- **§10 (project structure)** and the CLI output in §1 are updated. The routes table in §5.2 gets the new routes.
-- **TESTING.md:** manual checks on a real phone (pairing, two tabs, deny, flooding, restart).
-
-**Open questions** (answered by the owner; what was decided).
-1. *Wording.* The machine running the app is called the **server**, not the laptop.
-2. *Complexity.* As simple as possible: pairing starts when the page opens, one code per address, more than 5 requests per minute from an address bans it at once. No request ids, no device names, no devices list, no manual Ban button.
-3. *Still open, with recommended answers.* (a) Approvals and bans do not survive a restart. (b) With no page open on the server the phone shows "Open Soundboard on the server to answer", and the terminal prints one line per new request (`Connection request from 192.168.1.50, code 482`). (c) Interfaces named `docker*`, `br-*`, `veth*`, `virbr*` and `lo` are left out of the printed addresses.
-
-**Plan.**
-1. `AccessControl` — requests, codes, device secrets, bans, the rate limit, expiry. Tests with a fake clock and a seeded random.
-2. Access routes and `checkAccess` — tests with fake requests: unapproved devices reach only the connect page and its files; the cookie is set once on `allowed`; `answer` answers `403` to anything but this machine; banned addresses get `403` everywhere; the token link still works; wrong tokens count toward the limit.
-3. Events to pages — `access.requests` on connect and after each change, never to remotes.
-4. Connect page and `AccessRequester` — tests with a fake `ConnectApi` and clock for each outcome.
-5. Facade, `BackendApi`, fakes and the banner UI.
-6. CLI — plain addresses, the terminal line for a request, virtual interfaces left out.
-7. Manual checks in `TESTING.md`.
-8. `DESIGN.md` update in its own commit, and this proposal removed.
+None at the moment.
 
 ---
 
@@ -131,7 +94,7 @@ What the Playwright suite (`test/browser/`) does not check yet, collected when t
   - Deleting a playlist that is playing, and a deleted sound that is playing stopping.
 - **Metadata dialog.** All of it: the rows, source links and their rebuilding for YouTube, the origin and chapter fields, and saving.
 - **App menu and waveforms.**
-  - ☰ → "Regenerate Waves" counting every sound and track, and its stop button.
+  - ☰ → "Regenerate waveforms" counting every sound and track, and its stop button.
   - Failed waveforms counted in the indicator ("2 failed"), and one that cannot be decoded not stopping the rest.
   - Making none again on a second page load, and the waveform appearing in an open dialog when it is made.
 - **External changes beyond the basics.**
