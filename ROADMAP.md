@@ -62,7 +62,7 @@ Make the page usable on a phone or tablet.
 
 ### Browser test coverage still to write
 
-What the Playwright suite (`test/browser/`) does not check yet, collected when the first suite was finished. It covers the splash, playing and controlling playlists and sounds, errors, a suspended system, the tile menus (instant items, Reset, Stop All), what a stopped playlist remembers, repeating, Previous, seeking while paused and the time formats, the sound and playlist Customize dialogs (title, volume, start point, fades, order, repeat, when stopped, crossfade, saving), external changes, the header volumes, the waveform indicator and the basics of the trash. Everything below is open. Each group is a candidate for its own proposal. The part that only a real browser can check stays in the manual checklist ([`TESTING.md`](TESTING.md)), and so does `WebAudioEngine`.
+What the Playwright suite (`test/browser/`) does not check yet, collected when the first suite was finished. It covers the splash, playing and controlling playlists and sounds, errors, a suspended system, the tile menus (instant items, Reset, Stop All), what a stopped playlist remembers, repeating, Previous, seeking while paused and the time formats, the sound and playlist Customize dialogs (title, volume, start and end points with their handles and fields, fades, order, repeat, when stopped, crossfade, saving, the volume widget, and a sound that is already playing), external changes, the header volumes, the waveform indicator and the basics of the trash. Everything below is open. Each group is a candidate for its own proposal. The part that only a real browser can check stays in the manual checklist ([`TESTING.md`](TESTING.md)), and so does `WebAudioEngine`.
 
 - **Player bar and playlist playback.**
   - The random and shuffle orders (with a seeded `random` passed through `test-main.js`).
@@ -71,12 +71,6 @@ What the Playwright suite (`test/browser/`) does not check yet, collected when t
   - A track that is disabled in the track list (unsupported format), and the track list scrolling to the current track.
   - The footer layout: three bars per row, two rows, then scrolling.
   - A ninth instance of a sound replacing the oldest, and the difference between small (buffered) and large (streamed) sounds.
-- **Sound dialog.**
-  - Dragging the start and end handles, pressing the bar, the handles never crossing or coming closer than 10 ms, and the keyboard on the handles (arrows, Shift, Home and End).
-  - The start and end fields: `1,25 s`, clamping, nonsense marked red, Esc restoring the field.
-  - The fade-out and fades longer than the part that plays (the pulsing red bands).
-  - The volume widget: dragging, double-click to reset, the arrow, Home and End keys, `-inf`, nonsense marked red, Esc cancelling the edit only, and the orange boost state above 0 dB.
-  - The volume changing a sound that is already playing, and a copy already playing keeping the points it started with.
 - **Playlist dialog and tracks.**
   - The Tracks tab: customizing, playing, cropping and changing the volume of a single track, renaming tracks, and the track settings saving (`track.saved`, `track.saveFailed`).
   - Moving a track, and deleting a track or the whole playlist from the dialog, and the dialog closing when its playlist goes away.

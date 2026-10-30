@@ -57,6 +57,67 @@ export class CustomizeDialog {
 		await expect(this._dialog.locator('[data-gain-readout]').first()).toHaveText(reading.replace('-', '−'));
 	}
 
+	async #volumeBox() {
+		const box = await this._dialog.locator('[data-gain-track]').first().boundingBox();
+		if (!box) {
+			throw new Error('The volume bar is not on screen');
+		}
+		return box;
+	}
+
+	/**
+	 * Presses the volume bar and drags on, if asked.
+	 * @param {number} from where on the bar, from 0 (silent) to 1 (the boost's end); 0.75 is 0 dB
+	 * @param {number} [to] where to drag to before letting go
+	 */
+	async dragVolume(from, to = from) {
+		const box = await this.#volumeBox();
+		const y = box.y + box.height / 2;
+		await this._page.mouse.move(box.x + box.width * from, y);
+		await this._page.mouse.down();
+		await this._page.mouse.move(box.x + box.width * to, y, { steps: 5 });
+		await this._page.mouse.up();
+	}
+
+	async resetVolumeByDoubleClick() {
+		await this._dialog.locator('[data-gain-track]').first().dblclick();
+	}
+
+	/** Focuses the volume bar and presses keys on it, such as `ArrowUp` or `Home`. @param {...string} keys */
+	async pressOnVolume(...keys) {
+		await this._dialog.locator('[data-gain-track]').first().focus();
+		for (const key of keys) {
+			await this._page.keyboard.press(key);
+		}
+	}
+
+	/** Opens the dB field, unless it is open, and types, without confirming. @param {string} text */
+	async typeVolume(text) {
+		const readout = this._dialog.locator('[data-gain-readout]').first();
+		if (await readout.isVisible()) {
+			await readout.click();
+		}
+		await this._dialog.getByLabel('Volume in dB').first().fill(text);
+	}
+
+	async pressEnterInVolumeField() {
+		await this._dialog.getByLabel('Volume in dB').first().press('Enter');
+	}
+
+	async pressEscapeInVolumeField() {
+		await this._dialog.getByLabel('Volume in dB').first().press('Escape');
+	}
+
+	/** @param {boolean} invalid whether the open dB field is marked red */
+	async expectVolumeFieldInvalid(invalid) {
+		await expect(this._dialog.getByLabel('Volume in dB').first()).toHaveAttribute('data-invalid', String(invalid));
+	}
+
+	/** @param {boolean} boosted whether the readout shows the orange boost state above 0 dB */
+	async expectVolumeBoosted(boosted) {
+		await expect(this._dialog.locator('[data-gain-readout]').first()).toHaveAttribute('data-boost', String(boosted));
+	}
+
 	/**
 	 * @param {'fadeIn' | 'fadeOut' | 'crossfade'} name
 	 * @param {string} label
