@@ -31,49 +31,42 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ### Approve LAN devices instead of typing a token
 
-**Goal.** Starting with `--lan`, the user opens the app on the laptop, then opens one unchanging address on the phone (`http://192.168.1.20:3000/`) and taps nothing else. The phone shows a short code (three digits) and "Waiting for approval". Every page on the laptop (host or standalone) shows a request: the phone's address, a device name when one can be told, and the same code. The user compares the codes and chooses **Allow**, **Deny** or **Ban this address**. On Allow the phone opens the remote page by itself and stays approved for the rest of the run, so reloading or coming back later needs no new approval. The long run token stays as a fallback link (it also makes a request unnecessary when no page is open).
+**Goal.** Starting with `--lan`, the user opens the app on the server (the machine that runs it), then opens one unchanging address on the phone (`http://192.168.1.20:3000/`) and taps nothing else. Opening that page *starts pairing*: the phone shows a short code and "Waiting for approval". Every page on the server (host or standalone) shows the request: the phone's address and the same code. The user chooses **Allow** or **Deny**, and on Allow the phone opens the remote page by itself and stays approved for the rest of the run.
 
-What it protects against is the same as today: another device on the same network reaching the remote. The code is not a secret; it only lets the user tell two simultaneous requests apart. The secret is a random request id that only the requesting device holds, and the device secret that approval turns it into. Traffic is still plain HTTP on the LAN, so this is for a home network, not a hostile one (as in `DESIGN.md` §5.2 today).
+Kept deliberately simple, for home networks:
+- **One code per address.** A second tab (or a reload) from the same address gets the same code and the same pending request, not a new one.
+- **Flooding bans at once.** An address that makes more than 5 pairing requests within a minute is banned immediately, with no prompt. A banned address gets `403` for everything until the server restarts.
+- The run token link stays as it is today (it still works with no page open). Wrong tokens count toward the same limit, so guessing the 6 digits gets an address banned after 5 tries.
+
+The code is not a secret; it lets the user see that the request on the screen is the one on the phone. The address is the identity of the device: on a home IPv4 network that is one device. Traffic is still plain HTTP, so this is for a home network, not a hostile one (as in `DESIGN.md` §5.2 today).
 
 **Design changes.**
-- **§1 (command line) and the Trust row of the constraints table in §1.1:** `--lan` prints one unchanging address per network address, plus a fallback link with the long token (the 6-digit token goes back to 32 hex characters). Requests from other machines need approval or the token. Banned addresses get `403`.
-- **§5.2, "LAN access":** `checkAccess` is rewritten around an access list. A request from another machine passes with the cookie of an approved device or the run token. Without either, only the *connect* routes and files are reachable: `GET /` answers the small connect page instead of `403`, plus the vendored Tailwind file and the favicon. New routes, all under `/api/access/`:
-  - `POST /api/access/requests` creates (or resumes) a request and answers `{ id, code }`. The id is 128 random bits, kept by the phone in `sessionStorage`; it is the only way to collect the approval.
-  - `GET /api/access/requests/:id` (polled once a second) answers `{ status: 'pending' | 'allowed' | 'denied' | 'expired' | 'banned' }`. The answer that first reports `allowed` also sets the device cookie (`HttpOnly`, `SameSite=Strict`).
-  - `POST /api/access/requests/:id/answer { decision: 'allow' | 'deny' | 'ban' }` is **for requests from this machine only**, like deletions and downloads today. A remote can never approve itself or another device.
-- **§5.2 events:** the stream of a page (`/api/events?page=…`) carries `access.requests { requests: [{ id, code, address, device, at }] }`, the full list of pending requests, sent on connect and after every change (the same "current state on every connect" rule as the other messages). Remotes and unapproved devices never receive it. The first page to answer wins; the others see the request disappear.
-- **New §5.6 "Access control" (`src/http/access-control.js`):** `AccessControl` holds the pending requests, the approved devices (a random secret each, stored only as a hash) and the banned addresses. Time and randomness are injected. Limits: a request expires after 2 minutes; one pending request per address (a new one replaces the old); at most 5 pending requests in all (more get `429`); after a Deny the address waits 30 seconds before it can ask again. Codes are three digits not in use by another pending request. Banned addresses are matched after turning `::ffff:a.b.c.d` into `a.b.c.d`. Everything lives in memory: a restart forgets approvals and bans, and a phone with an old cookie simply asks again.
-- **§6.1 and §6.10:** `Soundboard` gets `accessRequests()`, `answerAccessRequest(id, decision)` and the events `access.requestsChanged { requests }`. `BackendApi` and `ServerEvents` get the matching method and message, with fakes for the tests. Any page that is standalone or host receives them, because both are pages on the laptop.
-- **New §9.16 "Connection requests":**
-  - On the laptop, a banner stack at the top of the page, one card per request (address, device, code, **Allow**, **Deny**, **Ban**). It is not a modal, so the sounds stay usable during a session.
-  - On the phone, the connect page (`public/connect.html`, its small state machine in `public/app/logic/access-requester.js`, testable with a fake `ConnectApi` and clock). It shows the code, "Waiting for approval…", and the outcomes "Denied", "Expired, try again" and "Blocked". On `allowed` it reloads into the remote page.
-- **§9.15** is unchanged. §9.0 (splash) is not shown to an unapproved device.
-- **§10 (project structure)** and the CLI output in §1 are updated for the new files. The routes table in §5.2 gets the new routes.
-- **TESTING.md:** manual checks on a real phone (approval flow, two phones at once, deny, ban, restart).
+- **§1 (command line) and the Trust row of the constraints table in §1.1:** `--lan` prints one plain address per network address, then the fallback link with the token. Requests from other machines need approval or the token.
+- **§5.2, "LAN access":** `checkAccess` also lets through the cookie of an approved device (`soundboard-device`, `HttpOnly`, `SameSite=Strict`, a random secret per device, stored on the server only as a hash). Without a valid cookie or token, a request from another machine reaches only the *connect* routes and files: `GET /` answers the connect page instead of the remote page, plus the vendored Tailwind file, the favicon and the connect script. Banned addresses (matched after turning `::ffff:a.b.c.d` into `a.b.c.d`) get `403` for everything. New routes under `/api/access/`:
+  - `POST /api/access/requests` starts pairing for the caller's address, or finds the one already pending, and answers `{ status, code }`. This is the only request that counts toward the limit.
+  - `GET /api/access/requests/mine` (polled once a second by the connect page, not counted) answers `{ status: 'none' | 'pending' | 'allowed' | 'denied' | 'banned', code? }`. The answer that first reports `allowed` also sets the device cookie.
+  - `POST /api/access/requests/answer { address, decision: 'allow' | 'deny' }` is **for requests from this machine only**, like deletions and downloads today.
+- **§5.2 events:** the stream of a page carries `access.requests { requests: [{ address, code }] }`, the full list of pending requests, on connect and after every change. Remotes and unapproved devices never receive it. The first answer wins; the other pages see the request disappear.
+- **New §5.6 "Access control" (`src/http/access-control.js`):** `AccessControl` holds the pending requests (one per address, with a three-digit code that no other pending request uses), the approved devices and the banned addresses. Time and randomness are injected. A request expires after 2 minutes. More than 5 counted requests from an address within 60 s bans it. Everything lives in memory: a restart forgets approvals and bans, and a phone with an old cookie simply asks again.
+- **§6.1 and §6.10:** `Soundboard` gets `accessRequests()`, `answerAccessRequest(address, decision)` and the event `access.requestsChanged { requests }`. `BackendApi` and `ServerEvents` get the matching method and message, with fakes.
+- **New §9.16 "Connection requests":** on the server, a non-blocking banner at the top of the page, one card per request (address, code, **Allow**, **Deny**). On the phone, the connect page (`public/connect.html`, a small state machine in `public/app/logic/access-requester.js`) shows the code, "Waiting for approval…", and the outcomes "Denied", "Expired, try again" and "Blocked". On `allowed` it reloads into the remote page.
+- **§10 (project structure)** and the CLI output in §1 are updated. The routes table in §5.2 gets the new routes.
+- **TESTING.md:** manual checks on a real phone (pairing, two tabs, deny, flooding, restart).
 
-**Open questions.**
-1. *What does the cookie of an approved device hold?* The long run token for everyone, or a secret of its own per device? **Recommended: a secret per device.** One leaked cookie then costs one device, and the devices list (question 8) can revoke a single one. The run token stays only as the fallback link; it is accepted wherever a device secret is.
-2. *Print the fallback link?* **Recommended: yes, always, on a second line below the plain address**, so the user has a way in when no page is open (for example a phone at the table before the laptop page is loaded). It exposes the token in the terminal only, as today.
-3. *Banner or modal?* **Recommended: a non-blocking banner**, because a request can arrive in the middle of a session and a modal would steal focus and clicks from the sounds.
-4. *How to name the device?* **Recommended: a short summary of the `User-Agent` ("iPhone · Safari", "Android · Chrome", "Windows PC · Firefox") plus the address, and nothing else.** Reverse DNS rarely answers on home networks and slows the request; a name typed by the phone's user is text from an untrusted device in the owner's face. Be aware that Android Chrome no longer reports the phone model, so "Android" is as specific as it gets.
-5. *Should approvals and bans survive a restart?* **Recommended: no.** It matches "banning only lasts while the server runs", needs no file in the user's audio directory, and re-approving once per session is a few seconds.
-6. *Limits.* Are 2 minutes to expire, 1 pending per address, 5 pending in all and a 30 s wait after Deny right? **Recommended as written.** They stop a device on the network from filling the user's screen with prompts, which is the one thing this design adds as an attack surface.
-7. *No page open when a device asks.* **Recommended: the phone shows "Open Soundboard on the laptop to answer", and the terminal prints one line** (`Connection request from 192.168.1.50 (Android · Chrome), code 482`). The request waits out its 2 minutes and a page that opens in that time shows it. The terminal gets no yes/no prompt.
-8. *A list of devices.* A mistaken Ban can otherwise only be undone by restarting. **Recommended: add a small "Devices" dialog in the ☰ menu** listing approved devices (Revoke) and banned addresses (Unban), as the last step, so it can be dropped without touching the rest.
-9. *Printed addresses.* The links today include Docker and bridge interfaces (`172.18.0.1`), which no phone can use. **Recommended: skip interfaces named `docker*`, `br-*`, `veth*`, `virbr*` and `lo`**, in the same step that prints the new links.
-10. *Banning an address that is not stable* (IPv6 privacy addresses change, and phones behind one NAT share one). **Recommended: accept it and say so in `DESIGN.md`.** On a home IPv4 network an address is one device, and the ban is only a convenience for the session.
+**Open questions** (answered by the owner; what was decided).
+1. *Wording.* The machine running the app is called the **server**, not the laptop.
+2. *Complexity.* As simple as possible: pairing starts when the page opens, one code per address, more than 5 requests per minute from an address bans it at once. No request ids, no device names, no devices list, no manual Ban button.
+3. *Still open, with recommended answers.* (a) Approvals and bans do not survive a restart. (b) With no page open on the server the phone shows "Open Soundboard on the server to answer", and the terminal prints one line per new request (`Connection request from 192.168.1.50, code 482`). (c) Interfaces named `docker*`, `br-*`, `veth*`, `virbr*` and `lo` are left out of the printed addresses.
 
 **Plan.**
-1. Restore the long token — the printed link carries 32 hex characters again; the CLI test is changed back.
-2. `AccessControl` (requests, codes, device secrets, bans, limits, expiry) — unit tests with a fake clock and a seeded random: code uniqueness, expiry, one request per address, the cap of 5, the Deny wait, ban matching (including `::ffff:`), secrets stored only as hashes, an approved secret and the run token both verify.
-3. Access routes and `checkAccess` — tests with fake requests: unapproved devices reach only the connect page and its files; the polling route sets the cookie only to the holder of the id; the `answer` route answers `403` to anything but this machine; banned addresses get `403` everywhere; the existing allow-list for approved devices is unchanged; the token link still redirects and sets a cookie.
-4. Events to pages — `access.requests` is sent to page streams on connect and after each change, never to remotes; the first answer removes the request for every page. Tested through the server with a real stream.
-5. Connect page and `AccessRequester` — tests with a fake `ConnectApi` and clock for each outcome; a Playwright test through the server with an injected "is this machine" check (`lan.isLocal`, default `isLoopbackAddress`) that makes the browser count as another machine.
-6. Facade, `BackendApi`, fakes and the banner UI — facade tests first; Playwright tests for Allow, Deny, Ban, two requests with different codes, and a request that expires.
-7. CLI — the plain address and the fallback link, the terminal line for a request, virtual interfaces left out; `main.test.js` updated.
-8. *(optional, question 8)* Devices dialog with Revoke and Unban — facade and Playwright tests.
-9. Manual checks in `TESTING.md`.
-10. `DESIGN.md` update in its own commit (the sections above), and this proposal removed.
+1. `AccessControl` — requests, codes, device secrets, bans, the rate limit, expiry. Tests with a fake clock and a seeded random.
+2. Access routes and `checkAccess` — tests with fake requests: unapproved devices reach only the connect page and its files; the cookie is set once on `allowed`; `answer` answers `403` to anything but this machine; banned addresses get `403` everywhere; the token link still works; wrong tokens count toward the limit.
+3. Events to pages — `access.requests` on connect and after each change, never to remotes.
+4. Connect page and `AccessRequester` — tests with a fake `ConnectApi` and clock for each outcome.
+5. Facade, `BackendApi`, fakes and the banner UI.
+6. CLI — plain addresses, the terminal line for a request, virtual interfaces left out.
+7. Manual checks in `TESTING.md`.
+8. `DESIGN.md` update in its own commit, and this proposal removed.
 
 ---
 
