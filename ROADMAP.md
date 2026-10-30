@@ -94,6 +94,13 @@ The metadata dialog (DESIGN.md §9.13) shows each file's `source` read-only. The
 
 - **Seam:** the dialog's rows come from one list of fields (`ui/source-fields.js`), each naming its source key, so each can become a field. `"edited"` is already reserved as the `origin` of a source typed in by hand (§2.3). The save would go through `LibraryEditor` and a `PATCH`, as the other options do (§5.1, §5.2).
 
+### A friendlier way to close the app
+
+Today the app stops with Ctrl+C or by closing the terminal, which cuts the music (DESIGN.md §12).
+
+- **Notes:** the console always prints a last line such as "Type exit and press Enter to close", and the app respects it. It should shut down as Ctrl+C does.
+- **Changes:** DESIGN.md §1 (output and "Press Ctrl+C to stop") and §3 (terminal input, since the prompts also read stdin).
+
 ---
 
 ## Decided against
