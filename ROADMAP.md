@@ -29,7 +29,53 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## Proposals
 
-None at the moment.
+### Starting without a folder
+
+**Goal.** Someone who doesn't use a terminal can start the app by double-clicking it. Started without an audio folder, the app opens the browser on a **start page**, where they pick the folder by clicking through their folders or from a list of recent ones. The questions the terminal asks today (nested folders, metadata titles) are asked on that page too. Once the folder is loaded, the page turns into the usual app. Starting with a folder works exactly as today.
+
+Browsers never tell a page the real path of a folder the user picks (`showDirectoryPicker()` and `<input webkitdirectory>` hide it), so the server lists the folders and the page only shows them.
+
+**Design changes.**
+- §1: the usage line becomes `node index.js [<audio-directory>] [--port <number>] [--lan [<address>]] [--no-open] [--verbose]`. Without a directory, the app prints `Choose a folder at http://127.0.0.1:3000` and opens that URL in the default browser (`open` on macOS, `cmd /c start "" <url>` on Windows, `xdg-open` elsewhere; a failure is ignored, since the line is printed anyway). `--no-open` turns that off. "It is always started by hand from a terminal" changes: double-clicking a launcher still opens a terminal window, which stays the window that runs the app and stops it when closed.
+- §1.1 Trust: the folder list shows the names of any folder on this machine, so the start page and its routes are only ever served on loopback, even with `--lan`, and only until a folder is loaded.
+- §3: the bootstrap is unchanged, but the start page provides a second `Prompter` and `Reporter`. The page reporter keeps what the terminal prints as structured entries (warnings, nested folders, titles, counts) instead of text, so the page can show them as lists. The terminal still prints everything as well.
+- §3.1 step 1: a missing directory is no longer a usage error.
+- New §3.7 **Starting without a folder.** `main.js` starts a small **start server** (`src/http/start-server.js`) on the app's port, with the request guard and static files but none of the app's routes. A `StartSession` (`src/startup/start-session.js`) moves through `choosing` → `loading` (the bootstrap runs, asking its questions through the page) → done. A validation error, a "No" or a folder that can't be read goes back to `choosing` with the log still shown, instead of ending the process. When the bootstrap succeeds, the start server closes and the usual server starts on the same port (§3.4), so the page keeps its URL and origin.
+- §5.2, the start server's routes:
+  - `GET /api/start`: the session's state, `{ state, log, question, folder }`; `question` is `{ id, text }` while one waits.
+  - `GET /api/start/folders?path=<absolute path>`: `{ path, parent, folders: [{ name, path, soundboard }], audioFiles, soundboard }`. Hidden folders (a leading `.`) are left out. `soundboard` is whether the folder has a `.soundboard` (one `stat` per subfolder). Without `path`: the starting places, with the home folder, its Music, Desktop and Documents folders when they exist, the drives on Windows (`C:\` and the others), `/Volumes/*` on macOS, `/media/<user>/*` and `/mnt/*` on Linux, and `/`.
+  - `POST /api/start/folder { path }`: starts the bootstrap. `409` unless `choosing`, `400` for a path that isn't an absolute path to a directory.
+  - `POST /api/start/answer { id, yes }`: answers the waiting question.
+- New §5.7 **Recent folders** (`src/startup/recent-folders.js`): the last 5 folders the app loaded, with or without the start page, newest first, in `recent.json` in the user's config folder: `%APPDATA%\Soundboard` on Windows, `~/Library/Application Support/Soundboard` on macOS, `$XDG_CONFIG_HOME/soundboard` or `~/.config/soundboard` elsewhere. This is the first file the app writes outside the audio folder. A folder that no longer exists is dropped when the list is read. A broken file counts as an empty list.
+- New §9.18 **Start page** (`public/start.html`, `public/app/start.js`; logic in `logic/start-flow.js` with a `StartApi` and a `Clock`, like `AccessRequester`, §9.16). It polls `GET /api/start` every 500 ms. It shows:
+  - **Recent folders**, as cards with the folder name over the full path, and a × to forget one. A click loads it.
+  - **A folder browser:** a path field you can paste into, Up, the starting places as buttons, and the current folder's subfolders, with soundboard folders marked. Under it, a summary line for the current folder: "Soundboard folder", or "No soundboard here yet: 3 folders, 12 audio files". The button reads **Open** for a soundboard folder and **Create soundboard here** otherwise, because a first run writes an options file next to every audio file.
+  - **While loading:** the log, plus the waiting question with **Yes** and **No**.
+  - **The handover:** once the start server is gone, any answer that isn't a start state (the next server answers `503` while initializing) sends the page to `/`, which shows the initializing page and then the app.
+- §10: `src/startup/`, `public/start.html`, the new `public/app/` files.
+
+**Open questions.**
+
+A. **Where the bootstrap questions are asked.** *(Recommended)* On the start page, as described, when the app was started without a folder. With a folder given, they stay in the terminal. The alternative is to keep them in the terminal always, which is less work but makes a double-clicking user look for a terminal window.
+
+B. **Two servers or one.** *(Recommended)* A separate start server, closed before the usual one starts. The usual server keeps its rule that it always has a library, and the folder routes can't leak into it. The cost is a moment when the port is free, which another program could take; then the app prints the usual "port in use" error and exits. The alternative is a `choosing` phase in the usual server, like the initializing one (§5.2). That is also the way to switching folders from the ☰ menu later, which this proposal leaves out.
+
+C. **Opening the browser when a folder is given.** *(Recommended)* No: only without a folder, so a terminal user's habits don't change. `--no-open` only matters in the no-folder case. The alternative is to always open it, with `--no-open` for both.
+
+D. **Recent folders.** *(Recommended)* Remembered as described, never opened by themselves. The page always waits for a click, so a removed drive or a wrong folder never starts a scan.
+
+E. **A first run from the page.** *(Recommended)* No extra question: the **Create soundboard here** label and the summary line say what will happen. The alternative is a confirmation dialog that names the number of files that will get an options file. That would protect against picking a large folder, such as the home folder, by mistake.
+
+F. **A nicer URL.** Chrome, Firefox and Edge send every `*.localhost` name to this machine by themselves, so `http://soundboard.localhost:3000` would work there with only the request guard's names extended (§5.2). Safari is the likely browser on the MacBook (§12), and I'm not sure it does. *(Recommended)* Keep `127.0.0.1` for now, and add `soundboard.localhost` as the printed and opened address only if a quick test in Safari works. Getting rid of `:3000` would need port 80, which needs root on Linux and often clashes with other programs, so I don't suggest it.
+
+**Plan.**
+1. Arguments: the optional directory and `--no-open`; `openBrowser(url)` in `src/cli/`, run through an injected function so tests don't open anything.
+2. `src/startup/recent-folders.js`: reading, adding, forgetting, the config folder per platform, a broken file.
+3. `src/startup/folders.js`: the starting places and a folder's listing, with hidden folders and the soundboard marks.
+4. `StartSession`: the states, the page `Prompter` and `Reporter`, going back to `choosing` on a failure or a "No".
+5. The start server and its routes, and the wiring in `main.js`: choose, bootstrap, close, start the usual server on the same port, remember the folder.
+6. The start page and `logic/start-flow.js`.
+7. Tests for the parts above, `TESTING.md` (opening the browser and the drives on each platform, the handover), then `DESIGN.md`.
 
 ---
 
