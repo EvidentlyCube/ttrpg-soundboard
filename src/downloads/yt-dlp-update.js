@@ -81,6 +81,41 @@ export function readUpdateOutput(lines) {
 }
 
 /**
+ * The startup line about the update.
+ * @param {YtDlpUpdate} update
+ * @returns {{ text: string, warning: boolean }}
+ */
+export function describeUpdate(update) {
+	switch (update.state) {
+		case 'current':
+			return { text: `yt-dlp is up to date${update.current ? ` (${update.current})` : ''}.`, warning: false };
+		case 'updated':
+			return { text: `yt-dlp updated to ${update.latest ?? 'the latest version'}.`, warning: false };
+		case 'outdated':
+			return { text: outdatedMessage(update), warning: true };
+		case 'failed':
+			return { text: `Could not check for a yt-dlp update: ${update.error}`, warning: true };
+	}
+}
+
+/**
+ * The problem an update that failed leaves behind (DESIGN.md §5.1).
+ * @param {YtDlpUpdate} update
+ * @returns {import('../library/problems.js').Problem | null}
+ */
+export function updateProblem(update) {
+	if (update.state !== 'outdated') {
+		return null;
+	}
+	return { id: 'ytdlp-outdated:yt-dlp', kind: 'ytdlp-outdated', severity: 'warning', path: 'yt-dlp', message: outdatedMessage(update) };
+}
+
+/** @param {YtDlpUpdate} update */
+function outdatedMessage(update) {
+	return `yt-dlp ${update.latest} is available (installed: ${update.current}), but the update failed: ${update.error}`;
+}
+
+/**
  * The version in a line such as `Latest version: stable@2026.10.26 from yt-dlp/yt-dlp`, without its channel.
  * @param {string[]} lines
  * @param {string} prefix

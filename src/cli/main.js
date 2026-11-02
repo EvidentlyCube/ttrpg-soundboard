@@ -5,6 +5,7 @@ import { createInterface } from 'node:readline';
 import { runProcess } from '../downloads/process-runner.js';
 import { describeTools, findTools, missingTools } from '../downloads/tools.js';
 import { clearWorkspace } from '../downloads/workspace.js';
+import { describeUpdate, updateYtDlp } from '../downloads/yt-dlp-update.js';
 import { startServer } from '../http/server.js';
 import { BootstrapService } from '../library/bootstrap-service.js';
 import { ChangeWatcher } from '../library/change-watcher.js';
@@ -66,9 +67,24 @@ export async function main(argv, { input, output, errorOutput, env, waitForShutd
 	}
 
 	await clearWorkspace(root);
-	const tools = await findTools(run);
-	const missing = missingTools(tools);
-	output.write(`${missing.length > 0 ? colors.yellow(describeTools(tools)) : describeTools(tools)}\n`);
+	// Runs while the server shows the initializing page (DESIGN.md §3.4).
+	const prepareDownloads = async () => {
+		let tools = await findTools(run);
+		/** @param {string} text @param {boolean} warning */
+		const say = (text, warning) => output.write(`${warning ? colors.yellow(text) : text}\n`);
+		say(describeTools(tools), missingTools(tools).length > 0);
+		if (tools.ytDlp === null) {
+			return { tools, update: null, run };
+		}
+		output.write('Checking for a yt-dlp update…\n');
+		const update = await updateYtDlp(run);
+		const line = describeUpdate(update);
+		say(line.text, line.warning);
+		if (update.state === 'updated') {
+			tools = await findTools(run);
+		}
+		return { tools, update, run };
+	};
 
 	/** @type {{ options: import('../http/server.js').LanOptions, addresses: string[] } | undefined} */
 	let lan;
@@ -96,7 +112,7 @@ export async function main(argv, { input, output, errorOutput, env, waitForShutd
 			logError: (error) => errorOutput.write(`${error instanceof Error ? error.stack : String(error)}\n`),
 			logRequest: args.verbose ? (line) => output.write(`${line}\n`) : undefined,
 			watcher,
-			downloads: { tools, run },
+			downloads: prepareDownloads,
 			lan: lan?.options,
 			refresh: () => watcher.refresh(() => {
 				output.write('Refreshing after external changes…\n');
@@ -114,6 +130,7 @@ export async function main(argv, { input, output, errorOutput, env, waitForShutd
 	}
 
 	output.write(`Soundboard running at ${server.url}\n`);
+	await server.ready;
 	if (lan) {
 		writeLanLinks(output, colors, lan.addresses, args.port);
 	}

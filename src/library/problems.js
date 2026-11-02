@@ -54,6 +54,8 @@ function problemOf(kind, severity, path, message) {
 export class Problems {
 	/** @type {Problem[]} */
 	#list;
+	/** @type {Problem[]} */
+	#lasting = [];
 	/** @type {Set<(list: Problem[]) => void>} */
 	#listeners = new Set();
 
@@ -66,9 +68,21 @@ export class Problems {
 		return this.#list;
 	}
 
-	/** @param {Problem[]} list */
+	/**
+	 * Replaces the library's problems; lasting ones stay.
+	 * @param {Problem[]} list
+	 */
 	replace(list) {
-		this.#set(list);
+		this.#set([...this.#lasting, ...list]);
+	}
+
+	/**
+	 * Adds a problem that isn't about the library, such as an outdated yt-dlp, so a refresh keeps it.
+	 * @param {Problem} problem
+	 */
+	addLasting(problem) {
+		this.#lasting.push(problem);
+		this.#set([problem, ...this.#list.filter((known) => known.id !== problem.id)]);
 	}
 
 	/**
@@ -78,12 +92,14 @@ export class Problems {
 	dismiss(id) {
 		const known = this.#list.some((problem) => problem.id === id);
 		if (known) {
+			this.#lasting = this.#lasting.filter((problem) => problem.id !== id);
 			this.#set(this.#list.filter((problem) => problem.id !== id));
 		}
 		return known;
 	}
 
 	dismissAll() {
+		this.#lasting = [];
 		this.#set([]);
 	}
 
@@ -92,7 +108,10 @@ export class Problems {
 	 * @param {string} path
 	 */
 	removeFor(path) {
-		this.#set(this.#list.filter((problem) => problem.path !== path && !problem.path.startsWith(`${path}/`)));
+		this.#set(this.#list.filter((problem) => (
+			this.#lasting.includes(problem)
+			|| (problem.path !== path && !problem.path.startsWith(`${path}/`))
+		)));
 	}
 
 	/**

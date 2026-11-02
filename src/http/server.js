@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { DownloadService } from '../downloads/download-service.js';
@@ -5,6 +6,7 @@ import { Ffmpeg } from '../downloads/ffmpeg.js';
 import { httpLinkFetcher } from '../downloads/link-fetcher.js';
 import { runProcess } from '../downloads/process-runner.js';
 import { YtDlp } from '../downloads/yt-dlp.js';
+import { updateProblem } from '../downloads/yt-dlp-update.js';
 import { RemoteRelay } from '../remote/remote-relay.js';
 import { LibraryEditor } from '../library/library-editor.js';
 import { Problems } from '../library/problems.js';
@@ -17,7 +19,13 @@ import { logWhenDone } from './request-log.js';
 import { createRequestHandler } from './router.js';
 
 export const PUBLIC_DIR = join(import.meta.dirname, '..', '..', 'public');
+const PACKAGE_JSON = join(import.meta.dirname, '..', '..', 'package.json');
 const LOOPBACK = '127.0.0.1';
+
+/** @returns {Promise<string>} the app's version, from `package.json` */
+async function appVersion() {
+	return /** @type {{ version: string }} */ (JSON.parse(await readFile(PACKAGE_JSON, 'utf8'))).version;
+}
 
 /**
  * @typedef {object} ServerOptions
@@ -32,7 +40,9 @@ const LOOPBACK = '127.0.0.1';
  * 	app's own saves; without it there never are any
  * @property {() => Promise<import('../library/bootstrap-service.js').RefreshOutcome>} [refresh] rebuilds the library
  * 	after external changes; without it `POST /api/refresh` is unavailable
- * @property {DownloadPorts} [downloads] without it, downloads are not available
+ * @property {DownloadPorts | (() => Promise<DownloadPorts>)} [downloads] without it, downloads are not available. As a
+ * 	function it is called once the server listens, and the server answers with the initializing page until it is done
+ * 	(DESIGN.md §3.4)
  * @property {LanOptions} [lan] without it, the server listens on the loopback address only
  */
 
@@ -48,6 +58,8 @@ const LOOPBACK = '127.0.0.1';
 /**
  * @typedef {object} DownloadPorts
  * @property {import('../downloads/tools.js').Tools} tools what startup found
+ * @property {import('../downloads/yt-dlp-update.js').YtDlpUpdate | null} [update] what `yt-dlp -U` did at startup,
+ * 	null when it didn't run
  * @property {import('../downloads/process-runner.js').ProcessRunner} [run]
  * @property {import('../downloads/link-fetcher.js').LinkFetcher} [fetcher]
  */
@@ -55,7 +67,8 @@ const LOOPBACK = '127.0.0.1';
 /**
  * Starts the HTTP server on the loopback address. Rejects with the listen error, such as EADDRINUSE.
  * @param {ServerOptions} options
- * @returns {Promise<{ url: string, close: () => Promise<void> }>}
+ * @returns {Promise<{ url: string, ready: Promise<void>, close: () => Promise<void> }>} `ready` resolves once the
+ * 	server stops initializing
  */
 export async function startServer({ library, settings, problems = [], port, publicDir = PUBLIC_DIR, logError, logRequest, watcher, refresh, downloads, lan }) {
 	const updateFile = watcher?.updateFile;
@@ -89,6 +102,8 @@ export async function startServer({ library, settings, problems = [], port, publ
 		libraryChanges: new LibraryChanges(),
 		trash,
 		problems: new Problems(problems),
+		info: { app: await appVersion(), tools: { ytDlp: null, ffmpeg: null }, update: null },
+		initializing: typeof downloads === 'function',
 		refreshing: null,
 		refresh: refresh && (async () => {
 			const outcome = await refresh();
@@ -99,8 +114,14 @@ export async function startServer({ library, settings, problems = [], port, publ
 			return outcome;
 		}),
 	};
-	if (downloads) {
-		const { tools, run = runProcess, fetcher = httpLinkFetcher } = downloads;
+	/** @param {DownloadPorts} ports */
+	const startDownloads = ({ tools, update = null, run = runProcess, fetcher = httpLinkFetcher }) => {
+		context.info.tools = tools;
+		context.info.update = update;
+		const problem = update && updateProblem(update);
+		if (problem) {
+			context.problems?.addLasting(problem);
+		}
 		context.downloads = new DownloadService({
 			root: library.root,
 			tools,
@@ -111,6 +132,9 @@ export async function startServer({ library, settings, problems = [], port, publ
 			editor: () => context.editor,
 			writeFiles,
 		});
+	};
+	if (downloads && typeof downloads !== 'function') {
+		startDownloads(downloads);
 	}
 	const handle = createRequestHandler(context);
 	const server = createServer((request, response) => {
@@ -133,8 +157,15 @@ export async function startServer({ library, settings, problems = [], port, publ
 	if (context.access && lan) {
 		context.access.links = lan.addresses.map((name) => `http://${name.includes(':') ? `[${name}]` : name}:${actualPort}/`);
 	}
+	let ready = Promise.resolve();
+	if (typeof downloads === 'function') {
+		ready = downloads().then(startDownloads, logError).finally(() => {
+			context.initializing = false;
+		});
+	}
 	return {
 		url: `http://${LOOPBACK}:${actualPort}`,
+		ready,
 		close: () => new Promise((resolve) => {
 			server.close(() => resolve());
 			// Media streams and keep-alive connections would otherwise hold the server open.

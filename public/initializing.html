@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Soundboard</title>
+	<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+	<style>
+		html { background: #0e1014; color: #e7e9ee; color-scheme: dark; }
+	</style>
+	<script src="/vendor/tailwindcss-browser-4.3.3.js"></script>
+	<style type="text/tailwindcss">
+		@theme {
+			--color-surface: #0e1014;
+			--color-text: #e7e9ee;
+			--color-muted: #8b93a3;
+			--font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+		}
+
+		@layer base {
+			body {
+				@apply h-full bg-surface font-sans text-text antialiased;
+			}
+		}
+	</style>
+</head>
+<body>
+	<main class="flex h-full flex-col items-center justify-center gap-2">
+		<p class="text-xl font-semibold">Initializing…</p>
+		<p class="text-sm text-muted">Checking yt-dlp and ffmpeg. The app opens by itself once that is done.</p>
+	</main>
+	<script type="module">
+		// The server answers 503 until it is ready (DESIGN.md §3.4); any other answer means the app can load.
+		async function poll() {
+			try {
+				const response = await fetch('/api/info', { cache: 'no-store' });
+				if (response.status !== 503) {
+					location.reload();
+					return;
+				}
+			} catch {
+				// The server may be restarting; keep trying.
+			}
+			setTimeout(poll, 500);
+		}
+		poll();
+	</script>
+</body>
+</html>
