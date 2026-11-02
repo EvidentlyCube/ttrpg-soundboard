@@ -245,7 +245,10 @@ Playlists without tracks take no further part: no question is asked about their 
 
 Bootstrap reports how many options files it created or updated and how many playlists and sounds were loaded. It returns an in-memory `Library` (§5.1), a `SettingsStore` loaded from `.soundboard`, and the scan it built them from, which the change watcher compares against (§5.3). The server keeps only these, never file contents. A refresh builds them again (§3.6).
 
-Then `src/cli/main.js` empties `.soundboard-downloads/`, since jobs never outlive the server (§5.4), and looks for the download tools (`findTools`: `yt-dlp --version`, `ffmpeg -version`). It prints `Downloads: yt-dlp 2026.08.19, ffmpeg 7.1.1`, or in yellow `Downloads are off: ffmpeg was not found.` A missing tool never stops the app.
+Then `src/cli/main.js` empties `.soundboard-downloads/`, since jobs never outlive the server (§5.4), and starts the server, which prints `Soundboard running at …` but stays **initializing** until the download tools are ready (§5.2):
+1. It looks for the tools (`findTools`: `yt-dlp --version`, `ffmpeg -version`) and prints `Downloads: yt-dlp 2026.08.19, ffmpeg 7.1.1`, or in yellow `Downloads are off: ffmpeg was not found.` A missing tool never stops the app.
+2. When yt-dlp was found, it prints `Checking for a yt-dlp update…` and runs `yt-dlp -U` (`updateYtDlp`, §5.4), which installs a newer version when it is allowed to write its own file. It prints `yt-dlp is up to date (2026.10.26).` or `yt-dlp updated to 2026.10.26.`, and after an update looks the versions up again. In yellow, it prints `yt-dlp 2026.10.26 is available (installed: 2026.10.21), but the update failed: Insufficient permissions to write to /usr/bin`, which also becomes a problem (§5.1), or `Could not check for a yt-dlp update: …`, which does not.
+3. The server leaves the initializing state, and the LAN links and the stop hint follow.
 
 ### 3.5 Durations
 
@@ -339,7 +342,8 @@ Settings  { volumes: { master, music, sfx } }   // held by SettingsStore, saved 
   - A waveform is **stale** when the audio file's size or modified time no longer matches its header, and a file with a bad magic, count or length is unusable. Both count as missing and are overwritten when made again. Writes go through a temporary file and a rename.
   - `missing()` lists the ids that have no current waveform: sounds in library order, then tracks in playlist order. `read(id)` returns the peaks or `null`; `write(id, peaks)` takes exactly 2048 bytes (`InvalidWaveformError` otherwise). An id that is not a sound or track is an `UnknownWaveformFileError`. Deleting a `.wf` file is harmless: it is made again.
 - **Problems** (`problems.js`). `startupProblems(warnings, library)` turns what bootstrap found into a list of `{ id, kind, severity, path, message }`: the scan's warnings (§3.1 step 4: `unsupported-audio`, `orphan-options`, `symlink`, `empty-playlist`) as `warning`s, and every sound or track whose `duration` is `null` (§3.5, kind `unknown-duration`) as an `error`. The `id` is `<kind>:<path>`, so the same problem keeps its id. A `ready` outcome of bootstrap and of a refresh carries the list (`problems`); the terminal output is unchanged.
-  - `Problems` holds the list in the server, replaced by every refresh. `dismiss(id)` reports whether it knew the problem, `dismissAll()` empties it, `removeFor(path)` forgets a deleted or moved file's problems, and a directory's with everything in it. `onChange` fires only when the list really changed. Nothing is saved to disk: dismissed problems come back at the next start or refresh if the files are still wrong.
+  - A failed yt-dlp update (§3.4, §5.4) is a `warning` of kind `ytdlp-outdated` with the path `yt-dlp` and the terminal's message. It is added with `addLasting`, since it isn't about the library.
+  - `Problems` holds the list in the server, replaced by every refresh except for its lasting problems, which stay first. `dismiss(id)` reports whether it knew the problem, `dismissAll()` empties it, `removeFor(path)` forgets a deleted or moved file's problems, and a directory's with everything in it. `onChange` fires only when the list really changed. Nothing is saved to disk: dismissed problems come back at the next start or refresh if the files are still wrong.
   - Invalid options files are not problems: they stop a start (§3.1 step 3) or a refresh (§3.6), which has its own dialog (§9.1).
 - `SettingsStore` keeps the settings in memory and writes them back to `.soundboard` with the same read-merge-write and atomic rename as the options files (§2.3). Writes are **serialized**: one in flight at a time, and changes made meanwhile are written together by one follow-up write, so the file always ends with the newest values.
 
@@ -350,6 +354,7 @@ The server knows nothing about playback state.
 | Method | Path | Response |
 |---|---|---|
 | GET, HEAD | `/` and other paths | Files from `public/` (`/` serves `index.html`), with a MIME map and `Cache-Control: no-cache`. 404 for anything missing or outside `public/`. |
+| GET | `/api/info` | `{ app, ytDlp: { version, update }, ffmpeg }`: `package.json`'s version, and each tool's version, `null` when it is missing. `update` is what `yt-dlp -U` did at startup (§5.4), `null` when it didn't run. |
 | GET | `/api/library` | JSON (below) |
 | GET | `/api/settings` | `{ "volumes": { "master": 1, "music": 0.8, "sfx": 1 } }` |
 | PUT | `/api/settings/volumes` | Body `{ master?, music?, sfx? }` (numbers in `0..1`). Merged into the settings and saved; returns the full settings. `400` for invalid JSON, a non-object, an out-of-range value or an unknown key. `413` for bodies over 16 KB. |
@@ -385,6 +390,7 @@ The server knows nothing about playback state.
 
 - API responses are JSON with `Cache-Control: no-store`. Errors are `{ "error": "message" }`.
 - A known path with the wrong method gets `405` with an `Allow` header. Unknown `/api/…` paths get a JSON `404`.
+- **While initializing** (§3.4), right after the request guard: every `/api/…` request gets `503 { "error": "The app is starting." }` with `Retry-After: 1`, and every page path (`/`, a path ending in `.html`, or one without an extension) gets `public/initializing.html`. Other files, such as the Tailwind build and the icon, are served as usual. That dark page reads "Initializing…" and polls `GET /api/info` every 500 ms; the first answer that isn't `503` reloads it into the app (or the connect page). `startServer` takes `downloads` as a function for this: it is called once the server listens, and the server initializes until it resolves. Its result is `{ tools, update, run }`, and the server's `ready` promise resolves once it has been applied.
 - Every route that reads a JSON body (`PUT`, `PATCH` and `POST` above) answers `415 { "error": "Send application/json" }` for any other `Content-Type` (parameters and case are ignored). The waveform `PUT` needs `application/octet-stream` the same way.
 
 **Request guard** (`request-guard.js`). Any web page open in the same browser can send requests to `127.0.0.1`, and a page that rebinds its DNS name to it can even read the answers. `checkRequest` runs first for every request, whatever its path (API, media and static files alike), and answers `403 { "error": "Request not allowed" }` when:
@@ -512,6 +518,14 @@ Each path segment of a media URL is percent-encoded separately. `source` is the 
 
 **Cancelling** aborts the running step: the program is killed, or the fetch is aborted. The items not finished are marked `cancelled`, and files already added stay. **Dismissing** a running job cancels it; dismissing a finished one forgets it (`download` with `job: null`).
 
+**Updating yt-dlp** (`yt-dlp-update.js`). `updateYtDlp(run)` runs `yt-dlp -U` once at startup (§3.4), before any download can start. yt-dlp updates itself when it may write its own file; installed by a package manager or with `pip`, it can't, and says so. It never rejects, and resolves with `{ state, current, latest, error }`, read from every line yt-dlp printed except transient ones (`readUpdateOutput`):
+- `current`: a line contains `is up to date`.
+- `updated`: a line starts with `Updated yt-dlp to`.
+- `outdated`: there are `Current version:` and `Latest version:` lines but no update, as when the permissions are missing. `error` is the last `ERROR:` line without its prefix.
+- `failed`: anything else, such as being offline, with the last `ERROR:` line (or the last line) as `error`. yt-dlp is killed after 60 s (`UPDATE_TIMEOUT_MS`), which also counts as `failed`.
+
+Versions are read from labels such as `stable@2026.10.26 from yt-dlp/yt-dlp`, without the channel, so a nightly build keeps its full version (`2026.10.21.232853`). `describeUpdate` gives the terminal line and `updateProblem` the problem an `outdated` result leaves (§5.1).
+
 ### 5.5 Remote relay (`src/remote/`)
 
 `RemoteRelay` connects the pages that play with the remotes. It holds no audio and no library, only who is the host and the last state it sent.
@@ -556,6 +570,7 @@ UI layer (DOM)  ──commands──▶  Soundboard (logic facade)  ──▶  A
   - for deletions and moves (§6.8), `deleteItem({ kind, id })` and `moveItem(id, to)`, which resolve with the server's `changes` and reject with its message alone;
   - for the trash (§6.8), `fetchTrash()`, `restoreFromTrash(target)`, which resolves with the `changes` like the two above, and `deleteFromTrash(target)`, where `target` is `{ kind, id }` or `'all'`;
   - for problems (§6.9), `dismissProblem(id)` and `dismissAllProblems()`;
+  - for the Info dialog (§9.17), `fetchInfo()`, the answer of `GET /api/info`, which the facade passes on as `fetchInfo()`;
   - for the host role (§6.10), the `BackendApi` methods `fetchHostStatus()`, `claimHost(pageId, { replace })` ("ok" or "taken"), `releaseHost(pageId, { keepalive })`, `sendRemoteState(pageId, state)` and `sendRemoteCommand(command)`;
   - for pairing devices (§5.6, §9.16), the `BackendApi` methods `answerAccessRequest(address, decision)` and `fetchConnectLinks()` (empty without `--lan`). The facade gives the pages `accessRequests()`, the list of the last `access.requests` message, announced as `access.requestsChanged { requests }`; `answerAccessRequest(address, decision)`, which only sends the answer, since the new list comes from the server; and `fetchConnectLinks()`. A failed answer is logged as a warning;
   - `ServerEvents.connect(onMessage, params)` takes the query of the stream (`page` or `role`);
@@ -1146,6 +1161,7 @@ Tracks are added from the Tracks tab of the playlist dialog (§9.9), so the menu
 | Regenerate waveforms | `regenerateWaveforms` (§6.6) |
 | Become host / Stop hosting | `becomeHost` / `stopHosting` (§6.10) |
 | Connect a phone | opens the QR code dialog (§9.16) |
+| Info | opens the Info dialog (§9.17) |
 
 "Active" means `loading`, `playing` or `paused`. The plain items follow the playlist's fades and crossfade; with those off, each behaves like its "(Instant)" twin, except for cutting voices already fading out. Separators divide the groups.
 
@@ -1345,7 +1361,7 @@ In the footer: Play / Stop (`playSound`, or stopping all instances; it follows `
 
 `ui/problems-dialog.js`, opened by the Problems button (§9.1), titled "Problems". It lists everything `getProblems()` returns (§6.9), errors first and otherwise in that order.
 
-- **Rows** are cards with a left border in red (error) or yellow (warning), carrying `data-problem` (the id) and `data-severity`. Each shows the kind in small capitals ("Unknown duration", "Unsupported file", "Orphan options file", "Symbolic link", "Empty playlist", "Would not play", "Not saved", "Download failed", "Could not become the host", "Not the host any more"), with " ×N" when it happened more than once, then the path (ellipsis, full path as a tooltip), then the message in muted text, and a **Dismiss** button.
+- **Rows** are cards with a left border in red (error) or yellow (warning), carrying `data-problem` (the id) and `data-severity`. Each shows the kind in small capitals ("Unknown duration", "Unsupported file", "Orphan options file", "Symbolic link", "Empty playlist", "Would not play", "Not saved", "Download failed", "Could not become the host", "Not the host any more", "yt-dlp outdated"), with " ×N" when it happened more than once, then the path (ellipsis, full path as a tooltip), then the message in muted text, and a **Dismiss** button.
 - **Footer.** **Dismiss all**, at the right, below the scrolling list.
 - **Following changes.** The list is drawn again on every `problems.changed`, and the dialog closes itself once nothing is left.
 
@@ -1395,6 +1411,12 @@ With `--lan` (§5.6) a phone pairs with the server by approval. Nothing here is 
 
 **Connect a phone** (☰ menu, `ui/connect-phone-dialog.js`, `data-connect-phone`) is a dialog with a QR code (`canvas[data-qr-code]`) of the first address from `GET /api/access/links`, followed by every address as selectable text (`data-connect-link`). Without `--lan` it says to start the app with `--lan`. The code is drawn by `logic/qr-code.js` (`encodeQr(text) → boolean[][]`), a small encoder of its own, since the app has no runtime dependencies: byte mode, the lowest error correction (L), versions 1 to 6 (up to 134 bytes; a longer text throws `QrTooLongError`), and the mask with the fewest long runs. It is drawn with a four-module white border.
 
+### 9.17 Info dialog
+
+`ui/info-dialog.js`, opened from the ☰ menu (§9.3), titled "Info" (`data-info`). It loads `fetchInfo()` (§6.1) each time it opens, showing "Loading…" meanwhile and an error line if that fails. Then a two-column list has one row per program (`data-info-row` = `app`, `yt-dlp`, `ffmpeg`): the name in muted text, then the version, or "Not installed" in muted text.
+
+Under yt-dlp's version, a small line (`data-update-state`) says what `yt-dlp -U` did at startup (§5.4): "Up to date", "Updated at startup from 2026.10.21", "2026.10.26 available, but the update failed" in yellow, or "Could not check for updates"; the last two have the error as a tooltip. There is no such line when yt-dlp is missing.
+
 ---
 
 ## 10. Project structure
@@ -1410,13 +1432,13 @@ src/
 	            options-store.js  settings-store.js  library.js  library-editor.js  durations.js  waveform-store.js
 	            change-watcher.js  tree-snapshot.js  file-moves.js  trash.js  sources.js  problems.js
 	downloads/  download-service.js  probe.js  yt-dlp.js  ffmpeg.js  link-fetcher.js  process-runner.js  line-splitter.js
-	            tools.js  file-names.js  workspace.js  errors.js
+	            tools.js  yt-dlp-update.js  file-names.js  workspace.js  errors.js
 	metadata/   index.js  id3.js  ogg.js  mpeg.js  binary-reader.js
 	remote/     remote-relay.js
 	http/       server.js  router.js  responses.js  static-files.js  media.js  range.js  mime.js  request-log.js  events.js
 	            library-json.js  library-changes.js  lan-access.js  remote-routes.js  access-control.js  access-routes.js
 public/
-	index.html  connect.html  favicon.svg
+	index.html  connect.html  initializing.html  favicon.svg
 	vendor/     tailwindcss-browser-<version>.js  tailwindcss-browser.LICENSE   (excluded from lint and type-checking)
 	app/
 		main.js  browser-clock.js       composition root and the browser Clock
@@ -1436,7 +1458,7 @@ public/
 		            gain-control.js  gain-scale.js  debug-view.js  waveform-indicator.js  waveform-draw.js  waveform-canvas.js
 		            seconds-control.js  seconds-scale.js  range-control.js  range-scale.js  add-dialog.js  download-dialog.js
 		            hold-button.js  replace-host-dialog.js  remote-view.js  move-dialog.js  trash-button.js  trash-dialog.js  metadata-dialog.js  source-fields.js  problems-button.js  problems-dialog.js
-		            access-requests-banner.js  connect-phone-dialog.js
+		            access-requests-banner.js  connect-phone-dialog.js  info-dialog.js
 test/
 	backend/    cli/  downloads/  http/  library/  metadata/
 	frontend/   logic tests, backend-api.test.js, ui/ (pure UI helpers)
