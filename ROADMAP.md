@@ -29,36 +29,30 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## Proposals
 
-### yt-dlp update check and the Info dialog
+### yt-dlp update and the Info dialog
 
-**Goal.** At startup, when yt-dlp is installed, the app checks whether a newer yt-dlp exists, since an outdated yt-dlp is the usual reason YouTube downloads break. If one does, a warning appears in the Problems dialog. A new **Info** item in the ☰ app menu opens a dialog that shows the app's version, yt-dlp's version and whether an update exists, and ffmpeg's version.
+**Goal.** At startup, when yt-dlp is installed, the app runs `yt-dlp -U`, since an outdated yt-dlp is the usual reason YouTube downloads break. If a newer version exists and the update fails (usually because it needs `sudo`), a warning appears in the Problems dialog. A new **Info** item in the ☰ app menu opens a dialog that shows the app's version, yt-dlp's version and its update status, and ffmpeg's version.
 
 **Design changes.**
-- §3.4: after `findTools`, when yt-dlp was found, the update check starts in the background. It never delays or stops the start. When it finds an update, the terminal prints a yellow line: `yt-dlp 2026.10.26 is available (installed: 2026.10.21).`
-- §5.4: new `update-check.js` with `checkYtDlpUpdate(run)` and a parser for its output, tested with the fake runner. The result is `{ state: 'checking' | 'current' | 'outdated' | 'failed', current, latest, error }`. The check has a 30 s timeout; being offline counts as `failed`, which is not a problem, only shown in the Info dialog.
-- §5.1: a new problem kind, `ytdlp-outdated` (warning, path `yt-dlp`): "yt-dlp 2026.10.26 is available (installed: 2026.10.21). Downloads may fail until it is updated." `Problems` gets a second list for tool problems, which a refresh keeps (today a refresh replaces the whole list). Dismissing works as for the others and lasts until the next start.
-- §5.2: `GET /api/info` returns `{ app, ytDlp: { version, update }, ffmpeg }`, where `app` is `package.json`'s version, a missing tool's version is `null`, and `update` is the check's result (`null` when yt-dlp is missing). The check's problem reaches pages through the existing `problems` message.
+- §3.4: the server listens right after bootstrap, but answers with an **initializing page** until the tools are found and the update has run: a dark page saying "Initializing…", which polls the server and reloads once the app is ready. The API answers `503` meanwhile. Then the terminal prints the tools line, and a line about the update: `yt-dlp updated to 2026.10.26.`, or in yellow `yt-dlp 2026.10.26 is available (installed: 2026.10.21), but the update failed: Insufficient permissions to write to /usr/bin` or `Could not check for a yt-dlp update: …`. After a successful update the tools are looked up again, so the new version is shown.
+- §5.4: new `yt-dlp-update.js`, `updateYtDlp(run)`: runs `yt-dlp -U` and reads its output: `is up to date` → `current`; `Updated yt-dlp to` → `updated`; `Latest version:` and `Current version:` without that → `outdated`, with the last `ERROR:` line as the reason; anything else → `failed`. Result: `{ state, current, latest, error }`. It is killed after 60 s, which counts as `failed`. `failed` is not a problem, only shown in the terminal and the Info dialog.
+- §5.1: a new problem kind, `ytdlp-outdated` (warning, path `yt-dlp`): "yt-dlp 2026.10.26 is available (installed: 2026.10.21), but the update failed: …". `Problems` keeps such lasting problems across a refresh (today a refresh replaces the whole list). Dismissing works as for the others and lasts until the next start.
+- §5.2: `GET /api/info` returns `{ app, ytDlp: { version, update }, ffmpeg }`, where `app` is `package.json`'s version, a missing tool's version is `null`, and `update` is the result above (`null` when yt-dlp is missing). While initializing, every page path gets the initializing page and every other request a `503`.
 - §6.1: `getInfo()` on the facade, through `BackendApi`.
 - §9.3: the app menu gets **Info** in its own group at the bottom.
-- New §9.17 Info dialog: three rows, Soundboard / yt-dlp / ffmpeg, each with its version, or "Not installed" in muted text. The yt-dlp row adds "Up to date", "Checking for updates…", "2026.10.26 available" (yellow) or "Could not check for updates" (with the error as a tooltip). The dialog loads the info each time it opens.
+- New §9.17 Info dialog: three rows, Soundboard / yt-dlp / ffmpeg, each with its version, or "Not installed" in muted text. The yt-dlp row adds "Up to date", "Updated at startup", "2026.10.26 available" (yellow, the reason as a tooltip) or "Could not check for updates" (the error as a tooltip). It loads the info each time it opens.
 - §9.14: the kind label "yt-dlp outdated".
 
-**Open questions.**
-
-A. **How to check.** `yt-dlp -U` prints what you pasted, but it is not a dry run: when it can write to its own file (a standalone binary in `~/bin`, for example) it **installs the update** at every start, possibly while a download starts in the page. Your Fedora install fails only because `/usr/bin` is read-only. Options:
-   1. *(Recommended)* Ask GitHub ourselves with Node's `fetch`: `https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest` gives `tag_name` (`2026.10.26`), compared with `yt-dlp --version`. No side effects and no yt-dlp run. The catch: it knows only the stable channel. A nightly build's version (`2026.10.21.232853`) is compared by its date, so it reads as up to date unless it is older than the latest stable.
-   2. Run `yt-dlp -U` and parse `Latest version:` / `Current version:` / `is up to date`. It follows the user's channel exactly, but it may update yt-dlp behind the user's back, as described above.
-   3. Run `yt-dlp -U` on purpose as a feature ("the app keeps yt-dlp updated"). That needs a Problems message when the update fails, and a rule that no download runs until it is done.
-
-B. **Live updates in the Info dialog.** *(Recommended)* None: the dialog loads once when opened, so one opened during the first seconds shows "Checking for updates…" until it is reopened. The alternative is an `info` event on the stream, for a few seconds of waiting at most.
-
-C. **What else the dialog shows.** *(Recommended)* Only the three asked for. Node's version and the library folder are candidates if you want them.
+**Answered.**
+- A. Run `yt-dlp -U` and let it update when it can.
+- B. The app doesn't start until the checks are done; an initializing page reloads into it.
+- C. The dialog shows only the three versions for now.
 
 **Plan.**
-1. `update-check.js`: the check and its parsing (fake runner or fake fetch, depending on A): up to date, outdated, nightly, failure, timeout.
-2. Server: start the check in `main.js` when yt-dlp exists, the terminal line, tool problems in `Problems` kept across refresh, `GET /api/info`.
+1. `yt-dlp-update.js`: running `-U` and reading its output: up to date, updated, outdated with the error, failed, timeout.
+2. Server: the initializing page, the update in `main.js` with its terminal lines, lasting problems in `Problems`, `GET /api/info`.
 3. Page: `BackendApi.getInfo`, `Soundboard.getInfo`, the Info menu item and dialog, the Problems dialog label.
-4. Tests for the server and page parts, `TESTING.md` (the Info dialog against the real tools), then `DESIGN.md`.
+4. Tests for the server and page parts, `TESTING.md`, then `DESIGN.md`.
 
 ---
 
