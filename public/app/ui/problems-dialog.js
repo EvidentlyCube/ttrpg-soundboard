@@ -15,6 +15,7 @@ const KIND_LABELS = {
 	'download-failed': 'Download failed',
 	'host-failed': 'Could not become the host',
 	'host-lost': 'Not the host any more',
+	'ytdlp-outdated': 'yt-dlp outdated',
 };
 
 const BUTTON_CLASS = 'cursor-pointer rounded-md border border-line px-3 py-1.5 text-sm text-muted hover:bg-raised-hover hover:text-text';

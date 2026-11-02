@@ -981,6 +981,11 @@ export class Soundboard {
 		return this.#api.fetchConnectLinks();
 	}
 
+	/** @returns {Promise<import('./ports.js').AppInfo>} the versions of the app, yt-dlp and ffmpeg (DESIGN.md §9.17) */
+	fetchInfo() {
+		return this.#api.fetchInfo();
+	}
+
 	/**
 	 * Allows or denies a device that asked to be paired. The list changes when the server says so.
 	 * @param {string} address

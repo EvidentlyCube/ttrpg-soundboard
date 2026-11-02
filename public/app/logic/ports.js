@@ -141,9 +141,27 @@
  * 	device; empty when the server was not started with `--lan`
  * @property {(address: string, decision: 'allow' | 'deny') => Promise<void>} answerAccessRequest rejects when the request
  * 	is gone (DESIGN.md §5.2)
+ * @property {() => Promise<AppInfo>} fetchInfo
  */
 
 /** @typedef {{ address: string, code: string }} AccessRequest a device that asks to be paired (DESIGN.md §5.6) */
+
+/**
+ * What `yt-dlp -U` did when the app started (DESIGN.md §5.4).
+ * @typedef {object} YtDlpUpdate
+ * @property {'current' | 'updated' | 'outdated' | 'failed'} state `outdated`: a newer version exists, but the update failed
+ * @property {string | null} current
+ * @property {string | null} latest
+ * @property {string | null} error why the update or the check failed
+ */
+
+/**
+ * The versions the Info dialog shows (DESIGN.md §5.2); null for a program that isn't installed.
+ * @typedef {object} AppInfo
+ * @property {string} app
+ * @property {{ version: string | null, update: YtDlpUpdate | null }} ytDlp
+ * @property {string | null} ffmpeg
+ */
 
 /** @typedef {'sound' | 'playlist' | 'track'} ItemKind */
 

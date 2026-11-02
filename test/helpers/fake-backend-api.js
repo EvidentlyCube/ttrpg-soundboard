@@ -232,6 +232,13 @@ export class FakeBackendApi {
 		return this.connectLinks;
 	}
 
+	/** @type {import('../../public/app/logic/ports.js').AppInfo} */
+	info = { app: '0.1.0', ytDlp: { version: null, update: null }, ffmpeg: null };
+
+	async fetchInfo() {
+		return structuredClone(this.info);
+	}
+
 	/** @type {{ address: string, decision: 'allow' | 'deny' }[]} */
 	accessAnswers = [];
 

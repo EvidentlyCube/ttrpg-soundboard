@@ -154,6 +154,11 @@ export class HttpBackendApi {
 		return changes;
 	}
 
+	/** @type {BackendApi['fetchInfo']} */
+	async fetchInfo() {
+		return this.#request('GET', '/api/info', { plainErrors: true });
+	}
+
 	/** @type {BackendApi['fetchTrash']} */
 	async fetchTrash() {
 		return this.#request('GET', '/api/trash', { plainErrors: true });

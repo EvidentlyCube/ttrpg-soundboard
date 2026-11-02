@@ -2,6 +2,7 @@ import { AccessRequestsBanner } from './access-requests-banner.js';
 import { AddDialog } from './add-dialog.js';
 import { Component } from './component.js';
 import { ConnectPhoneDialog } from './connect-phone-dialog.js';
+import { InfoDialog } from './info-dialog.js';
 import { openContextMenu } from './context-menu.js';
 import { DebugView } from './debug-view.js';
 import { DownloadDialog } from './download-dialog.js';
@@ -186,6 +187,7 @@ class Board extends Component {
 	#metadataDialog = new Dialog();
 	#replaceHostDialog = new Dialog();
 	#connectPhoneDialog = new Dialog();
+	#infoDialog = new Dialog();
 	/** The item whose Customize dialog is open, so the dialog can close when the item is deleted or moved away. @type {{ kind: 'sound' | 'playlist', id: string } | null} */
 	#editing = null;
 	/** @type {Map<string, SoundTile>} */
@@ -243,6 +245,8 @@ class Board extends Component {
 						soundboard.stopHosting();
 					} else if (item === 'connectPhone') {
 						this.#openConnectPhone();
+					} else if (item === 'info') {
+						this.#openInfo();
 					}
 				});
 			},
@@ -342,6 +346,7 @@ class Board extends Component {
 		this.own(() => this.#metadataDialog.close());
 		this.own(() => this.#replaceHostDialog.close());
 		this.own(() => this.#connectPhoneDialog.close());
+		this.own(() => this.#infoDialog.close());
 		return root;
 	}
 
@@ -350,6 +355,13 @@ class Board extends Component {
 		const body = h('div');
 		dialog.mount(body);
 		this.#connectPhoneDialog.open({ title: 'Connect a phone', body, onClose: () => dialog.destroy() });
+	}
+
+	#openInfo() {
+		const dialog = new InfoDialog(this.#soundboard);
+		const body = h('div');
+		dialog.mount(body);
+		this.#infoDialog.open({ title: 'Info', body, onClose: () => dialog.destroy() });
 	}
 
 	/**
