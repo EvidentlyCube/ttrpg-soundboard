@@ -192,6 +192,42 @@ describe('main', () => {
 		assert.match(missing.output, /Downloads are off: ffmpeg was not found\.\n/);
 	});
 
+	it('updates yt-dlp before the app is ready, and looks the version up again after an update', async () => {
+		const root = await tree({ 'a.mp3': '' });
+		let updated = false;
+		/** @type {string[][]} */
+		const calls = [];
+		const result = await run([root, '--port', String(await findFreePort())], {
+			tools: (command, args, process) => {
+				calls.push([command, ...args]);
+				if (args[0] === '-U') {
+					process.line('Current version: stable@2026.08.19 from yt-dlp/yt-dlp');
+					process.line('Latest version: stable@2026.10.26 from yt-dlp/yt-dlp');
+					process.line('Updated yt-dlp to stable@2026.10.26 from yt-dlp/yt-dlp');
+					updated = true;
+					return {};
+				}
+				return { stdout: command === 'yt-dlp' ? `${updated ? '2026.10.26' : '2026.08.19'}\n` : 'ffmpeg version 7.1.1\n' };
+			},
+		});
+		assert.deepEqual(calls.filter(([command]) => command === 'yt-dlp'), [['yt-dlp', '--version'], ['yt-dlp', '-U'], ['yt-dlp', '--version']]);
+		assert.match(result.output, /Soundboard running at .*\nDownloads: yt-dlp 2026\.08\.19, ffmpeg 7\.1\.1\nChecking for a yt-dlp update…\nyt-dlp updated to 2026\.10\.26\.\nPress Ctrl\+C/);
+	});
+
+	it('does not try to update a yt-dlp that is missing', async () => {
+		const root = await tree({ 'a.mp3': '' });
+		/** @type {string[][]} */
+		const calls = [];
+		const result = await run([root, '--port', String(await findFreePort())], {
+			tools: (command, args) => {
+				calls.push([command, ...args]);
+				return command === 'yt-dlp' ? 'missing' : { stdout: 'ffmpeg version 7.1.1\n' };
+			},
+		});
+		assert.deepEqual(calls.filter(([command]) => command === 'yt-dlp'), [['yt-dlp', '--version']]);
+		assert.doesNotMatch(result.output, /yt-dlp update/);
+	});
+
 	it('exits with 1 when options files are invalid', async () => {
 		const root = await tree({ 'a.mp3': '', 'a.mp3.json': '{' });
 		const result = await run([root]);

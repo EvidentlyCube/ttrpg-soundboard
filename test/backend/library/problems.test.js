@@ -68,4 +68,24 @@ describe('Problems', () => {
 		problems.removeFor('Boom.mp3');
 		assert.deepEqual(problems.list.map((entry) => entry.path), ['Combat2/1.mp3']);
 	});
+
+	it('keeps a lasting problem first, through replacements and removals, until it is dismissed', () => {
+		const problems = new Problems([problem('A.mp3')]);
+		const lasting = { id: 'ytdlp-outdated:yt-dlp', kind: 'ytdlp-outdated', severity: /** @type {const} */ ('warning'), path: 'yt-dlp', message: 'Old' };
+		problems.addLasting(lasting);
+		problems.replace([problem('B.mp3')]);
+		problems.removeFor('yt-dlp');
+		assert.deepEqual(problems.list.map((entry) => entry.id), ['ytdlp-outdated:yt-dlp', 'symlink:B.mp3']);
+		problems.dismiss(lasting.id);
+		problems.replace([problem('C.mp3')]);
+		assert.deepEqual(problems.list.map((entry) => entry.id), ['symlink:C.mp3']);
+	});
+
+	it('drops lasting problems for good with Dismiss all', () => {
+		const problems = new Problems();
+		problems.addLasting({ id: 'ytdlp-outdated:yt-dlp', kind: 'ytdlp-outdated', severity: 'warning', path: 'yt-dlp', message: 'Old' });
+		problems.dismissAll();
+		problems.replace([]);
+		assert.deepEqual(problems.list, []);
+	});
 });

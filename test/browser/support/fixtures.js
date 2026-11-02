@@ -88,6 +88,9 @@ class Soundboard {
  * @property {number | undefined} randomSeed makes the random and shuffle orders repeatable; without it they are random
  * @property {import('./downloads.js').DownloadTools} downloadTools which of yt-dlp and ffmpeg the server finds; none by default
  * @property {FakeDownloads} downloads what the fake yt-dlp and ffmpeg know and do
+ * @property {import('../../../src/downloads/yt-dlp-update.js').YtDlpUpdate | null} ytDlpUpdate what `yt-dlp -U` did at
+ * 	startup; with tools only
+
  * @property {boolean} lan whether the server runs as with `--lan` (DESIGN.md §5.6)
  */
 
@@ -96,6 +99,7 @@ const fixtures = {
 	library: ['example', { option: true }],
 	lan: [false, { option: true }],
 	downloadTools: ['none', { option: true }],
+	ytDlpUpdate: [null, { option: true }],
 	unplayableFormats: [[], { option: true }],
 	randomSeed: [undefined, { option: true }],
 
@@ -120,8 +124,8 @@ const fixtures = {
 		await use(new FakeDownloads());
 	},
 
-	soundboard: async ({ page, library, lan, splash, downloadTools, downloads }, use) => {
-		const server = await startSoundboardServer(library, { lan, downloads: downloadSetup(downloadTools, downloads) });
+	soundboard: async ({ page, library, lan, splash, downloadTools, downloads, ytDlpUpdate }, use) => {
+		const server = await startSoundboardServer(library, { lan, downloads: downloadSetup(downloadTools, downloads, ytDlpUpdate) });
 		await use(new Soundboard(page, server.url, server.root, splash));
 		// The page may still be saving waveforms; stop it before the folder goes.
 		await page.goto('about:blank');

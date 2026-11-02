@@ -182,14 +182,16 @@ export class FakeDownloads {
  * What the server is told about its tools.
  * @param {DownloadTools} tools
  * @param {FakeDownloads} downloads
- * @returns {{ tools: { ytDlp: string | null, ffmpeg: string | null }, run: FakeDownloads['run'], fetcher: FakeDownloads['fetcher'] } | undefined}
+ * @param {import('../../../src/downloads/yt-dlp-update.js').YtDlpUpdate | null} [update] what `yt-dlp -U` did at startup
+ * @returns {import('../../../src/http/server.js').DownloadPorts | undefined}
  */
-export function downloadSetup(tools, downloads) {
+export function downloadSetup(tools, downloads, update = null) {
 	if (tools === 'none') {
 		return undefined;
 	}
 	return {
 		tools: { ytDlp: '2026.08.19', ffmpeg: tools === 'both' ? '7.1' : null },
+		update,
 		run: downloads.run,
 		fetcher: downloads.fetcher,
 	};
