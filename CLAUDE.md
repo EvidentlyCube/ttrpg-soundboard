@@ -6,6 +6,7 @@ Project documents:
 - **`DESIGN.md`** describes the app as it is. Read the relevant section before changing anything.
 - **`ROADMAP.md`** holds feature proposals and the backlog of planned features.
 - **`TESTING.md`** holds the test strategy, the test helpers and the manual browser checklist.
+- **`ideas/`** holds long-term ideas and research notes, one file per topic. They are not plans; an idea becomes work only through a `ROADMAP.md` proposal.
 
 ## Commands
 
