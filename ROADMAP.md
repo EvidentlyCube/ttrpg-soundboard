@@ -41,8 +41,9 @@ The app always starts in the Selector, even with a single path given, because th
 Browsers never tell a page the real path of a folder the user picks (`showDirectoryPicker()` and `<input webkitdirectory>` hide it), so the server lists the folders and the page only shows them.
 
 **Design changes.**
-- §1: the usage line becomes `node index.js [<audio-directory>…] [--port <number>] [--lan [<address>]] [--enable-lan-init] [--no-open] [--verbose]`. At startup the app prints `Soundboard running at http://127.0.0.1:3000` and opens it in the default browser (`open` on macOS, `cmd /c start "" <url>` on Windows, `xdg-open` elsewhere; a failure is ignored, since the line is printed anyway). `--no-open` turns that off. The terminal shows the URL, the tools lines, errors, the LAN lines, `--verbose` request logs and the stop hint; typing `exit` still stops the app. "It is always started by hand from a terminal" goes: double-clicking a launcher opens a terminal window, which stays the window that runs the app and stops it when closed.
-- §1.1 Trust: the Selector can list any folder on this machine, and the Initializer can delete files. Both are answered only to this machine, even with `--lan`, unless `--enable-lan-init` is given (question A).
+- §1: the usage line becomes `node index.js [<audio-directory>…] [--port <number>] [--lan [<address>]] [--no-open] [--verbose]`. The default port changes from `3000` to `13872`, which is unlikely to clash with development servers; `--port` still sets another. At startup the app prints `Soundboard running at http://localhost:13872` and opens it in the default browser (`open` on macOS, `cmd /c start "" <url>` on Windows, `xdg-open` elsewhere; a failure is ignored, since the line is printed anyway). `--no-open` turns that off. The terminal shows the URL, the tools lines, errors, the LAN lines, `--verbose` request logs and the stop hint; typing `exit` still stops the app. "It is always started by hand from a terminal" goes: double-clicking a launcher opens a terminal window, which stays the window that runs the app and stops it when closed.
+- §1.1 Trust: the Selector can list any folder on this machine, and the Initializer can delete files, so both are answered only to this machine. With `--lan`, other devices can do nothing until the phase is `ready`: pages get `waiting.html`, and every route, pairing included, answers `503`. When the phase leaves `ready` (Change soundboard, below), every device is disconnected at once: its event streams are closed, its approval is forgotten (§5.6), and it has to pair again once the next soundboard is ready. Bans stay until the server restarts.
+- §1, §5.2 the URL: the app prints and opens `localhost` rather than `127.0.0.1`. It still listens on `127.0.0.1`; a browser that tries `::1` first falls back to it. `*.localhost` names were tried and don't work in Safari.
 - §3 becomes **Startup**. The server has a **phase**, `selecting` → `initializing` → `ready`, held by a `StartupSession` (`src/startup/startup-session.js`).
   - The bootstrap (`BootstrapService`) keeps its decisions. `TerminalPrompter` and `ConsoleReporter` go; the session is the `Prompter` and the `Reporter`, and keeps what they receive as structured state for the page.
   - Information that needs no decision (unsupported files, orphan options files, symbolic links, empty playlists) is not shown in the Initializer. It already becomes problems in the Problems dialog (§5.1, §9.14).
@@ -53,12 +54,13 @@ Browsers never tell a page the real path of a folder the user picks (`showDirect
   - `ready` is reached once the bootstrap is done **and** the tools are ready (below).
 - §3.4: the tools (`findTools`, `yt-dlp -U`) start when the server starts, not after the bootstrap, so they run while the Selector is open. The "initializing" state of the server (§5.2) and `public/initializing.html` go: the Initializer waits for the tools and shows "Waiting for the yt-dlp update…" when the bootstrap finishes first.
 - §5.2:
-  - **What `/` serves follows the phase:** `selector.html`, `initializer.html` or `index.html`. A remote, or any allowed device without `--enable-lan-init`, gets `waiting.html` ("Waiting for the soundboard to start") until `ready`, and reloads then.
+  - **What `/` serves follows the phase:** `selector.html`, `initializer.html` or `index.html` on this machine. Another device gets `waiting.html` ("Waiting for the soundboard to start") until `ready`, polling `GET /api/startup/ready` (the one route it may use) and reloading then.
   - Until `ready`, the app's routes answer `503 { "error": "No soundboard is loaded." }`. `/api/info` is answered in every phase, with each tool as `{ state: 'checking' | 'ready', … }`.
   - New routes, each answered only in its phase (`409` otherwise):
     - `GET /api/startup`: `{ phase, paths, recent, initializer }`. `paths` are the paths given on the command line, each with `allowed` and the reason when it isn't. `initializer` holds the step (`scanning`, `question`, `measuring`, `waitingForTools`, `failed`), the question with its data (the nested folders, the titles, the file count), the progress and the failures.
     - `GET /api/startup/folders?path=<absolute path>`: `{ path, parent, folders: [{ name, path, soundboard }], audioFiles, soundboard, allowed, reason }`. Hidden folders (a leading `.`) are left out. `soundboard` is whether a folder holds `.soundboard`, one `stat` per subfolder. Without `path`, the starting places: the home folder and its Music, Desktop and Documents folders when they exist, the drives on Windows, `/Volumes/*` on macOS, `/media/<user>/*` and `/mnt/*` on Linux. `403` when paths were given on the command line.
     - `POST /api/startup/select { path }`, `POST /api/startup/answer { id, yes }`, `POST /api/startup/back`, `POST /api/startup/retry`, `POST /api/startup/delete-and-retry`, `DELETE /api/startup/recent { path }`.
+    - `POST /api/startup/close`, answered in `ready` only: stops the change watcher, cancels running downloads, drops the library, disconnects the devices (§1.1) and goes back to `selecting`. Every page's event stream gets `startup.closed` before it closes, and the pages load `/` again.
   - Pages poll `GET /api/startup` every 500 ms, like the initializing page today. The event stream stays the board's.
 - New §5.7 **Folder rules** (`src/startup/folder-rules.js`), checked by the server for every folder selected, whether browsed, recent or given on the command line:
   - **Refused, with the folder and everything inside it:** the system folders: `/bin`, `/boot`, `/dev`, `/etc`, `/lib`, `/lib32`, `/lib64`, `/proc`, `/root`, `/run`, `/sbin`, `/snap`, `/srv`, `/sys`, `/usr`, `/var`, and on macOS `/System`, `/Library`, `/Applications`, `/private`, `/cores`; on Windows `<drive>:\Windows`, `Program Files`, `Program Files (x86)`, `ProgramData`, and `AppData` in the profile.
@@ -67,37 +69,30 @@ Browsers never tell a page the real path of a folder the user picks (`showDirect
   - The reason is shown in the Selector: "System folders can't be used", "Choose a folder inside your home folder", "No audio files found here".
 - New §5.8 **Recent folders** (`src/startup/recent-folders.js`): the last 5 folders that reached `ready`, newest first, in `recent.json` in the user's config folder: `%APPDATA%\Soundboard` on Windows, `~/Library/Application Support/Soundboard` on macOS, `$XDG_CONFIG_HOME/soundboard` or `~/.config/soundboard` elsewhere. It is the first file the app writes outside the audio folder. A folder that no longer exists is shown greyed out, with a × to forget it like any other. A broken file counts as an empty list.
 - New §9.18 **Selector** (`public/selector.html`, `ui/` and `logic/selector-flow.js`, tested with fakes like `AccessRequester`, §9.16):
-  - **With paths from the command line:** one card per path (name over the full path); the refused ones are greyed out with their reason. Nothing else to choose from.
-  - **Otherwise: recent folders** as the same cards, each with a ×, and **a folder browser** with a path field you can paste into, **Up**, the starting places as buttons, and the current folder's subfolders, with soundboard folders marked. Under it, a summary line for the current folder: "Soundboard folder", "No soundboard here yet: 3 folders, 12 audio files", or the reason it is refused. The button reads **Open** for a soundboard folder and **Create soundboard here** otherwise.
+  - **With paths from the command line:** one card per path (name over the full path); the refused ones are greyed out with their reason under the path and as the card's `title`. Nothing else to choose from.
+  - **Otherwise: recent folders** as the same cards, each with a ×, and **a folder browser** with a path field you can paste into, **Up**, the starting places as buttons, and the current folder's subfolders, with soundboard folders marked and refused ones greyed out, their reason as the `title`. Under it, a summary line for the current folder: "Soundboard folder", "No soundboard here yet: 3 folders, 12 audio files", or the reason it is refused. The button reads **Open** for a soundboard folder and **Create soundboard here** otherwise.
   - **Footer:** yt-dlp and ffmpeg, each "Checking…", its version, or "Not installed" in yellow, and "Updated" or "Update failed" for yt-dlp, as the Info dialog shows it (§9.17).
   - **Extension point:** a "Start options" area for settings such as LAN access, added by later proposals.
 - New §9.19 **Initializer** (`public/initializer.html`, `logic/initializer-flow.js`): the folder's path, then the current step. A question shows its list (the nested folders in red, the `path → "Title"` pairs, the file count) and **Yes** / **No**. Measuring shows a progress bar. `failed` lists the files with their errors and the three buttons. On `ready` it loads `/`.
-- §9.0: "The audio folder needs a restart" stays as it is. Going back to the Initializer instead, and a "Switch soundboard" item in the ☰ menu, are left for later; the phases make both possible.
+- §9.3: the ☰ menu gets **Change soundboard**, which stops all playback and calls `POST /api/startup/close`. A remote page shows "The soundboard was closed" instead of reconnecting.
+- §5.6: `AccessControl` gets `revokeAll()`, which forgets every approval and pending request but keeps the bans.
+- §9.0: "The audio folder needs a restart" stays as it is. Going back to the Initializer instead is left for later.
 - §10, §10.1: `src/startup/`, the new pages and their scripts.
 
-**Open questions.**
-
-A. **Approving devices with `--enable-lan-init`.** With `--lan`, a device can't use the app until someone on the computer clicks **Allow** on the board page (§5.6). Before the board exists there is no such page. If someone is at the computer, they can choose the folder there, so the flag is mostly for a computer without a screen, such as a mini PC by the speakers. Options:
-   1. *(Recommended)* The Selector and Initializer pages on this machine show the requests banner (§9.16), **and** the terminal accepts `allow <code>` and `deny <code>`, as it accepts `exit` today. A headless machine is then approved over SSH.
-   2. With `--enable-lan-init`, devices need no approval until `ready`. Simple, but anyone on the network can browse the computer's folders and delete files.
-   3. Drop `--enable-lan-init` until there is a real case for it.
-   
-   In every case the flag implies `--lan`, and the Selector on a device still lists folders on the computer, not the device.
-
-B. **Opening the browser.** *(Recommended)* Always, since every start goes through the Selector, with `--no-open` to turn it off.
-
-C. **A nicer URL.** Chrome, Firefox and Edge send every `*.localhost` name to this machine by themselves, so `http://soundboard.localhost:3000` would work there with only the request guard's names extended (§5.2). Safari is the likely browser on the MacBook (§12), and I'm not sure it does. *(Recommended)* Keep `127.0.0.1` for now, and switch the printed and opened address to `soundboard.localhost` only if a quick test in Safari works. Getting rid of `:3000` would need port 80, which needs root on Linux and often clashes with other programs, so I don't suggest it.
-
-D. **A path from the command line that doesn't exist or is refused.** *(Recommended)* It appears greyed out in the Selector with its reason, rather than stopping the app with exit code 1, so someone double-clicking a launcher sees why. A malformed command line (an unknown option, a bad port) still stops the app in the terminal.
+**Decided.**
+- No `--enable-lan-init`: the Selector and Initializer are never answered to other devices, and devices can connect only once a soundboard is ready (§1.1 above).
+- The browser always opens, with `--no-open` to turn it off.
+- The URL is `http://localhost:<port>`, default port `13872`.
+- A path from the command line that doesn't exist or is refused appears greyed out in the Selector, with its reason under the path and as the `title`, rather than stopping the app. A malformed command line (an unknown option, a bad port) still stops the app in the terminal.
 
 **Plan.**
 1. `folder-rules.js`: the refused folders per platform (paths passed in, so every platform is tested anywhere), the two-level audio check, the 5,000-file count.
 2. `recent-folders.js` and the folder listing (`folders.js`): config folder per platform, adding, forgetting, missing folders, a broken file; starting places, hidden folders, soundboard marks.
 3. Bootstrap: the large-folder question, `measured`, deleting the failed files and running again.
 4. `StartupSession`: the phases, the session as `Prompter` and `Reporter`, Back, Try again, delete and retry, No, waiting for the tools, recording the recent folder.
-5. Server and CLI: phase-dependent pages and `503`s, the startup routes, tools at server start, `waiting.html`, `--enable-lan-init` (depending on A), the arguments, `--no-open` and `openBrowser`, the trimmed terminal output; `TerminalPrompter`, `ConsoleReporter` and `initializing.html` removed.
-6. Pages: the Selector, the Initializer and their flows.
-7. Tests for the parts above, `TESTING.md` (opening the browser and the starting places on each platform, the handover to the board, a headless approval if A1), then `DESIGN.md`.
+5. Server and CLI: phase-dependent pages and `503`s, devices refused until `ready`, the startup routes, tools at server start, `waiting.html`, closing a soundboard (`revokeAll`, closed streams, cancelled downloads), the arguments, the new default port, the `localhost` URL, `--no-open` and `openBrowser`, the trimmed terminal output; `TerminalPrompter`, `ConsoleReporter` and `initializing.html` removed.
+6. Pages: the Selector, the Initializer and their flows, Change soundboard in the ☰ menu, the remote's "closed" state.
+7. Tests for the parts above, `TESTING.md` (opening the browser and the starting places on each platform, the handover to the board, a phone being disconnected by Change soundboard), then `DESIGN.md`.
 
 ---
 
