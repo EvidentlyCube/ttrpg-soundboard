@@ -1124,8 +1124,9 @@ Dark theme, plain and functional. Icons appear only on controls (play, pause, st
 
 ### 9.0 Splash screen
 
-Browsers only allow audio to start inside a user gesture, so the app starts behind a full-screen splash.
+Browsers only allow audio to start inside a user gesture, so the app starts behind a splash.
 
+- **Frame.** Until the board is ready the splash fills the space between a header and a footer that look like the board's (§9.1), so the page keeps its shape when the board comes (`StartFrame` in `ui/app.js`, `data-start-header`; the splash has `data-framed`). The header has only the ☰ button and the title; its menu lists the usual items, but only **Info** and **Change soundboard** are enabled (`appMenuItems({ started: false })`, §9.3). The footer is the dock's layout (`dockLayout`) with "No playlist playing" and **Stop All** disabled. Choosing Remote removes the frame; on `app.ready` the board's own header and footer replace it, and the splash moves out to cover the whole page for the later messages below.
 - On page load the app does **nothing** except show the splash: the app name and **"Choose how to start"** with three buttons, **Standalone**, **Host** and **Remote** (each with a line saying what it is). No audio context, and the only request is `GET /api/remote` (§5.2), which sets a note: under Host "Another page is the host. You will be asked before it is replaced." when there is one, under Remote "No host is running yet. It will work once one starts." when there is none.
 - **Standalone** and **Host** call `soundboard.start()`, which creates and resumes the `AudioContext` **synchronously** inside the click. **Host** then calls `becomeHost` (§6.10); when it answers `'taken'` the replace dialog (§9.15) opens over the board, because a held button is not a gesture that may start audio. **Remote** opens the remote page (§9.15) and never touches audio. The splash shows "Loading…" while the library and settings are fetched.
 - On `app.ready` the splash is hidden and the board is rendered. On `app.startFailed` the splash shows "Could not start the soundboard. Click to retry." with the error; clicking starts again.
@@ -1194,7 +1195,7 @@ One shared `Overlay` shows the context menus and the track list popover; opening
 - A popup opens at the cursor (the track list at its chevron button). Where it would overflow the window, it flips to the other side of that point, and as a last resort it is clamped inside an 8 px margin. It is placed again whenever its size changes, because Tailwind may only style a newly used class after the popup has been measured.
 - Right-clicking a tile suppresses the browser's own context menu. Choosing a menu item closes the menu first, then runs the action. Disabled items are greyed out.
 - The ☰ app menu has **Become host** while the page is standalone and **Stop hosting** while it hosts. Become host calls `becomeHost`; on `'taken'` the replace dialog opens (§9.15).
-- The ☰ app menu ends with **Change soundboard**, in a group of its own. It calls `closeSoundboard` (§6.1), and on `app.closed` the page loads `/`, which is now the Selector (§9.18); leaving the page stops its audio. Every other page of the soundboard follows through `startup.closed`. A failure is only logged to the console.
+- The ☰ app menu ends with **Change soundboard**, in a group of its own. It calls `closeSoundboard` (§6.1), and on `app.closed` the page loads `/` (from the splash too, §9.0), which is now the Selector (§9.18); leaving the page stops its audio. Every other page of the soundboard follows through `startup.closed`. A failure is only logged to the console.
 
 **Sound menu**
 
