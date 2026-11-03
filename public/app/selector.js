@@ -32,7 +32,8 @@ const error = errorNotice();
 const givenList = h('div', { class: 'grid gap-2 sm:grid-cols-2' });
 const given = h('section', { class: 'space-y-2', hidden: true }, sectionTitle('Soundboards'), givenList);
 const recentList = h('div', { class: 'grid gap-2 sm:grid-cols-2' });
-const recent = h('section', { class: 'space-y-2', hidden: true }, sectionTitle('Recent'), recentList);
+const recent = card('Recent', 'music', recentList);
+recent.hidden = true;
 const browseButton = browseCard(() => showBrowser(true));
 // Kept when only the given folders may be opened, so the way to other folders is still where it always is.
 const browseRefused = h('div', { title: 'Only the folders given when the app was started can be opened.' }, browseCard(null));
@@ -287,7 +288,7 @@ function drawListing(listing, busy) {
 	folder.soundboard && folder.refused === null
 		? h('button', {
 				'type': 'button',
-				'class': `${BUTTON} py-1`,
+				'class': `${PRIMARY} px-3 py-1`,
 				'disabled': busy,
 				'data-folder-quick-open': true,
 				'onClick': () => flow.select(folder.path),
@@ -306,7 +307,7 @@ function drawListing(listing, busy) {
  */
 function folderCard({ name, path, reason, busy, onOpen, onForget }) {
 	return h('div', {
-		'class': 'flex items-stretch overflow-hidden rounded-lg border border-line bg-panel data-[refused=false]:hover:border-music',
+		'class': 'flex items-stretch overflow-hidden rounded-lg border border-line bg-panel data-[refused=false]:border-music/40 data-[refused=false]:bg-music/10 data-[refused=false]:hover:border-music data-[refused=false]:hover:bg-music/20',
 		'title': reason ?? path,
 		'data-folder-card': path,
 		'data-refused': String(reason !== null),
@@ -339,7 +340,7 @@ function folderCard({ name, path, reason, busy, onOpen, onForget }) {
 function browseCard(onClick) {
 	return h('button', {
 		'type': 'button',
-		'class': 'flex h-full min-h-16 w-full cursor-pointer items-center justify-center rounded-lg border border-dashed border-music/60 px-4 py-3 font-semibold text-music hover:bg-music/10 disabled:cursor-default disabled:border-line disabled:text-muted disabled:hover:bg-transparent',
+		'class': 'flex h-full min-h-16 w-full cursor-pointer items-center justify-center rounded-lg border border-dashed border-host/60 bg-host/5 px-4 py-3 font-semibold text-host hover:border-host hover:bg-host/15 disabled:cursor-default disabled:border-line disabled:bg-transparent disabled:text-muted disabled:hover:border-line disabled:hover:bg-transparent',
 		'disabled': onClick === null,
 		'data-browse': true,
 		'onClick': onClick ?? undefined,
