@@ -10,7 +10,7 @@
 	"scripts": {
 		"start": "node index.js",
 		"dev": "node --watch index.js",
-		"test": "node --test \"test/backend/**/*.test.js\" \"test/frontend/**/*.test.js\" \"test/helpers/**/*.test.js\"",
+		"test": "node --test \"test/backend/**/*.test.js\" \"test/frontend/**/*.test.js\" \"test/helpers/**/*.test.js\" \"test/scripts/**/*.test.js\"",
 		"test:browser": "playwright test -c test/browser/playwright.config.js",
 		"typecheck": "tsc -p tsconfig.backend.json && tsc -p tsconfig.logic.json && tsc -p tsconfig.ui.json && tsc -p tsconfig.frontend-tests.json && tsc -p tsconfig.browser-tests.json",
 		"lint": "eslint .",

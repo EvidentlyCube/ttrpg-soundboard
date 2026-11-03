@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test as base } from '@playwright/test';
@@ -14,6 +15,7 @@ const fixtures = {
 	},
 };
 const test = base.extend(fixtures);
+const { version: VERSION } = JSON.parse(readFileSync(join(import.meta.dirname, '..', '..', '..', 'package.json'), 'utf8'));
 
 /**
  * Holds a hold button down until it acts (DESIGN.md §9.7).
@@ -36,6 +38,7 @@ test.describe('the Selector', () => {
 			await expect(page.locator('[data-folder-summary]')).toHaveText('Choose a folder inside this one.');
 			await expect(page.locator('[data-folder-open]')).toBeDisabled();
 			await expect(page.locator('[data-tool=ffmpeg]')).toContainText('not installed');
+			await expect(page.locator('[data-app-version]')).toHaveText(`Soundboard ${VERSION}`);
 		});
 
 		await test.step('Go into Board: it isn’t a soundboard yet', async () => {
