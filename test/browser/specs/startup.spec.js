@@ -37,6 +37,7 @@ test.describe('the Selector', () => {
 			await expect(page.locator(`[data-folder="${app.board}"]`)).toBeVisible();
 			await expect(page.locator('[data-folder-summary]')).toHaveText('Choose a folder inside this one.');
 			await expect(page.locator('[data-folder-open]')).toBeDisabled();
+			await expect(page.locator('[data-browse-back]')).toBeHidden();
 			await expect(page.locator('[data-tool=ffmpeg]')).toContainText('not installed');
 			await expect(page.getByRole('heading', { name: 'Soundboard Selection' })).toBeVisible();
 			await expect(page.locator('[data-app-version]')).toHaveText(`v${VERSION}`);
@@ -61,9 +62,19 @@ test.describe('the Selector', () => {
 			await expect(page.locator('[data-app-menu]')).toBeVisible();
 		});
 
-		await test.step('Change soundboard: back in the Selector, with Board as a recent folder', async () => {
+		await test.step('Change soundboard: back in the Selector, showing Board as a recent folder and not the browser', async () => {
 			await page.locator('[data-app-menu]').click();
 			await page.getByText('Change soundboard').click();
+			await expect(page.locator(`[data-folder-card="${app.board}"]`)).toBeVisible();
+			await expect(page.locator('[data-folder-list]')).toBeHidden();
+		});
+
+		await test.step('Browse folders… swaps the recent folders for the browser, and ← Recent swaps them back', async () => {
+			await page.locator('[data-browse]').click();
+			await expect(page.locator('[data-folder-list]')).toBeVisible();
+			await expect(page.locator(`[data-folder-card="${app.board}"]`)).toBeHidden();
+			await page.locator('[data-browse-back]').click();
+			await expect(page.locator('[data-folder-list]')).toBeHidden();
 			await expect(page.locator(`[data-folder-card="${app.board}"]`)).toBeVisible();
 		});
 
@@ -115,6 +126,7 @@ test.describe('the Selector', () => {
 		await page.getByText('Change soundboard').click();
 		await page.locator(`[data-forget="${app.board}"]`).click();
 		await expect(page.locator('[data-folder-card]')).toHaveCount(0);
+		await expect(page.locator('[data-browse]')).toBeEnabled();
 	});
 });
 
@@ -126,6 +138,8 @@ test.describe('with folders given on the command line', () => {
 		const cards = page.locator('[data-folder-card]');
 		await expect(cards).toHaveCount(3);
 		await expect(page.locator('[data-folder-list]')).toBeHidden();
+		await expect(page.locator('[data-browse]')).toBeDisabled();
+		await expect(page.locator('[data-browse]').locator('..')).toHaveAttribute('title', 'Only the folders given when the app was started can be opened.');
 		await expect(page.locator(`[data-folder-card="${app.home}"]`)).toHaveAttribute('data-refused', 'true');
 		await expect(page.locator(`[data-folder-card="${app.home}"]`)).toHaveAttribute('title', 'Choose a folder inside this one.');
 		await expect(page.locator(`[data-folder-card="${join(app.home, 'Missing')}"]`)).toHaveAttribute('title', 'This folder doesn’t exist.');

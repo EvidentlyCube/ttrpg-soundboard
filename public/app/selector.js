@@ -29,6 +29,9 @@ const givenList = h('div', { class: 'grid gap-2 sm:grid-cols-2' });
 const given = h('section', { class: 'space-y-2', hidden: true }, sectionTitle('Soundboards'), givenList);
 const recentList = h('div', { class: 'grid gap-2 sm:grid-cols-2' });
 const recent = h('section', { class: 'space-y-2', hidden: true }, sectionTitle('Recent'), recentList);
+const browseButton = browseCard(() => showBrowser(true));
+// Kept when only the given folders may be opened, so the way to other folders is still where it always is.
+const browseRefused = h('div', { title: 'Only the folders given when the app was started can be opened.' }, browseCard(null));
 
 const places = h('div', { class: 'flex flex-wrap gap-2' });
 const pathInput = h('input', {
@@ -49,7 +52,18 @@ pathForm.addEventListener('submit', (event) => {
 });
 const current = h('div', { class: 'flex flex-wrap items-center gap-3 rounded-lg border border-line bg-panel px-3 py-2' });
 const folderList = h('ul', { 'class': 'max-h-[50vh] divide-y divide-line overflow-y-auto rounded-lg border border-line bg-panel', 'data-folder-list': true });
-const browse = h('section', { class: 'space-y-3', hidden: true }, sectionTitle('Browse'), places, pathForm, current, folderList);
+const backButton = h('button', {
+	'type': 'button',
+	'class': BUTTON,
+	'data-browse-back': true,
+	'onClick': () => showBrowser(false),
+}, '← Recent');
+const browse = h('section', { class: 'space-y-3', hidden: true },
+	h('div', { class: 'flex items-center gap-3' }, backButton, sectionTitle('Browse')),
+	places,
+	pathForm,
+	current,
+	folderList);
 
 const header = toolsHeader('Soundboard Selection');
 root.replaceChildren(
@@ -66,9 +80,22 @@ root.replaceChildren(
 const drawn = { given: '', recent: '', places: '', listing: '', browseFailures: 0 };
 /** The folder browser loads its first folder once the server said no folders were given on the command line. */
 let browsing = false;
+/** Recent and Browse take turns; null until the first state, which opens Browse when there is nothing recent. */
+let showingBrowser = /** @type {boolean | null} */ (null);
+/** @type {StartupView | null} */
+let lastView = null;
+
+/** @param {boolean} visible */
+function showBrowser(visible) {
+	showingBrowser = visible;
+	if (lastView) {
+		render(lastView);
+	}
+}
 
 /** @param {StartupView} view */
 function render(view) {
+	lastView = view;
 	offline.show(!view.connected);
 	showError(error, view.error);
 	const state = view.state;
@@ -80,10 +107,12 @@ function render(view) {
 		browsing = true;
 		flow.browseStart();
 	}
+	showingBrowser ??= state.recent.length === 0;
 	const busy = view.busy;
 	given.hidden = state.paths === null;
-	recent.hidden = state.paths !== null || state.recent.length === 0;
-	browse.hidden = state.paths !== null;
+	recent.hidden = state.paths !== null || showingBrowser;
+	browse.hidden = state.paths !== null || !showingBrowser;
+	backButton.hidden = state.recent.length === 0;
 
 	const givenKey = JSON.stringify([state.paths, busy]);
 	if (state.paths && givenKey !== drawn.given) {
@@ -94,7 +123,7 @@ function render(view) {
 			reason: folder.reason,
 			busy,
 			onOpen: () => flow.select(folder.path),
-		})));
+		})), browseRefused);
 	}
 	const recentKey = JSON.stringify([state.recent, busy]);
 	if (state.paths === null && recentKey !== drawn.recent) {
@@ -106,7 +135,7 @@ function render(view) {
 			busy,
 			onOpen: () => flow.select(folder.path),
 			onForget: () => flow.forgetRecent(folder.path),
-		})));
+		})), browseButton);
 	}
 	const placesKey = JSON.stringify([view.places, view.listing?.path]);
 	if (placesKey !== drawn.places) {
@@ -253,6 +282,20 @@ function folderCard({ name, path, reason, busy, onOpen, onForget }) {
 				'onClick': onForget,
 			}, '×')
 		: null);
+}
+
+/**
+ * The card after the folder cards that opens the folder browser.
+ * @param {(() => void) | null} onClick null when browsing isn't allowed
+ */
+function browseCard(onClick) {
+	return h('button', {
+		'type': 'button',
+		'class': 'flex h-full min-h-16 w-full cursor-pointer items-center justify-center rounded-lg border border-dashed border-music/60 px-4 py-3 font-semibold text-music hover:bg-music/10 disabled:cursor-default disabled:border-line disabled:text-muted disabled:hover:bg-transparent',
+		'disabled': onClick === null,
+		'data-browse': true,
+		'onClick': onClick ?? undefined,
+	}, 'Browse folders…');
 }
 
 /** @param {string} text */

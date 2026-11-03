@@ -131,8 +131,8 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] Opening the example fixture asks about the titles in the tags, then shows the splash. A folder with a nested folder in a playlist asks about it first; Back returns to the Selector and writes nothing.
 - [ ] A folder of several hundred files shows "Measuring the duration of each audio file: n of N" with a moving bar on the first open; the next open goes straight through.
 - [ ] Break an options file by hand: the Initializer lists it with its problem; Back, Try again after fixing it, and holding "Hold to delete these files and start" for a second all work. A quick click on the hold button does nothing.
-- [ ] Started with folders on the command line (`npm start -- ~/sb-test ~ /nope`), only those show as cards, the refused two greyed out with the reason under them and as a tooltip.
-- [ ] ☰ → Change soundboard returns every open tab to the Selector, with the folder first under Recent; × forgets it. The terminal prints `Opened …` and `Closed …`.
+- [ ] Started with folders on the command line (`npm start -- ~/sb-test ~ /nope`), only those show as cards, the refused two greyed out with the reason under them and as a tooltip. A greyed-out "Browse folders…" card follows them, its tooltip saying only the given folders can be opened.
+- [ ] ☰ → Change soundboard returns every open tab to the Selector, with the folder first under Recent and no folder browser; × forgets it. The dashed blue "Browse folders…" card after the recent folders shows the browser instead, and its ← Recent button brings them back. With no recent folders the Selector opens on the browser, without ← Recent. The terminal prints `Opened …` and `Closed …`.
 - [ ] `node index.js --help` explains every option; a wrong option prints the usage and points to `--help`.
 
 **Start and audio**
@@ -381,7 +381,7 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] A track that fails to load (for example a file removed from the temp directory after the scan) shows `error`; hovering the status shows the message.
 
 **Release packages** (`npm run pack`, then each zip on its own system, downloaded through a browser so it is marked as coming from the internet)
-- [ ] Windows: Explorer's Extract All, then a double-click on `Start Soundboard.cmd`. SmartScreen's More info → Run anyway lets it start; the browser opens the Selector, whose footer shows the version.
+- [ ] Windows: Explorer's Extract All, then a double-click on `Start Soundboard.cmd`. SmartScreen's More info → Run anyway lets it start; the browser opens the Selector, whose header shows the version.
 - [ ] macOS: the first double-click on `Start Soundboard.command` is refused; System Settings → Privacy & Security → Open Anyway lets it start in Terminal. The bundled `node` raises no warning of its own. Opening a folder in Documents or Downloads makes macOS ask whether Terminal may access it.
 - [ ] Linux: `./start-soundboard.sh` from a terminal starts it.
 - [ ] Typing `exit` and Enter stops the app on each system, and the window closes (Windows) or the script ends. Ctrl+C stops it too; on Windows the "Terminate batch job (Y/N)?" question follows, and either answer closes the window.
