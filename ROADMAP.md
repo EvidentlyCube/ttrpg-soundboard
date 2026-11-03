@@ -29,32 +29,7 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## Proposals
 
-### Soundboard name
-
-**Goal.** A soundboard can have a name of its own, set in a new **Options** dialog from the ☰ menu. The name replaces "Soundboard" in the board's header and the tab title, and the Selector shows it for the soundboard instead of the folder's name. Without a name, the folder's name is used everywhere.
-
-**Design changes.**
-- §2.3 (`.soundboard`): an optional `"name"` key, a non-empty string of at most 100 characters (`MAX_NAME_LENGTH`), validated like the other keys; a wrong one is a fatal validation error. Clearing the name removes the key.
-- §5.1, §5.2: `SettingsStore` holds the name next to the volumes, saved with the same serialized read-merge-write. `GET /api/settings` gains `name` (`null` without one), and a new `PUT /api/settings/name` takes `{ name: string | null }`, trimming it; `400` for one too long.
-- §5.7, §5.8, §3 (startup): a soundboard's name is read from its `.soundboard` (a broken or missing one counts as no name) for the folder cards (given folders and Recent), the listing's subfolders and the listing itself. They gain `title`: the name, or `null`.
-- §6.1: `Soundboard` keeps the name from the settings it loads at start, `setName(name)` applies it at once (`settings.nameChanged`) and saves it with the 500 ms debounce of the other customizations, flushed by `flushSettings`.
-- §9.1, §9.3: the header shows the name (the folder's name without one), and the document title becomes "<name> · Soundboard". The ☰ menu gets **Options** (enabled only once started), opening the Options dialog (new §9.x): one "Name" field, its placeholder the folder's name, saving as you type.
-- §9.18: a soundboard card shows the name over the path; a soundboard row in Browse shows the name instead of the folder's.
-- §9.0: the page waits for `GET /api/settings` before drawing the splash and its frame.
-
-**Answered questions.**
-1. *What does the header show on the splash, before anything is loaded?* The page calls `GET /api/settings` on load and shows only the dark background until it answers, so the first real render already has the name. The rule in §9.0 becomes "the only requests before the click are `GET /api/remote` and `GET /api/settings`".
-2. *Do other open pages update live when the name changes?* No; they show it after a reload.
-3. *Does the remote page show the name?* Only if it already shows a title, which it doesn't (§9.15), so no.
-4. *Where does the folder's name come from when there is no name?* The folder's base name, as the Selector shows it today.
-5. *How does a named soundboard look in Browse?* The name only.
-
-**Plan.**
-1. `.soundboard` `name`: validation, `SettingsStore` load/update, `GET /api/settings` and `PUT /api/settings/name` — backend tests for the key's rules, the merge with volumes, and the route's answers.
-2. The startup side: `soundboardName(folder)` reading the name safely; `title` on the given folders, the recent folders, the listing and its subfolders — backend tests with broken and missing files.
-3. `Soundboard` name, `setName` with the debounced save, `settings.nameChanged`, `BackendApi.saveName` — frontend tests with the fake clock.
-4. UI: the header and document title, the Options item and dialog, the Selector cards and rows — browser tests.
-5. `DESIGN.md`.
+None at the moment.
 
 ---
 

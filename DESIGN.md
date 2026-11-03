@@ -106,12 +106,14 @@ All sorting uses `Intl.Collator('en', { numeric: true, sensitivity: 'base' })`, 
 ```json
 {
 	"version": 1,
-	"volumes": { "master": 1, "music": 1, "sfx": 1 }
+	"volumes": { "master": 1, "music": 1, "sfx": 1 },
+	"name": "Tavern night"
 }
 ```
 - If the version is newer than the app supports, the app stops with a fatal error.
 - `volumes` is optional. A missing bus defaults to `1`. Each value must be a number from `0` to `1` (the slider position, not the gain). Unknown keys inside `volumes` are ignored.
-- The server rewrites this file whenever the browser saves volumes (§5.2), keeping unknown keys.
+- `name` is optional: the soundboard's own name, set in Options (§9.20), a non-blank string of at most 100 characters (`MAX_NAME_LENGTH`), read trimmed. Without it the folder's name shows instead. Clearing it removes the key.
+- The server rewrites this file whenever the browser saves volumes or the name (§5.2), keeping unknown keys.
 
 Sound or track options (`Explosion.mp3.json`)
 ```json
@@ -333,7 +335,7 @@ Library   { root, playlists: Playlist[], sounds: AudioFile[], files: Map<id, Aud
 Playlist  { id, title, gain, crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode, tracks: AudioFile[], includedSubdirectories: string[] }
 AudioFile { id /* root-relative POSIX path */, title, format: 'mp3'|'ogg'|'opus', size, gain, duration /* seconds or null */,
             startAt, endAt /* seconds or null */, fadeIn, fadeOut, source /* §2.3, origin filled in, or null */, absolutePath }
-Settings  { volumes: { master, music, sfx } }   // held by SettingsStore, saved to .soundboard
+Settings  { volumes: { master, music, sfx }, name }   // held by SettingsStore, saved to .soundboard; name null without one
 ```
 
 - `playlists` contains only non-empty playlists, sorted by title; `sounds` are sorted by title; tracks keep path order (§2.2).
@@ -365,7 +367,7 @@ Settings  { volumes: { master, music, sfx } }   // held by SettingsStore, saved 
   - A failed yt-dlp update (§3.4, §5.4) is a `warning` of kind `ytdlp-outdated` with the path `yt-dlp` and the terminal's message. It is added with `addLasting`, since it isn't about the library.
   - `Problems` holds the list in the server, replaced by every refresh except for its lasting problems, which stay first. `dismiss(id)` reports whether it knew the problem, `dismissAll()` empties it, `removeFor(path)` forgets a deleted or moved file's problems, and a directory's with everything in it. `onChange` fires only when the list really changed. Nothing is saved to disk: dismissed problems come back at the next start or refresh if the files are still wrong.
   - Invalid options files are not problems: they stop a start (§3.1 step 3) or a refresh (§3.6), which has its own dialog (§9.1).
-- `SettingsStore` keeps the settings in memory and writes them back to `.soundboard` with the same read-merge-write and atomic rename as the options files (§2.3). Writes are **serialized**: one in flight at a time, and changes made meanwhile are written together by one follow-up write, so the file always ends with the newest values.
+- `SettingsStore` keeps the settings in memory and writes them back to `.soundboard` with the same read-merge-write and atomic rename as the options files (§2.3). Writes are **serialized**: one in flight at a time, and changes made meanwhile are written together by one follow-up write, so the file always ends with the newest values. `updateVolumes` and `updateName` share that writer; `folderName` is the soundboard folder's name.
 
 ### 5.2 HTTP API (`src/http/`, built on `node:http`)
 
@@ -384,7 +386,7 @@ The server knows nothing about playback state.
 |---|---|---|
 | GET, HEAD | `/` and other paths | Files from `public/` (`/` serves `index.html`, or the page of the startup phase, above), with a MIME map and `Cache-Control: no-cache`. 404 for anything missing or outside `public/`. |
 | GET | `/api/info` | `{ app, checking, ytDlp: { version, update }, ffmpeg }`: `package.json`'s version, whether the tools are still being looked for and updated (§3.4), and each tool's version, `null` when it is missing or not known yet. `update` is what `yt-dlp -U` did at startup (§5.4), `null` when it didn't run. |
-| GET | `/api/startup` | `{ phase, paths, recent, initializer, tools }`. `paths` is `null`, or the folders given on the command line, each `{ path, name, allowed, reason }` (§5.7). `recent` is `[{ path, name, exists }]` (§5.8), empty when paths were given. `initializer` is `null` outside `initializing`, else `{ root, step, question, progress, failures, error, canDelete }` (§3, §3.7): `step` is `scanning`, `question`, `measuring`, `waitingForTools`, `starting` or `failed`; `question` is `{ id, kind: 'largeFolder', count }`, `{ id, kind: 'nestedDirectories', paths }` or `{ id, kind: 'metadataTitles', titles: [{ path, title }] }`; `progress` is `{ done, total }`; `failures` is `[{ path, problems }]`. `tools` is the `/api/info` answer. |
+| GET | `/api/startup` | `{ phase, paths, recent, initializer, tools }`. `paths` is `null`, or the folders given on the command line, each `{ path, name, allowed, reason }` (§5.7). `recent` is `[{ path, name, exists }]` (§5.8), empty when paths were given. In both, `name` is the soundboard's own name from its `.soundboard` (§2.3), or the folder's. `initializer` is `null` outside `initializing`, else `{ root, step, question, progress, failures, error, canDelete }` (§3, §3.7): `step` is `scanning`, `question`, `measuring`, `waitingForTools`, `starting` or `failed`; `question` is `{ id, kind: 'largeFolder', count }`, `{ id, kind: 'nestedDirectories', paths }` or `{ id, kind: 'metadataTitles', titles: [{ path, title }] }`; `progress` is `{ done, total }`; `failures` is `[{ path, problems }]`. `tools` is the `/api/info` answer. |
 | GET | `/api/startup/folders` | Without `path`, `{ places: [{ name, path }], browsed }` (§5.7), `browsed` being the folder listed last or `null` (§5.8). With `?path=<absolute path>`, the folder's listing: `{ path, parent, folders: [{ name, path, soundboard, refused }], audioFiles, soundboard, allowed, reason }`, with `path` resolved and `refused` judged by each subfolder's path alone; the resolved path is remembered as `browsed`. `403` with the reason for a folder outside the roots or hidden, and for any listing when paths were given on the command line; `404` for a folder that can't be read. |
 | POST | `/api/startup/select` | Body `{ path }`: starts loading it (§3). `204`; `400` with the reason for a refused folder or a missing `path`; `409` unless `selecting`. |
 | POST | `/api/startup/answer` | Body `{ id, yes }`. `204`; `400` for another body; `409` when that question isn't asked. |
@@ -392,7 +394,8 @@ The server knows nothing about playback state.
 | DELETE | `/api/startup/recent` | Body `{ path }`: forgets a recent folder. `204`. |
 | POST | `/api/startup/close` | Closes the soundboard (§3). `204`; `409` unless `ready`. |
 | GET | `/api/library` | JSON (below) |
-| GET | `/api/settings` | `{ "volumes": { "master": 1, "music": 0.8, "sfx": 1 } }` |
+| GET | `/api/settings` | `{ "volumes": { "master": 1, "music": 0.8, "sfx": 1 }, "name": "Tavern night", "folderName": "tavern" }`; `name` is `null` without one, and `folderName` shows instead (§2.3). |
+| PUT | `/api/settings/name` | Body `{ name: string \| null }`. Trimmed and saved; blank or `null` removes it. Returns `{ volumes, name }`. `400` for any other body or a name over 100 characters. |
 | PUT | `/api/settings/volumes` | Body `{ master?, music?, sfx? }` (numbers in `0..1`). Merged into the settings and saved; returns the full settings. `400` for invalid JSON, a non-object, an out-of-range value or an unknown key. `413` for bodies over 16 KB. |
 | PATCH | `/api/sounds/<encoded id>` | Body `{ title?, gain?, startAt?, endAt?, fadeIn?, fadeOut? }`. Saved through `LibraryEditor` (§5.1); returns the updated sound in the `/api/library` format. `400` for invalid JSON, a non-object, an unknown key, an empty title, an out-of-range value, or points less than 10 ms apart. `404` when the id isn't a sound. `413` for bodies over 16 KB. |
 | DELETE | `/api/sounds/<encoded id>`, `/api/tracks/<encoded id>`, `/api/playlists/<encoded id>` | Moves the item into the trash (§2.5) and answers `200 { changes }`: the `library.removed` messages below, which every event stream gets too, so the page that asked can apply them at once. `404` for an unknown id. |
@@ -597,7 +600,11 @@ The server checks every folder the Selector browses or chooses, whether it was b
 - **Inside a soundboard** (`checkFolder` only): a folder without `.soundboard` with one in any folder above it, up to the top of the disk, such as a playlist's folder: "This folder is inside a soundboard." A folder that already is a soundboard opens wherever it is. Also "This folder doesn't exist.", "This is not a folder." and "This folder can't be read."
 - Paths are compared without regard to case on Windows and macOS, whose disks usually ignore it.
 
-**Listing** (`listFolder`) refuses with `FolderNotAllowedError` what `browseRefusalOf` refuses, and with `FolderUnreadableError` what doesn't exist or can't be read. It lists the subfolders (and symbolic links to folders) by name, numbers in order, without hidden ones unless they are allowed. Each gets `soundboard` (it holds `.soundboard`, one `stat` each) and `refused` (`refusalOf` on its path alone). The listing also counts the supported audio files directly inside, says whether the folder itself is a soundboard, and has `checkFolder`'s answer. `parent` is `null` only at the top of a disk; it may be outside the roots, and listing it is then refused, which the Selector shows as a notice (§9.18).
+**Listing** (`listFolder`) refuses with `FolderNotAllowedError` what `browseRefusalOf` refuses, and with `FolderUnreadableError` what doesn't exist or can't be read. It lists the subfolders (and symbolic links to folders) by name, numbers in order, without hidden ones unless they are allowed. Each gets `soundboard` (it holds `.soundboard`, which is read for its `title`: the soundboard's own name, `null` without one or when the file is broken) and `refused` (`refusalOf` on its path alone).
+
+Each that isn't a soundboard also gets `holdsSoundboard`: whether a soundboard is up to 3 levels inside it (`NESTED_SOUNDBOARD_DEPTH`). The search goes through all the listed folders together, a level at a time, so shallow soundboards are found first, stops on a folder once one is found, and reads at most 1000 folders per listing (`MAX_SEARCHED_FOLDERS`, the listed folders included), so a huge tree stays quick. It follows no symbolic links, skips hidden folders unless they are allowed, and skips folders that tools fill and that never hold a soundboard, whatever their level: `node_modules`, `bower_components`, `__pycache__`, `site-packages`, `venv`, `.venv`, `.git`, `.svn`, `.hg`, `.cache`, `.npm`, `.gradle`, `.m2`, `$RECYCLE.BIN` and `System Volume Information`.
+
+The listing also has the supported audio files directly inside (`files`, by name with numbers in order, dot files left out) and their count (`audioFiles`), says whether the folder itself is a soundboard, and has `checkFolder`'s answer. `parent` is `null` only at the top of a disk; it may be outside the roots, and listing it is then refused, which the Selector shows as a notice (§9.18).
 
 **Starting places** (`startingPlaces`): each root (the home folder named "Home", another by its name), then the home folder's `Music`, `Desktop`, `Documents` and `Downloads` when they exist, are allowed and aren't roots already. Drives and mounts show only when they are roots.
 
@@ -652,7 +659,13 @@ UI layer (DOM)  ──commands──▶  Soundboard (logic facade)  ──▶  A
 start() → Promise<void>                   // from the splash click (§9.0): unlock audio synchronously, then fetch
                                           // library + settings once, apply volumes, emit 'app.ready' or 'app.startFailed'
 unlockAudio()                             // resume audio if the browser suspended it; must run inside a user gesture
-flushSettings()                           // save pending volume, sound and playlist changes now, with keepalive (on 'pagehide')
+flushSettings()                           // save pending volume, name, sound and playlist changes now, with keepalive (on 'pagehide')
+loadName() → Promise<void>                // before the page is drawn (§9.0): fetchSettings for the name; starts no audio,
+                                          // and a failure only logs a warning
+nameSettings() → { name, folderName }     // the name set in Options (null without one) and the folder's name
+displayName() → string                    // name, else folderName, else "Soundboard" when loadName got no answer
+setName(name)                             // Options (§9.20): trimmed, blank clears it; applies at once with 'name.changed'
+                                          // { name, displayName } and saves it like the volumes (§6.4). Not live in other pages
 closeSoundboard() → Promise<void>         // Change soundboard (§9.3): flushSettings, then POST /api/startup/close; emits
                                           // 'app.closed' once done, and rejects with the server's message
 
@@ -856,6 +869,7 @@ Volumes are saved in `.soundboard` (§2.3), so they survive reloads and restarts
 - `setVolume` changes the gain immediately. The save is **debounced**: `saveVolumes` is sent 500 ms after the last change, and only one save is in flight at a time, so saves can't arrive out of order.
 - `flushSettings()` sends a pending change straight away with `keepalive: true`, so closing the tab mid-drag still saves it.
 - A failed save logs a warning; the next change saves the full set again. Volume itself keeps working.
+- `SettingsSync` does this for one value, generic over its type: the volumes, and in a second instance the name (`saveName`), whose `null` is a value like any other.
 
 **Item volume.** Each sound, playlist and track has its own `gain` (§2.3). Sounds and playlists set it in their Customize dialogs (§9.7).
 - **Range and display.** Gain runs from `0` (silent) to `MAX_GAIN = 4` (+12.04 dB); the server enforces the same limit. People see decibels: `dB = 20 · log10(gain)`, `gain = 10^(dB / 20)`, and gain 0 is shown as `−∞ dB`. Above gain 1 a loud file can clip; that is allowed, and the widget shows it in orange.
@@ -1126,8 +1140,8 @@ Dark theme, plain and functional. Icons appear only on controls (play, pause, st
 
 Browsers only allow audio to start inside a user gesture, so the app starts behind a splash.
 
-- **Frame.** Until the board is ready the splash fills the space between a header and a footer that look like the board's (§9.1), so the page keeps its shape when the board comes (`StartFrame` in `ui/app.js`, `data-start-header`; the splash has `data-framed`). The header has only the ☰ button and the title; its menu lists the usual items, but only **Info** and **Change soundboard** are enabled (`appMenuItems({ started: false })`, §9.3). The footer is the dock's layout (`dockLayout`) with "No playlist playing" and **Stop All** disabled. Choosing Remote removes the frame; on `app.ready` the board's own header and footer replace it, and the splash moves out to cover the whole page for the later messages below.
-- On page load the app does **nothing** except show the splash: the app name and **"Choose how to start"** with three buttons, **Standalone**, **Host** and **Remote** (each with a line saying what it is). No audio context, and the only request is `GET /api/remote` (§5.2), which sets a note: under Host "Another page is the host. You will be asked before it is replaced." when there is one, under Remote "No host is running yet. It will work once one starts." when there is none.
+- **Frame.** Until the board is ready the splash fills the space between a header and a footer that look like the board's (§9.1), so the page keeps its shape when the board comes (`StartFrame` in `ui/app.js`, `data-start-header`; the splash has `data-framed`). The header has only the ☰ button and the title (the soundboard's name, §9.1); its menu lists the usual items, but only **Info** and **Change soundboard** are enabled (`appMenuItems({ started: false })`, §9.3). The footer is the dock's layout (`dockLayout`) with "No playlist playing" and **Stop All** disabled. Choosing Remote removes the frame; on `app.ready` the board's own header and footer replace it, and the splash moves out to cover the whole page for the later messages below.
+- On page load the app first calls `loadName()` (§6.1) and draws nothing but the dark background until it answers, so the first drawing already has the soundboard's name in the header and the tab title. Then it does **nothing** except show the splash: the app name and **"Choose how to start"** with three buttons, **Standalone**, **Host** and **Remote** (each with a line saying what it is). No audio context, and the only other request is `GET /api/remote` (§5.2), which sets a note: under Host "Another page is the host. You will be asked before it is replaced." when there is one, under Remote "No host is running yet. It will work once one starts." when there is none.
 - **Standalone** and **Host** call `soundboard.start()`, which creates and resumes the `AudioContext` **synchronously** inside the click. **Host** then calls `becomeHost` (§6.10); when it answers `'taken'` the replace dialog (§9.15) opens over the board, because a held button is not a gesture that may start audio. **Remote** opens the remote page (§9.15) and never touches audio. The splash shows "Loading…" while the library and settings are fetched.
 - On `app.ready` the splash is hidden and the board is rendered. On `app.startFailed` the splash shows "Could not start the soundboard. Click to retry." with the error; clicking starts again.
 - **Restart needed.** When a refresh fails because `.soundboard` is gone (§6.7), the splash comes back for good as "The audio folder needs a restart. Restart the app, then reload this page.", with the server's message under it. Clicks do nothing.
@@ -1153,7 +1167,7 @@ Browsers only allow audio to start inside a user gesture, so the app starts behi
 
 ### 9.1 Layout
 
-- The page is a full-height column: header (green-tinted with a green border while the page is the host) (the ☰ app menu button and the title, §9.3, then the role label "Host" while the page is the host (§9.15), then the Problems button while there are any (§9.14), the external changes button while there are any, the waveform progress while there is any, the Trash button while the trash holds anything, volume controls and the debug button, §9.8), a scrolling main area, then the footer.
+- The page is a full-height column: header (green-tinted with a green border while the page is the host) (the ☰ app menu button and the title, §9.3: the soundboard's `displayName()` (`data-app-title`), cut short with "…" when too long, which the tab title repeats as "<name> · Soundboard"; then the role label "Host" while the page is the host (§9.15), then the Problems button while there are any (§9.14), the external changes button while there are any, the waveform progress while there is any, the Trash button while the trash holds anything, volume controls and the debug button, §9.8), a scrolling main area, then the footer.
 - The main area has a "Playlists" section above a "Sound Effects" section. Both are always shown, even empty, because their titles carry the add buttons: **+ Add playlist** in blue and **+ Add sound** in amber (`tileGrid`, §9.9). With no playlists and no sounds, a line above them says none were found in this folder, until a download adds one.
 - Tiles for sounds and playlists added by a download or a move (`sound.added`, `playlist.added`) appear at once in their sorted place. Tiles of sounds and playlists deleted or moved away (`sound.removed`, `playlist.removed`), in this tab or another, disappear at once, and a Customize dialog open for that item closes.
 - Tiles are `<button>`s in a grid of columns at least 10rem (160 px) wide, with titles clamped to 3 lines. The full title shows as a tooltip.
@@ -1229,6 +1243,7 @@ Tracks are added from the Tracks tab of the playlist dialog (§9.9), so the menu
 | Regenerate waveforms | `regenerateWaveforms` (§6.6) |
 | Become host / Stop hosting | `becomeHost` / `stopHosting` (§6.10) |
 | Connect a phone | opens the QR code dialog (§9.16) |
+| Options | opens the Options dialog (§9.20) |
 | Info | opens the Info dialog (§9.17) |
 
 "Active" means `loading`, `playing` or `paused`. The plain items follow the playlist's fades and crossfade; with those off, each behaves like its "(Instant)" twin, except for cutting voices already fading out. Separators divide the groups.
@@ -1491,13 +1506,14 @@ Under yt-dlp's version, a small line (`data-update-state`) says what `yt-dlp -U`
 
 - **`StartupFlow`** polls `GET /api/startup` at once and every 500 ms (`STARTUP_POLL_MS`). A page belongs to one phase: once the server is in another, it stops polling and calls `onLeave`, and the page loads `/`. It keeps a `StartupView`: the state, `connected` (false while the server doesn't answer), the starting places, the folder shown, `error` (the last action's failure, until the next action), `browseError` with a `browseFailures` count, and `busy` while an action runs; a second action meanwhile is ignored. Each action is followed by a poll. A folder that can't be shown leaves the one shown in place; the answer to an older browse is dropped when a newer one was asked.
 - **Layout**: a header bar across the top, then, centered and at most `max-w-3xl`, a notice while the app doesn't answer ("The app doesn't answer. If it was stopped, start it again; this page carries on by itself."), the error line in red, then the sections.
-- **With folders from the command line**: a "Soundboards" section with one card per folder (`data-folder-card`, the name over the full path, tinted blue with a blue border); a refused one is plain and greyed out with its reason under the path and as the card's `title` (`data-refused`). They end with the **Browse folders…** card, disabled, its tooltip "Only the folders given when the app was started can be opened." The browser and the recent folders are hidden.
+- **With folders from the command line**: a "Soundboards" section with one card per folder (`data-folder-card`, the name over the full path, tinted blue with a blue border; the name is the soundboard's own when it has one, §5.2); a refused one is plain and greyed out with its reason under the path and as the card's `title` (`data-refused`). They end with the **Browse folders…** card, disabled, its tooltip "Only the folders given when the app was started can be opened." The browser and the recent folders are hidden.
 - **Otherwise** the page shows one of two views, Recent or Browse. It opens on Browse when there are no recent folders, and on Recent otherwise; the choice is the page's own and isn't kept across reloads.
 - **Recent**: a raised card titled "Recent", like Browse's, holding the recent folders as cards like the given ones, each with a × (`data-forget`) that forgets it, and one that no longer exists greyed out as "This folder doesn't exist any more."; then the **Browse folders…** card (`data-browse`), dashed and green so it doesn't pass for a soundboard, which switches to Browse. Disabled, it is plain grey. It stays when the last recent folder is forgotten.
 - **Browse**: **← Recent** (`data-browse-back`, hidden when there are no recent folders) switches back. Below it the browser sits in a raised card titled "Browse", the Customize dialogs' `card` (§9.7). It loads its first folder once the first state says no folders were given, whichever view shows: the one browsed last (§5.8), or the first starting place when there is none or it can't be listed any more, without the notice a refused folder gets otherwise:
   - an address bar, one bordered control as in a file manager (its border blue while the path has focus): **Places ▾** (`data-places-button`) opens a menu of the starting places (`data-places-menu`, `data-place`, `data-current` in blue on the one shown) that closes on a pick, a click elsewhere or Esc; **↑** (`data-folder-up`, disabled at the top of a disk, its tooltip naming the parent); the path field (`data-path-input`) you can paste into; and **Go** at its end (or Enter);
   - a row with a summary (`data-folder-summary`: "Soundboard folder", "No soundboard here yet: 3 folders, 12 audio files", or the reason it can't be opened, in yellow) and the action button (`data-folder-open`): **Open** for a soundboard, **Create soundboard here** otherwise, disabled when refused, with the reason as a tooltip;
-  - the subfolders (`data-folder-list`, at most half the window high, scrolling), each row highlighted whole under the pointer. A folder is 📁 and its name opens it in the browser; a refused one is muted with its reason as the `title`. A soundboard is 🎵 with a "Soundboard" badge and its own blue **Open** button; its name isn't a link, since its folders are its playlists. A soundboard's path can still be typed into the address bar.
+  - the subfolders (`data-folder-list`, at most half the window high, scrolling), each row highlighted whole under the pointer. A folder is 📁 and its name opens it in the browser; a refused one is muted with its reason as the `title`. One with a soundboard inside it (`holdsSoundboard`, §5.7) ends in a 🎵 (`data-holds-soundboard`) whose tooltip is "A soundboard is somewhere inside this folder". A soundboard is 🗂️ with its folder's name, then its own name in smaller grey text in parentheses when it has one that differs (`data-folder-title`), a "Soundboard" badge and its own blue **Open** button; its name isn't a link, since its folders are its playlists. A soundboard's path can still be typed into the address bar.
+  - after the folders, the audio files (`data-audio-file`), 🎵 and the file name in muted text, only to show what the folder holds: they can't be clicked and aren't highlighted. With neither, the list says "No folders or audio files inside."
 - **A folder that can't be shown**, typed in or reached with Up, shows its reason in a small red notice in the bottom-right corner (`data-toast`, `role="status"`). It fades in, stays a second, and fades out (`data-visible`, an opacity transition); the path field goes back to the folder shown, even when the same path is refused twice.
 - **Header** (`ui/startup-parts.js`), styled like the Soundboard page's and staying at the top while the page scrolls: "Soundboard Selection" with the app's version from `tools.app` beside it in smaller grey text, "v0.1.0" (`data-app-version`); on the right yt-dlp and ffmpeg (`data-tool`), each "checking…", its version, or "not installed, so downloads are off" in yellow. yt-dlp's adds ✓ when up to date (tooltip "Up to date"), or "updated", "update failed" or "could not check for updates", with the error as its tooltip.
 - Parts are drawn again only when what they show changed, so polling never resets a hover or a typed path.
@@ -1518,6 +1534,10 @@ Under yt-dlp's version, a small line (`data-update-state`) says what `yt-dlp -U`
 - When the session reaches `ready` the page loads `/`, which is the board's splash (§9.0); after a No or Back it is the Selector.
 
 **Remote devices** get `public/waiting.html` instead before a soundboard is open (§5.2).
+
+### 9.20 Options dialog
+
+`ui/options-dialog.js`, opened from the ☰ menu (§9.3), titled "Options" (`data-options`), with its field focused. It has one filled field (§9.7), **Name** (`data-options-name`, at most 100 characters), holding the soundboard's own name, empty without one, and a line under it: "Shown in the header and the Selector. Left empty, the folder's name "…" is used." Every keystroke calls `setName` (§6.1), so the header and the tab title follow as it is typed, and the name is saved 500 ms after the last one. Other open pages show it after a reload. The remote page shows no name.
 
 ---
 
@@ -1567,7 +1587,7 @@ public/
 		            gain-control.js  gain-scale.js  debug-view.js  waveform-indicator.js  waveform-draw.js  waveform-canvas.js
 		            seconds-control.js  seconds-scale.js  range-control.js  range-scale.js  add-dialog.js  download-dialog.js
 		            hold-button.js  replace-host-dialog.js  remote-view.js  move-dialog.js  trash-button.js  trash-dialog.js  metadata-dialog.js  source-fields.js  problems-button.js  problems-dialog.js
-		            access-requests-banner.js  connect-phone-dialog.js  info-dialog.js  startup-parts.js
+		            access-requests-banner.js  connect-phone-dialog.js  info-dialog.js  options-dialog.js  startup-parts.js
 test/
 	backend/    cli/  downloads/  http/  library/  metadata/  remote/  startup/
 	frontend/   logic tests, backend-api.test.js, ui/ (pure UI helpers)
