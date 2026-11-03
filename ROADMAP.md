@@ -31,7 +31,7 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ### Translations
 
-**Goal.** Every text the app shows in the browser can be read in another language. Each language is one file in `public/app/i18n/` (`en.js`, `pl.js`, …), and adding a language means adding one file and nothing else. The user picks the language once and it applies to the Selector, the Initializer, the board, the remote page and the waiting and connect pages.
+**Goal.** Every text the app shows in the browser can be read in another language. Each language is one file in `public/app/i18n/` (`en.js`, `pl.js`, …), and adding a language means adding one file and nothing else. The user picks the language once, in the Selector, and it applies to the Selector, the Initializer, the board, the remote page and the waiting and connect pages.
 
 Today the texts are spread over about 300 string literals in `public/app/ui/`, `selector.js`, `initializer.js`, the five HTML pages, and about 80 in `src/` that reach the page: folder refusal reasons (§5.7), startup failures (§3.7), the server's problems (§6.9) and `HttpError` messages (§5.2).
 
@@ -44,18 +44,18 @@ Today the texts are spread over about 300 string literals in `public/app/ui/`, `
   - **Static HTML** gets `data-i18n="key"` attributes filled at load, so the pages stay plain HTML.
 - **§5.2, §5.7, §3.7, §6.9 — server messages become codes.** Everything the server sends for the page to show carries a `code` and its `params` (`{ code: 'folder.hidden' }`, `{ code: 'startup.unreadable', params: { path } }`), and the page translates it. The English `message` stays beside it for the terminal, the log and as a fallback. Output of yt-dlp, ffmpeg and the operating system (an `EACCES` text, a download error) is shown as it comes, untranslated.
 - **§5.8 — the language setting.** The config folder's file keeps `"language": "pl"` next to `recent` and `browsed` (left out = automatic). New routes `GET`/`PUT /api/language`, answered to every page, including remotes.
-- **§9.3, §9.18 — the picker.** A language menu in the Selector's header and a **Language** item in the ☰ menu: "Automatic" (the browser's language when a file exists for it, else English) and one row per file, each in its own language (`Polski`, `English`).
+- **§9.18 — the picker.** A language menu in the Selector's header, which saves the choice and reloads the page: "Automatic" (the browser's language when a file exists for it, else English) and one row per file, each in its own language (`Polski`, `English`).
 - **§10** lists `public/app/i18n/` and `logic/i18n.js`.
 
 **Open questions.**
 
-- **A. Which languages ship first?** Recommended: English and Polish. Polish has three plural forms, so it proves the plural handling from the start.
-- **B. One app-wide setting, or one per browser?** Recommended: app-wide, in the config folder (§5.8), so the Selector, every soundboard and a phone all follow one choice. The alternative is the browser's own storage, which lets a phone differ from the laptop but has to be set on each device.
-- **C. What happens when the language changes on the board?** Recommended: the page reloads at once in the Selector, the Initializer and the remote page, where a reload loses nothing. On the board a reload stops playback, so the ☰ menu change applies on the next load and says so ("Applies after a reload"). Re-rendering the board live is possible but touches every component; not worth it for a choice made once.
-- **D. Server messages as codes, now or later?** Recommended: now, in this feature. Otherwise a Polish Selector shows English refusal reasons, which looks broken.
-- **E. Are times and sizes localized too?** Recommended: numbers yes (`Intl.NumberFormat`: decimal comma, thousands separator); the `m:ss` clock and unit symbols (`dB`, `MB`, `ms`) stay as they are in every language.
-- **F. What stays English?** Recommended: the terminal (§1), `--help`, the debug view and Debug dialog (§9.8), log lines, and anything written to disk (titles, file names, `.soundboard` and the options files).
-- **G. Tests.** Recommended: browser specs keep running in English (the default); one unit test checks that every language file has exactly `en.js`'s keys, the same placeholders per key, and every plural form its locale needs; one Playwright spec switches to Polish and checks a few texts and a number on the Selector and the board.
+- **A. Which languages ship first?** **Settled:** English and Polish. No others are planned unless someone else writes a translation.
+- **B. One app-wide setting, or one per browser?** **Settled:** app-wide, in the config folder's file where the app keeps its settings (§5.8).
+- **C. Where is the language chosen?** **Settled:** only in the Selector, which reloads the page. The board has no language item in its ☰ menu.
+- **D. Server messages as codes, now or later?** **Settled:** now, in this feature.
+- **E. Are numbers localized?** **Settled:** yes (`Intl.NumberFormat`: decimal comma, thousands separator). The `m:ss` clock and unit symbols (`dB`, `MB`, `ms`) stay as they are in every language.
+- **F. What stays English?** **Settled:** everything that isn't shown in the page: the terminal output (§1), the command-line arguments, `--help` and usage errors, log lines, and anything written to disk (titles, file names, `.soundboard` and the options files). The debug view and Debug dialog (§9.8) stay English too, as developer tools. The server has no language files.
+- **G. Tests.** **Settled:** browser specs keep running in English (the default); one unit test checks that every language file has exactly `en.js`'s keys, the same placeholders per key, and every plural form its locale needs; one Playwright spec switches to Polish in the Selector and checks a few texts and a number there and on the board.
 
 **Plan.** Following the lean flow: code first, the owner checks the UI, then tests and `DESIGN.md` in one sweep. One commit per step.
 
@@ -64,7 +64,7 @@ Today the texts are spread over about 300 string literals in `public/app/ui/`, `
 3. **The board's texts.** Every string in `public/app/ui/` and `index.html` moves into `en.js`; numbers go through the locale.
 4. **The startup and remote pages.** `selector.js`, `initializer.js`, `startup-parts.js`, the remote view and the other HTML pages.
 5. **Server messages as codes.** Refusal reasons, startup failures, problems and the `HttpError`s the page shows get `code` and `params`; the page translates them.
-6. **The picker.** Selector header menu and the ☰ menu item (question C).
+6. **The picker.** The Selector header's language menu (question C).
 7. **`pl.js`.** The full Polish translation.
 8. **Tests, `TESTING.md` and `DESIGN.md`.**
 
