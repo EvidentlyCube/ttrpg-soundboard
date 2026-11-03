@@ -24,13 +24,14 @@ node index.js [<audio-directory>…] [--port <number>] [--lan [<address>]] [--UN
 - Output is quiet by default: the allowed folders, the tools and the address at startup, `Opened <folder>: 4 playlists and 4 sounds.` and `Closed <folder>.`, then `Press Ctrl+C or type exit and press Enter to stop.`, warnings and errors. `--verbose` also logs every HTTP request (§5.2). `--help` prints every option with what it does and exits; a usage error prints the reason, the usage line and a pointer to `--help`, and exits `1`.
 - While it runs, it watches the directory. Files added, removed or changed from outside the app are not loaded by themselves: the page offers a refresh, which rebuilds the library as a restart would (§3.6, §5.3).
 - It can add sounds, playlists and tracks from a pasted link. The server downloads it with `yt-dlp`, or fetches a direct link to a file itself, keeps its Opus audio as `.opus` or converts it to `.ogg` with `ffmpeg`, and the page shows each new file at once (§5.4, §9.9).
-- It runs in a terminal window, which a launcher may open by itself; closing it, Ctrl+C or typing `exit` stops the app. There is no unattended mode.
+- It runs in a terminal window; closing it, Ctrl+C or typing `exit` stops the app. There is no unattended mode. The release zips start it with a launcher that opens that window by a double-click on Windows and macOS (§13).
 
 ### 1.1 Constraints
 
 | Area | Decision |
 |---|---|
 | Runtime | Node **24.14.0** (`"engines": { "node": ">=24.14.0" }`) |
+| Distribution | One zip per platform, with the app, the official Node.js binary of a pinned version and a launcher (§13), so players install nothing. Running from source with your own Node works the same. |
 | Runtime dependencies | **None on the server.** The browser loads exactly one third-party file: Tailwind CSS's browser build, vendored in `public/vendor/` (§9.6). The browser never fetches anything from the internet; only the server does, and only the links the user pastes (§5.4). |
 | External programs | `yt-dlp` and `ffmpeg`, for downloads only (§5.4). They are found on `PATH` and run as child processes; the app never bundles or installs them. Without them, everything except downloads works as usual. |
 | UI styling | Tailwind CSS v4 browser build (`@tailwindcss/browser`). It turns class names into CSS at runtime, so there is no CLI and no build step. |
@@ -1492,7 +1493,7 @@ Under yt-dlp's version, a small line (`data-update-state`) says what `yt-dlp -U`
   - a row with **↑ Up** (`data-folder-up`, disabled at the top of a disk), a summary (`data-folder-summary`: "Soundboard folder", "No soundboard here yet: 3 folders, 12 audio files", or the reason it can't be opened, in yellow), and the action button (`data-folder-open`): **Open** for a soundboard, **Create soundboard here** otherwise, disabled when refused, with the reason as a tooltip;
   - the subfolders (`data-folder-list`, at most half the window high, scrolling): each name opens it in the browser; a refused one is muted with its reason as the `title`; a soundboard has a "Soundboard" badge and its own **Open** button.
 - **A folder that can't be shown**, typed in or reached with Up, shows its reason in a small red notice in the bottom-right corner (`data-toast`, `role="status"`). It fades in, stays a second, and fades out (`data-visible`, an opacity transition); the path field goes back to the folder shown, even when the same path is refused twice.
-- **Footer** (`ui/startup-parts.js`): yt-dlp and ffmpeg (`data-tool`), each "checking…", its version, or "not installed, so downloads are off" in yellow; yt-dlp's adds "up to date", "updated", "update failed" or "could not check for updates", with the error as its tooltip.
+- **Footer** (`ui/startup-parts.js`): "Soundboard 0.1.0", the app's version from `tools.app` (`data-app-version`), then yt-dlp and ffmpeg (`data-tool`), each "checking…", its version, or "not installed, so downloads are off" in yellow; yt-dlp's adds "up to date", "updated", "update failed" or "could not check for updates", with the error as its tooltip.
 - Parts are drawn again only when what they show changed, so polling never resets a hover or a typed path.
 - **Extension point**: startup settings, such as LAN access, would go into a section of their own here.
 
@@ -1521,6 +1522,11 @@ index.js                         entry point: wires process streams and signals 
 package.json  package-lock.json  type: module, engines, scripts (§10.2), dev dependencies only
 eslint.config.js  .editorconfig  tsconfig.json  tsconfig.*.json (§10.1)
 scripts/        mutate.js                checks that tests fail when code is broken (TESTING.md)
+                pack.js                  npm run pack: parses its arguments and calls pack/pack.js (§13)
+	pack/       pack.js  platforms.js  node-runtime.js  package-layout.js  git-files.js  zip.js  tar.js  errors.js
+packaging/      start.sh  start.cmd  README-windows.txt  README-macos.txt  README-linux.txt   (templates for the zips, §13)
+.github/workflows/  check.yml  release.yml (§13)
+dist/           the zips, and cache/ with the Node downloads; git-ignored
 src/
 	cli/        main.js  args.js  open-browser.js  colors.js
 	startup/    startup-session.js  folder-rules.js  folders.js  recent-folders.js  errors.js
@@ -1561,7 +1567,8 @@ test/
 	frontend/   logic tests, backend-api.test.js, ui/ (pure UI helpers)
 	browser/    Playwright suite (§11): playwright.config.js, support/ (fixtures, server, test-main, audio, disk, app), pages/, specs/
 	helpers/    fake-audio-engine.js  fake-clock.js  fake-backend-api.js  fake-prompter.js  fake-reporter.js  fake-process-runner.js
-	            tmp-tree.js  tag-builders.js  http-client.js  seeded-random.js
+	            tmp-tree.js  tag-builders.js  http-client.js  seeded-random.js  zip-reader.js  tar-builder.js
+	scripts/    pack/ (§13)
 test_fixtures/
 	example_soundboard/             real MP3/OGG library: 4 playlists, 4 sounds, with and without title tags; "Music Order"
 	                                has six 10 s tracks ("Order 1" to "Order 6") so the playback orders can be told apart
@@ -1573,7 +1580,7 @@ Each project is checked against only the globals its code may use, so the compil
 
 | Project | Covers | Globals available |
 |---|---|---|
-| Backend (`tsconfig.backend.json`) | `index.js`, `scripts/**`, `src/**`, `test/backend/**`, `test/helpers/**` | Node, no DOM |
+| Backend (`tsconfig.backend.json`) | `index.js`, `scripts/**`, `src/**`, `test/backend/**`, `test/helpers/**`, `test/scripts/**` | Node, no DOM |
 | Frontend logic (`tsconfig.logic.json`) | `public/app/logic/**` | ECMAScript only: **no DOM, no Node**. Using `document`, `window`, `console` or `setTimeout` here is a compile error. |
 | Frontend UI (`tsconfig.ui.json`) | `public/app/**` except `logic/` | DOM |
 | Frontend tests (`tsconfig.frontend-tests.json`) | `test/frontend/**`, `test/helpers/**` | Node, plus the sources they import |
@@ -1587,11 +1594,12 @@ ESLint backs this up with `no-restricted-globals` in `public/app/logic/**`.
 |---|---|
 | `npm start -- <dir>` | `node index.js <dir>` |
 | `npm run dev -- <dir>` | `node --watch index.js <dir>` |
-| `npm test` | `node --test` over `test/backend`, `test/frontend` and `test/helpers` |
+| `npm test` | `node --test` over `test/backend`, `test/frontend`, `test/helpers` and `test/scripts` |
 | `npm run test:browser` | `playwright test -c test/browser/playwright.config.js`; needs the Playwright browsers and is not part of `check` |
 | `npm run typecheck` | `tsc -p` for every project in §10.1 |
 | `npm run lint` / `npm run lint:fix` | `eslint .` / `eslint . --fix` |
 | `npm run check` | typecheck + lint + test; must pass before every commit (the browser tests are run separately) |
+| `npm run pack [-- --platform <name>… --allow-dirty]` | `node scripts/pack.js`: the release zips into `dist/` (§13) |
 
 ---
 
@@ -1635,3 +1643,50 @@ The streaming design keeps resource use well within what this machine can handle
 **Session safety:**
 - **Keep the terminal window open.** Closing it stops the server, and with it any music that hasn't been buffered yet.
 - "Stop (Instant)" on each playlist, and the sound stop buttons, are the guaranteed ways to cut audio immediately.
+
+---
+
+## 13. Release packages
+
+A release is one zip per platform, so a player installs nothing: each carries the app, the official Node.js binary for its system and a launcher. Single executable applications were set aside for a plain folder that holds a real `node`. The app itself knows nothing about how it was started: it finds `public/` and `package.json` relative to its own files (§9.17), and starts in the Selector (§3).
+
+**Platforms** (`scripts/pack/platforms.js`): `windows-x64`, `macos-arm64`, `macos-x64` and `linux-x64`, each with its name in Node's downloads. Another platform is one line there. `NODE_VERSION` pins the Node release every zip carries (now `24.22.2`) and is changed by hand; `engines` stays `>=24.14.0` for running from source.
+
+**Layout.** `soundboard-<version>-<platform>.zip`, with the version from `package.json`, unpacks to a folder of the same name:
+
+```
+soundboard-0.1.0-macos-arm64/
+	Start Soundboard.command      launcher: Start Soundboard.cmd on Windows, start-soundboard.sh on Linux
+	README.txt                    how to start, stop and update on this system, and the warnings on first start
+	app/                          index.js  package.json  LICENSE  src/  public/
+	runtime/                      node (node.exe on Windows)  LICENSE (Node's own)
+```
+
+- `app/` holds exactly the files git tracks under `APP_PATHS` (`index.js`, `package.json`, `LICENSE`, `src`, `public`), so tests, docs and stray local files never ship.
+- The launcher and `README.txt` come from `packaging/`: `start.sh` (released as the macOS and the Linux launcher), `start.cmd`, and one `README-<os>.txt` per system, in which `{{VERSION}}` and `{{NODE_VERSION}}` are filled in. Windows gets both with CRLF line endings.
+- The launchers, and `node`, are stored with mode `755`, everything else `644`. The zip says it was made on Unix, so `unzip` and macOS's Archive Utility keep the modes.
+- Every entry is dated with the commit's date, in UTC, so packing the same commit twice gives byte-identical zips.
+
+**Launchers.** Each changes to its own folder, runs `runtime/node app/index.js` with its own arguments passed on, and exits with the app's exit code. After a non-zero exit it first waits on `Press Enter to close.`, since a double-clicked window may close at once and take the error with it.
+- **Windows**, `Start Soundboard.cmd`: double-clicked in Explorer. SmartScreen may warn about it once (More info → Run anyway). Ctrl+C makes `cmd` ask "Terminate batch job (Y/N)?" after the app has stopped; either answer closes the window.
+- **macOS**, `Start Soundboard.command`: double-clicked, it opens in Terminal. Gatekeeper refuses the first double-click, since the file is not signed, until it is allowed once in System Settings → Privacy & Security → Open Anyway. The Node binary is signed and notarized by the Node project.
+- **Linux**, `start-soundboard.sh`: run from a terminal, since file managers mostly open a double-clicked script in an editor, and a `.desktop` file needs absolute paths.
+
+Nothing is signed: that would need an Apple Developer ID and a Windows code-signing certificate. Each `README.txt`, and `README.md`, walk through the warnings.
+
+**Packing** (`npm run pack`, §10.2). `scripts/pack.js` parses `--platform` (repeatable; every platform without it) and `--allow-dirty`, and exits `2` on misuse. `pack()` (`scripts/pack/pack.js`) then:
+1. Refuses, with a `PackError` that lists the `git status` lines and exits `1`, when the app's paths have uncommitted or untracked changes, so a zip always matches a commit. `--allow-dirty` packs the files as they are, still only the tracked ones.
+2. Reads the version, the commit date, the app files and the templates.
+3. Gets each platform's runtime from `NodeRuntimes` (`scripts/pack/node-runtime.js`), builds its entries (`packageEntries`, `scripts/pack/package-layout.js`) and writes the zip to `dist/`.
+
+`NodeRuntimes` downloads from `https://nodejs.org/dist/v<version>/` and checks every file against the release's `SHASUMS256.txt`; a mismatch is a `PackError`, and the file is not kept. Files are cached in `dist/cache/node-v<version>/`, written under a temporary name first, and checked again when read, so a damaged cache file is downloaded again and later packs need no network. macOS and Linux take `bin/node` and `LICENSE` out of `node-v<version>-<platform>.tar.gz`. Windows takes the separately published `win-x64/node.exe`, and the license from the Linux tarball, which is the same file.
+
+Only Node built-ins are used, so there is no new dependency: `zip.js` (`createZip`) writes a zip in memory with `zlib`'s deflate and `crc32`, storing an entry when deflating doesn't shrink it, without Zip64 (entries and the whole zip stay under 4 GB); `tar.js` (`readTarGz`) reads the regular files of a `.tar.gz`, with GNU and pax long names and the ustar prefix, and skips links and folders.
+
+**Releasing** (`.github/workflows/release.yml`). A push to `main` that changes `package.json` runs it:
+1. **version**: reads the version and looks up the release `v<version>`. A draft release has no tag until it is published, so the release is looked up, not the tag. When it exists, nothing else runs, so other changes to `package.json` and re-runs are harmless.
+2. **pack**: `npm ci`, `npm run check`, then `npm run pack`, with `dist/cache` kept between runs per `platforms.js`.
+3. **try**: on Linux, macOS (arm64) and Windows runners, unpacks that system's zip with its own tools and runs the launcher with `--help`.
+4. **release**: `gh release create v<version>` as a **draft**, with the zips, notes generated from the commits since the last release, and the pushed commit as its target. The owner reads it and publishes it, which creates the tag.
+
+So a release is cut by changing `version` in `package.json` in a commit of its own (`Release 0.2.0`) and pushing it.
