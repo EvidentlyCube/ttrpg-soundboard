@@ -81,8 +81,17 @@ const pathForm = h('form', { class: 'flex items-stretch rounded-md border border
 	upButton,
 	pathInput,
 	h('button', { type: 'submit', class: `${BAR_BUTTON} rounded-r-md border-l` }, t('selector.go')));
+/** A path typed in and not sent yet, which a folder shown meanwhile must not overwrite. */
+let typing = false;
+pathInput.addEventListener('input', () => {
+	typing = true;
+});
+pathInput.addEventListener('blur', () => {
+	typing = false;
+});
 pathForm.addEventListener('submit', (event) => {
 	event.preventDefault();
+	typing = false;
 	const path = pathInput.value.trim();
 	if (path !== '') {
 		flow.browse(path);
@@ -209,7 +218,7 @@ function render(view) {
 	if (view.listing && listingKey !== drawn.listing) {
 		const pathChanged = JSON.parse(drawn.listing || 'null')?.[0]?.path !== view.listing.path;
 		drawn.listing = listingKey;
-		if (pathChanged) {
+		if (pathChanged && !typing) {
 			pathInput.value = view.listing.path;
 		}
 		drawListing(view.listing, busy);

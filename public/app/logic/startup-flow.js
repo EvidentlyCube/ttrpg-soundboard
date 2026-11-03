@@ -134,20 +134,24 @@ export class StartupFlow {
 
 	/**
 	 * Loads the starting places, then the folder shown last time, or the first place when there is none or it can no
-	 * longer be shown. That folder failing tells nothing, since it was not asked for now.
+	 * longer be shown. That folder failing tells nothing, since it was not asked for now. A folder asked for meanwhile,
+	 * such as a path typed in, wins over both.
 	 */
 	async browseStart() {
+		/** The last browse this method asked for; any other means the user asked for a folder. */
+		let own = this.#browseGeneration;
+		const untouched = () => this.#browseGeneration === own && this.#view.listing === null;
 		try {
 			const { places, browsed } = await this.#api.fetchPlaces();
 			this.#set({ places });
-			if (browsed !== null && this.#view.listing === null) {
-				const generation = ++this.#browseGeneration;
+			if (browsed !== null && untouched()) {
+				own = ++this.#browseGeneration;
 				const listing = await this.#api.listFolder(browsed).catch(() => null);
-				if (listing && generation === this.#browseGeneration) {
+				if (listing && own === this.#browseGeneration) {
 					this.#set({ listing });
 				}
 			}
-			if (places.length > 0 && this.#view.listing === null) {
+			if (places.length > 0 && untouched()) {
 				await this.browse(places[0].path);
 			}
 		} catch (error) {

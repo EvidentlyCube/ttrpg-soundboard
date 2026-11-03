@@ -185,6 +185,8 @@ test.describe('the Selector', () => {
 
 	test('forgets a recent folder with its ×', async ({ page, app }) => {
 		await page.goto(app.url);
+		// The first folder fills the path field in when it comes, which must not land in the middle of typing.
+		await expect(page.locator('[data-folder-summary]')).toBeVisible();
 		await page.locator('[data-path-input]').fill(app.board);
 		await page.locator('[data-path-input]').press('Enter');
 		await page.locator('[data-folder-open]').click();
