@@ -23,9 +23,11 @@ export function configFolder(platform, env) {
 	return join(env.XDG_CONFIG_HOME || join(platform.home, '.config'), 'soundboard');
 }
 
+/** @typedef {{ recent: string[], browsed: string | null }} RecentFile */
+
 /**
- * The last folders that were opened as a soundboard, newest first, in `recent.json`. A broken or missing file counts
- * as an empty list, since losing it costs only a few clicks.
+ * The last folders that were opened as a soundboard, newest first, and the folder the Selector's browser showed last,
+ * in `recent.json`. A broken or missing file counts as an empty list, since losing it costs only a few clicks.
  */
 export class RecentFolders {
 	#file;
@@ -37,8 +39,8 @@ export class RecentFolders {
 
 	/** @returns {Promise<RecentFolder[]>} */
 	async list() {
-		const paths = await this.#read();
-		return Promise.all(paths.map(async (path) => ({
+		const { recent } = await this.#read();
+		return Promise.all(recent.map(async (path) => ({
 			path,
 			exists: await stat(path).then((stats) => stats.isDirectory(), () => false),
 		})));
@@ -49,32 +51,48 @@ export class RecentFolders {
 	 * @param {string} path
 	 */
 	async add(path) {
-		const paths = await this.#read();
-		await this.#write([path, ...paths.filter((other) => other !== path)].slice(0, MAX_RECENT));
+		const file = await this.#read();
+		await this.#write({ ...file, recent: [path, ...file.recent.filter((other) => other !== path)].slice(0, MAX_RECENT) });
 	}
 
 	/** @param {string} path */
 	async forget(path) {
-		const paths = await this.#read();
-		if (paths.includes(path)) {
-			await this.#write(paths.filter((other) => other !== path));
+		const file = await this.#read();
+		if (file.recent.includes(path)) {
+			await this.#write({ ...file, recent: file.recent.filter((other) => other !== path) });
 		}
 	}
 
-	/** @returns {Promise<string[]>} */
+	/** @returns {Promise<string | null>} the folder the browser showed last */
+	async browsed() {
+		return (await this.#read()).browsed;
+	}
+
+	/** @param {string} path */
+	async setBrowsed(path) {
+		const file = await this.#read();
+		if (file.browsed !== path) {
+			await this.#write({ ...file, browsed: path });
+		}
+	}
+
+	/** @returns {Promise<RecentFile>} */
 	async #read() {
 		try {
 			const value = JSON.parse(await readFile(this.#file, 'utf8'));
 			const paths = value?.recent;
-			return Array.isArray(paths) ? paths.filter((path) => typeof path === 'string').slice(0, MAX_RECENT) : [];
+			return {
+				recent: Array.isArray(paths) ? paths.filter((path) => typeof path === 'string').slice(0, MAX_RECENT) : [],
+				browsed: typeof value?.browsed === 'string' ? value.browsed : null,
+			};
 		} catch {
-			return [];
+			return { recent: [], browsed: null };
 		}
 	}
 
-	/** @param {string[]} paths */
-	async #write(paths) {
+	/** @param {RecentFile} file */
+	async #write(file) {
 		await mkdir(dirname(this.#file), { recursive: true });
-		await writeJsonAtomic(this.#file, { recent: paths });
+		await writeJsonAtomic(this.#file, file.browsed === null ? { recent: file.recent } : file);
 	}
 }

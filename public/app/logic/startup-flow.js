@@ -46,7 +46,7 @@ export const STARTUP_POLL_MS = 500;
  * The startup routes, as the Selector and the Initializer use them. Every action rejects with the server's message.
  * @typedef {object} StartupApi
  * @property {() => Promise<StartupState>} fetchState
- * @property {() => Promise<Place[]>} fetchPlaces
+ * @property {() => Promise<{ places: Place[], browsed: string | null }>} fetchPlaces with the folder the browser showed last
  * @property {(path: string) => Promise<FolderListing>} listFolder
  * @property {(path: string) => Promise<void>} select
  * @property {(id: number, yes: boolean) => Promise<void>} answer
@@ -122,11 +122,21 @@ export class StartupFlow {
 		}
 	}
 
-	/** Loads the starting places, then the first of them. */
+	/**
+	 * Loads the starting places, then the folder shown last time, or the first place when there is none or it can no
+	 * longer be shown. That folder failing tells nothing, since it was not asked for now.
+	 */
 	async browseStart() {
 		try {
-			const places = await this.#api.fetchPlaces();
+			const { places, browsed } = await this.#api.fetchPlaces();
 			this.#set({ places });
+			if (browsed !== null && this.#view.listing === null) {
+				const generation = ++this.#browseGeneration;
+				const listing = await this.#api.listFolder(browsed).catch(() => null);
+				if (listing && generation === this.#browseGeneration) {
+					this.#set({ listing });
+				}
+			}
 			if (places.length > 0 && this.#view.listing === null) {
 				await this.browse(places[0].path);
 			}

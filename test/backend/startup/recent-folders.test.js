@@ -72,4 +72,21 @@ describe('RecentFolders', () => {
 		await writeFile(file, JSON.stringify(['/x']));
 		assert.deepEqual(await recent.list(), []);
 	});
+
+	it('remembers the folder browsed last next to the recent folders, each kept when the other changes', async () => {
+		const root = await tree({});
+		const file = join(root, 'recent.json');
+		const recent = new RecentFolders(file);
+		assert.equal(await recent.browsed(), null);
+		await recent.add('/a');
+		await recent.setBrowsed('/music');
+		await recent.add('/b');
+		await recent.forget('/a');
+		assert.equal(await recent.browsed(), '/music');
+		assert.deepEqual(JSON.parse(await readFile(file, 'utf8')), { recent: ['/b'], browsed: '/music' });
+		await recent.setBrowsed('/other');
+		assert.deepEqual((await recent.list()).map((folder) => folder.path), ['/b']);
+		await writeFile(file, JSON.stringify({ recent: [], browsed: 3 }));
+		assert.equal(await recent.browsed(), null);
+	});
 });

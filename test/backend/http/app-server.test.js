@@ -170,9 +170,10 @@ describe('startApp', () => {
 		assert.equal(state.phase, 'selecting');
 		assert.deepEqual(state.recent, []);
 		assert.equal(state.tools.ffmpeg, '8.1');
-		assert.deepEqual((await call(`${base}/api/startup/folders`)).json, { places: [{ name: 'music', path: music }] });
+		assert.deepEqual((await call(`${base}/api/startup/folders`)).json, { places: [{ name: 'music', path: music }], browsed: null });
 		const listing = await call(`${base}/api/startup/folders?path=${encodeURIComponent(music)}`);
 		assert.deepEqual(listing.json.folders.map((/** @type {{ name: string }} */ folder) => folder.name), ['board', 'empty']);
+		assert.equal((await call(`${base}/api/startup/folders`)).json.browsed, music);
 		assert.deepEqual(await call(`${base}/api/startup/folders?path=${encodeURIComponent(join(music, '..'))}`), {
 			status: 403,
 			text: JSON.stringify({ error: OUTSIDE_REASON }),
@@ -180,6 +181,7 @@ describe('startApp', () => {
 		});
 		assert.equal((await call(`${base}/api/startup/folders?path=${encodeURIComponent(join(music, '.hidden'))}`)).status, 403);
 		assert.equal((await call(`${base}/api/startup/folders?path=${encodeURIComponent(join(music, 'missing'))}`)).status, 404);
+		assert.equal((await call(`${base}/api/startup/folders`)).json.browsed, music, 'a refused folder is not remembered');
 	});
 
 	it('refuses browsing when folders were given on the command line', async () => {
@@ -272,8 +274,9 @@ describe('HttpStartupApi and closing through HttpBackendApi, against the app ser
 		const { base, music, session } = await setup({ ask: true });
 		const api = new HttpStartupApi(base);
 		assert.equal((await api.fetchState()).phase, 'selecting');
-		assert.deepEqual(await api.fetchPlaces(), [{ name: 'music', path: music }]);
+		assert.deepEqual(await api.fetchPlaces(), { places: [{ name: 'music', path: music }], browsed: null });
 		assert.equal((await api.listFolder(music)).path, music);
+		assert.equal((await api.fetchPlaces()).browsed, music);
 		await assert.rejects(api.listFolder(join(music, '..')), new Error(OUTSIDE_REASON));
 		await assert.rejects(api.select(join(music, 'empty')), new Error('No audio files found here.'));
 		await api.select(join(music, 'board'));

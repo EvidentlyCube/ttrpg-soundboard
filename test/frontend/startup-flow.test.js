@@ -37,9 +37,9 @@ function listing(path) {
 
 /**
  * A flow for the Selector over an API whose answers the test sets.
- * @param {{ phase?: 'selecting' | 'initializing' }} [options]
+ * @param {{ phase?: 'selecting' | 'initializing', browsed?: string | null }} [options]
  */
-function setup({ phase = 'selecting' } = {}) {
+function setup({ phase = 'selecting', browsed = null } = {}) {
 	const clock = new FakeClock();
 	/** @type {StartupState | Error} */
 	let current = state({ phase });
@@ -64,7 +64,7 @@ function setup({ phase = 'selecting' } = {}) {
 			}
 			return current;
 		},
-		fetchPlaces: async () => [{ name: 'Home', path: '/home/ana' }, { name: 'Music', path: '/home/ana/Music' }],
+		fetchPlaces: async () => ({ places: [{ name: 'Home', path: '/home/ana' }, { name: 'Music', path: '/home/ana/Music' }], browsed }),
 		listFolder: async (path) => {
 			calls.push(`list ${path}`);
 			const answer = folders.get(path) ?? listing(path);
@@ -146,6 +146,24 @@ describe('StartupFlow', () => {
 		assert.deepEqual(flow.view.places.map((place) => place.name), ['Home', 'Music']);
 		assert.equal(flow.view.listing?.path, '/home/ana');
 		assert.deepEqual(calls, ['list /home/ana']);
+	});
+
+	it('shows the folder browsed last instead of the first place', async () => {
+		const { flow, calls } = setup({ browsed: '/home/ana/Music/Battle' });
+		await flow.browseStart();
+		assert.equal(flow.view.listing?.path, '/home/ana/Music/Battle');
+		assert.deepEqual(calls, ['list /home/ana/Music/Battle']);
+	});
+
+	it('quietly falls back to the first place when the folder browsed last can’t be shown any more', async () => {
+		const { flow, calls, folders } = setup({ browsed: '/mnt/old' });
+		folders.set('/mnt/old', new Error('This folder is outside the folders the app may open.'));
+		await flow.browseStart();
+		assert.equal(flow.view.listing?.path, '/home/ana');
+		assert.deepEqual(calls, ['list /mnt/old', 'list /home/ana']);
+		assert.equal(flow.view.browseError, null);
+		assert.equal(flow.view.browseFailures, 0);
+		assert.equal(flow.view.error, null);
 	});
 
 	it('keeps the folder shown when another can’t be, and counts each refusal', async () => {

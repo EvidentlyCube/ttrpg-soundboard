@@ -206,7 +206,13 @@ async function serveStartup(request, response, pathname, { session, platform, in
 					throw new HttpError(403, 'Only the folders given when the app was started can be opened.');
 				}
 				const path = new URL(request.url ?? '/', 'http://localhost').searchParams.get('path');
-				sendJson(response, 200, path ? await listFolder(path, platform) : { places: await startingPlaces(platform) });
+				if (!path) {
+					sendJson(response, 200, { places: await startingPlaces(platform), browsed: await session.browsed() });
+					return;
+				}
+				const listing = await listFolder(path, platform);
+				await session.rememberBrowsed(listing.path);
+				sendJson(response, 200, listing);
 				return;
 			}
 			case '/api/startup/select':

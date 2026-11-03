@@ -18,9 +18,8 @@ export class HttpStartupApi {
 	}
 
 	/** @type {StartupApi['fetchPlaces']} */
-	async fetchPlaces() {
-		const { places } = await this.#call('GET', '/api/startup/folders');
-		return places;
+	fetchPlaces() {
+		return this.#call('GET', '/api/startup/folders');
 	}
 
 	/** @type {StartupApi['listFolder']} */

@@ -156,6 +156,19 @@ export class StartupSession {
 		await this.#recent.forget(path);
 	}
 
+	/** @returns {Promise<string | null>} the folder the Selector's browser showed last */
+	browsed() {
+		return this.#recent.browsed();
+	}
+
+	/**
+	 * Remembers the folder the browser shows. Failing to only costs the browser its starting point, so it is logged.
+	 * @param {string} path
+	 */
+	async rememberBrowsed(path) {
+		await this.#recent.setBrowsed(path).catch((error) => this.#logError(error));
+	}
+
 	/**
 	 * Starts loading a folder.
 	 * @param {string} path absolute

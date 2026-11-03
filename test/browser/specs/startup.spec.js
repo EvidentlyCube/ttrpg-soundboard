@@ -68,10 +68,16 @@ test.describe('the Selector', () => {
 			await expect(page.locator('[data-folder-list]')).toBeHidden();
 		});
 
-		await test.step('Browse folders… swaps the recent folders for the browser, and ← Recent swaps them back', async () => {
+		await test.step('Browse folders… swaps the recent folders for the browser, back in Board where it was left', async () => {
 			await page.locator('[data-browse]').click();
 			await expect(page.locator('[data-folder-list]')).toBeVisible();
 			await expect(page.locator(`[data-folder-card="${app.board}"]`)).toBeHidden();
+			await expect(page.locator('[data-path-input]')).toHaveValue(app.board);
+		});
+
+		await test.step('Up to the home folder: Board is a soundboard now, and ← Recent swaps the recent folders back', async () => {
+			await page.locator('[data-folder-up]').click();
+			await expect(page.locator('[data-path-input]')).toHaveValue(app.home);
 			const board = page.locator(`[data-folder="${app.board}"]`);
 			await expect(board).toContainText('🎵');
 			await expect(board.locator('button')).toHaveCount(1);
