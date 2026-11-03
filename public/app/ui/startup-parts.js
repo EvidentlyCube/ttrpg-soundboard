@@ -40,15 +40,16 @@ export function showError(element, message) {
 }
 
 /**
- * The download tools' state, at the bottom of the Selector (DESIGN.md §9.18).
+ * The app's version and the download tools' state, at the bottom of the Selector (DESIGN.md §9.18).
  * @returns {{ element: HTMLElement, show: (tools: ToolsInfo) => void }}
  */
 export function toolsFooter() {
+	const app = h('span', { 'data-app-version': true });
 	const ytDlp = h('span', { 'data-tool': 'yt-dlp' });
 	const ffmpeg = h('span', { 'data-tool': 'ffmpeg' });
 	const element = h('footer', {
 		class: 'flex flex-wrap justify-center gap-x-6 gap-y-1 border-t border-line px-5 py-3 text-xs text-muted',
-	}, ytDlp, ffmpeg);
+	}, app, ytDlp, ffmpeg);
 	let drawn = '';
 	return {
 		element,
@@ -58,6 +59,7 @@ export function toolsFooter() {
 				return;
 			}
 			drawn = key;
+			app.textContent = `Soundboard ${tools.app}`;
 			const update = tools.ytDlp.update;
 			const updateText = update === null
 				? ''
