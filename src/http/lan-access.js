@@ -15,8 +15,12 @@ const CONNECT_FILES = [
 	'/app/browser-clock.js',
 	'/app/logic/access-requester.js',
 	'/app/ui/dom.js',
+	'/app/language.js',
+	'/app/ui/text.js',
+	'/app/logic/i18n.js',
 ];
 const CONNECT_VENDOR_PREFIX = '/vendor/tailwindcss-browser';
+const CONNECT_LANGUAGES_PREFIX = '/app/i18n/';
 
 /** @typedef {import('node:http').IncomingMessage} Request */
 /** @typedef {import('./access-control.js').AccessControl} AccessControl */
@@ -63,7 +67,7 @@ export function checkAccess(request, pathname, { control }) {
 		}
 		const connectRoute = (pathname === '/api/access/requests' && request.method === 'POST')
 			|| (pathname === '/api/access/requests/mine' && request.method === 'GET');
-		if (connectRoute || (isGet && (CONNECT_FILES.includes(pathname) || pathname.startsWith(CONNECT_VENDOR_PREFIX)))) {
+		if (connectRoute || (isGet && (CONNECT_FILES.includes(pathname) || pathname.startsWith(CONNECT_VENDOR_PREFIX) || pathname.startsWith(CONNECT_LANGUAGES_PREFIX)))) {
 			return null;
 		}
 		throw new HttpError(403, 'Request not allowed');

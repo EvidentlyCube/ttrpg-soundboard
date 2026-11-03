@@ -1,5 +1,6 @@
 import { HttpStartupApi } from './api/startup-api.js';
 import { browserClock } from './browser-clock.js';
+import { loadLanguage } from './language.js';
 import { StartupFlow } from './logic/startup-flow.js';
 import { card } from './ui/customize-parts.js';
 import { h } from './ui/dom.js';
@@ -14,6 +15,8 @@ const BUTTON = 'cursor-pointer rounded-md bg-raised px-3 py-1.5 text-sm font-med
 /** A button inside the address bar, which draws the border and the corners around all of them. */
 const BAR_BUTTON = 'flex cursor-pointer items-center border-line px-3 text-sm font-medium text-muted hover:bg-raised-hover hover:text-text disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-muted';
 const PRIMARY = 'cursor-pointer rounded-md bg-music px-4 py-1.5 text-sm font-semibold whitespace-nowrap text-surface hover:brightness-110 disabled:cursor-default disabled:opacity-50';
+
+await loadLanguage();
 
 const root = document.getElementById('selector');
 if (!root) {

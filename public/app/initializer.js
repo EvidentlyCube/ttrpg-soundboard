@@ -1,5 +1,6 @@
 import { HttpStartupApi } from './api/startup-api.js';
 import { browserClock } from './browser-clock.js';
+import { loadLanguage } from './language.js';
 import { StartupFlow } from './logic/startup-flow.js';
 import { h } from './ui/dom.js';
 import { holdButton } from './ui/hold-button.js';
@@ -13,6 +14,8 @@ const BUTTON = 'cursor-pointer rounded-md bg-raised px-4 py-1.5 text-sm font-med
 const PRIMARY = 'cursor-pointer rounded-md bg-music px-4 py-1.5 text-sm font-semibold text-surface hover:brightness-110 disabled:cursor-default disabled:opacity-50';
 /** Long lists are cut here; the rest is counted. */
 const MAX_LISTED = 200;
+
+await loadLanguage();
 
 const root = document.getElementById('initializer');
 if (!root) {

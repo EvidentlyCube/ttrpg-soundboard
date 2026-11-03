@@ -8,6 +8,7 @@ import { HttpBackendApi } from '../../../public/app/api/backend-api.js';
 import { HttpStartupApi } from '../../../public/app/api/startup-api.js';
 import { NESTED_DIRECTORIES_QUESTION } from '../../../src/library/bootstrap-service.js';
 import { PORT_ATTEMPTS, startApp } from '../../../src/http/app-server.js';
+import { AppSettings } from '../../../src/startup/app-settings.js';
 import { OUTSIDE_REASON } from '../../../src/startup/folder-rules.js';
 import { RecentFolders } from '../../../src/startup/recent-folders.js';
 import { StartupSession } from '../../../src/startup/startup-session.js';
@@ -86,6 +87,7 @@ async function setup({ ask = false, paths = null, lan, lanManager = false, port 
 		info: INFO,
 		lan,
 		lanManager,
+		settings: new AppSettings(join(root, 'config', 'settings.json')),
 		publicDir: join(root, 'public'),
 		logError: (error) => assert.fail(String(error)),
 	});

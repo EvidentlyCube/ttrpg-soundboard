@@ -81,6 +81,27 @@ export class Translator {
 }
 
 /**
+ * The language a page shows (DESIGN.md §9.21): the one the app is set to, or else the first of the browser's languages
+ * that has a file, matched by its main part (`pl-PL` → `pl`), or else English.
+ * @param {string | null} setting
+ * @param {readonly string[]} available the codes of the language files
+ * @param {readonly string[]} preferred the browser's languages, most wanted first
+ */
+export function chooseLanguage(setting, available, preferred) {
+	if (setting !== null && available.includes(setting)) {
+		return setting;
+	}
+	for (const tag of preferred) {
+		const exact = available.find((code) => code.toLowerCase() === tag.toLowerCase());
+		const main = available.find((code) => code.toLowerCase() === tag.split('-')[0].toLowerCase());
+		if (exact ?? main) {
+			return /** @type {string} */ (exact ?? main);
+		}
+	}
+	return 'en';
+}
+
+/**
  * @param {Messages} messages
  * @param {string} key
  * @returns {string | PluralForms | null}

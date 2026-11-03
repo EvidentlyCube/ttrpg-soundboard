@@ -1,4 +1,5 @@
 import { browserClock } from './browser-clock.js';
+import { loadLanguage } from './language.js';
 import { AccessRequester } from './logic/access-requester.js';
 import { h, on } from './ui/dom.js';
 
@@ -38,6 +39,8 @@ const api = {
 	request: () => call('POST', '/api/access/requests'),
 	poll: () => call('GET', '/api/access/requests/mine'),
 };
+
+await loadLanguage();
 
 const root = document.getElementById('connect');
 if (!root) {

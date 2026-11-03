@@ -10,6 +10,7 @@ import { PORT_ATTEMPTS, startApp } from '../http/app-server.js';
 import { appVersion, createBoard } from '../http/server.js';
 import { BootstrapService } from '../library/bootstrap-service.js';
 import { ChangeWatcher } from '../library/change-watcher.js';
+import { AppSettings } from '../startup/app-settings.js';
 import { resolvedPath } from '../startup/folder-rules.js';
 import { configFolder, RecentFolders } from '../startup/recent-folders.js';
 import { StartupSession } from '../startup/startup-session.js';
@@ -28,7 +29,7 @@ import { openInBrowser } from './open-browser.js';
  * @property {() => string[]} [networkAddresses] this machine's addresses on the local network, for `--lan`; tests pass a fixed list
  * @property {(url: string) => void} [openBrowser] tests pass one that opens nothing
  * @property {{ name: NodeJS.Platform, home: string, systemDrive?: string }} [system] tests pass a home folder of their own
- * @property {string} [configDirectory] where `recent.json` goes; tests pass a temporary folder
+ * @property {string} [configDirectory] where `recent.json` and `settings.json` go; tests pass a temporary folder
  */
 
 /**
@@ -182,6 +183,7 @@ export async function main(argv, {
 			info,
 			lan: lan?.options,
 			lanManager: args.lanManager,
+			settings: new AppSettings(join(configDirectory, 'settings.json')),
 			logError,
 			logRequest: args.verbose ? (line) => say(line) : undefined,
 		});

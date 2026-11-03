@@ -3,6 +3,7 @@ import { EventSourceServerEvents } from './api/server-events.js';
 import { WebAudioEngine } from './audio/web-audio-engine.js';
 import { WebAudioWaveformDecoder } from './audio/web-audio-waveform-decoder.js';
 import { browserClock } from './browser-clock.js';
+import { loadLanguage } from './language.js';
 import { RemoteController } from './logic/remote-controller.js';
 import { Soundboard } from './logic/soundboard.js';
 import { App } from './ui/app.js';
@@ -25,6 +26,7 @@ if (!root) {
 	throw new Error('index.html is missing the #app element');
 }
 // Until the name is known the page stays an empty dark background, so its first drawing already shows the name.
+await loadLanguage();
 await soundboard.loadName();
 new App(soundboard, remote).mount(root);
 

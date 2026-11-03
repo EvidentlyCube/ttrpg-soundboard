@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { FolderRefusedError, StartupStateError } from '../startup/errors.js';
 import { FolderNotAllowedError, FolderUnreadableError, listFolder, startingPlaces } from '../startup/folders.js';
 import { isPlainObject } from '../library/validate.js';
+import { availableLanguages } from '../startup/app-settings.js';
 import { isLoopbackAddress } from './lan-access.js';
 import { LOOPBACK_HOSTS, checkRequest } from './request-guard.js';
 import { logWhenDone } from './request-log.js';
@@ -13,14 +14,16 @@ import { serveStaticFile } from './static-files.js';
 /** @typedef {import('node:http').IncomingMessage} Request */
 /** @typedef {import('node:http').ServerResponse} Response */
 /** @typedef {import('../startup/startup-session.js').StartupSession} StartupSession */
+/** @typedef {import('../startup/app-settings.js').AppSettings} AppSettings */
 
 /** How many ports are tried, one after the other, when the first is taken. */
 export const PORT_ATTEMPTS = 10;
 const LOOPBACK = '127.0.0.1';
 
 /** What a device on the network may fetch before a soundboard is open: the waiting page and what it loads. */
-const WAITING_FILES = ['/waiting.html', '/favicon.svg'];
+const WAITING_FILES = ['/waiting.html', '/favicon.svg', '/app/language.js', '/app/ui/text.js', '/app/logic/i18n.js'];
 const VENDOR_PREFIX = '/vendor/tailwindcss-browser';
+const LANGUAGES_PREFIX = '/app/i18n/';
 const STARTUP_PREFIX = '/api/startup/';
 
 /**
@@ -32,6 +35,7 @@ const STARTUP_PREFIX = '/api/startup/';
  * @property {import('./server.js').LanOptions} [lan]
  * @property {boolean} [lanManager] `--UNSAFE-lan-manager`: other devices may use the Selector and the Initializer
  * 	without pairing (DESIGN.md §1.1)
+ * @property {AppSettings} settings
  * @property {string} [publicDir]
  * @property {(error: unknown) => void} logError
  * @property {(line: string) => void} [logRequest]
@@ -45,9 +49,11 @@ const STARTUP_PREFIX = '/api/startup/';
  * @param {AppServerOptions} options
  * @returns {Promise<{ port: number, url: string, close: () => Promise<void> }>}
  */
-export async function startApp({ session, port, platform, info, lan, lanManager = false, publicDir = PUBLIC_DIR, logError, logRequest }) {
+export async function startApp({ session, port, platform, info, lan, lanManager = false, settings, publicDir = PUBLIC_DIR, logError, logRequest }) {
 	const guard = { hosts: [...LOOPBACK_HOSTS, ...(lan?.names ?? [])], port };
-	const context = { session, platform, info, lan, lanManager, publicDir, guard };
+	// Read once: language files are part of the app, not something added while it runs.
+	const languages = await availableLanguages(publicDir).catch(() => ['en']);
+	const context = { session, platform, info, lan, lanManager, settings, languages, publicDir, guard };
 	const server = createServer(async (request, response) => {
 		if (logRequest) {
 			logWhenDone(request, response, logRequest);
@@ -114,6 +120,8 @@ async function listenOnFreePort(server, port, host) {
  * @property {import('./router.js').AppInfo} info
  * @property {import('./server.js').LanOptions} [lan]
  * @property {boolean} lanManager
+ * @property {AppSettings} settings
+ * @property {string[]} languages the codes of the language files
  * @property {string} publicDir
  * @property {{ hosts: string[], port: number }} guard
  */
@@ -133,6 +141,12 @@ async function route(request, response, context) {
 	if (pathname === '/api/startup/ready') {
 		allowMethods(request, ['GET']);
 		sendJson(response, 200, { ready: board !== null });
+		return;
+	}
+	// Every page needs it before drawing anything, the waiting page and the remote page too.
+	if (pathname === '/api/language') {
+		allowMethods(request, ['GET']);
+		sendJson(response, 200, { language: await context.settings.language(), available: context.languages });
 		return;
 	}
 	if (context.lan && !isLoopbackAddress(request.socket.remoteAddress) && (board || !context.lanManager)) {
@@ -180,7 +194,7 @@ async function serveWaiting(request, response, publicDir, pathname) {
 		await serveStaticFile(request, response, publicDir, '/waiting.html');
 		return;
 	}
-	if (!WAITING_FILES.includes(pathname) && !pathname.startsWith(VENDOR_PREFIX)) {
+	if (!WAITING_FILES.includes(pathname) && !pathname.startsWith(VENDOR_PREFIX) && !pathname.startsWith(LANGUAGES_PREFIX)) {
 		throw new HttpError(403, 'Request not allowed');
 	}
 	await serveStaticFile(request, response, publicDir, pathname);
@@ -193,7 +207,7 @@ async function serveWaiting(request, response, publicDir, pathname) {
  * @param {string} pathname
  * @param {RouteContext} context
  */
-async function serveStartup(request, response, pathname, { session, platform, info }) {
+async function serveStartup(request, response, pathname, { session, platform, info, settings, languages }) {
 	try {
 		switch (pathname) {
 			case '/api/startup':
@@ -250,6 +264,16 @@ async function serveStartup(request, response, pathname, { session, platform, in
 				allowMethods(request, ['POST']);
 				await session.close();
 				break;
+			case '/api/startup/language': {
+				allowMethods(request, ['PUT']);
+				const body = await readJsonBody(request);
+				const language = isPlainObject(body) ? body.language : undefined;
+				if (language !== null && !(typeof language === 'string' && languages.includes(language))) {
+					throw new HttpError(400, `Expected { language: null | ${languages.map((code) => `'${code}'`).join(' | ')} }`);
+				}
+				await settings.setLanguage(language);
+				break;
+			}
 			default:
 				throw new HttpError(404, 'Not found');
 		}
