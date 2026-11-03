@@ -317,10 +317,15 @@ export class StartupSession {
 			await board.close();
 			return;
 		}
+		// Remembered first, so a Selector opened as soon as the soundboard is ready already lists it.
+		await this.#recent.add(root).catch((error) => this.#logError(error));
+		if (!current()) {
+			await board.close();
+			return;
+		}
 		this.#board = board;
 		this.#phase = 'ready';
 		this.#initializer = null;
-		await this.#recent.add(root).catch((error) => this.#logError(error));
 	}
 
 	/**

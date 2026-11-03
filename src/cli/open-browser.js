@@ -6,13 +6,7 @@ import { spawn } from 'node:child_process';
  * @param {NodeJS.Platform} [platform]
  */
 export function openInBrowser(url, platform = process.platform) {
-	/** @type {[string, string[]]} */
-	const [command, args] = platform === 'darwin'
-		? ['open', [url]]
-		: platform === 'win32'
-			// The empty first argument is `start`'s window title, which it would otherwise take the URL for.
-			? ['cmd', ['/c', 'start', '""', url]]
-			: ['xdg-open', [url]];
+	const [command, args] = browserCommand(url, platform);
 	try {
 		const child = spawn(command, args, { stdio: 'ignore', detached: true, windowsVerbatimArguments: platform === 'win32' });
 		child.on('error', () => {});
@@ -20,4 +14,20 @@ export function openInBrowser(url, platform = process.platform) {
 	} catch {
 		// Nothing to do: the address is in the terminal.
 	}
+}
+
+/**
+ * @param {string} url
+ * @param {NodeJS.Platform} platform
+ * @returns {[string, string[]]} the program and its arguments
+ */
+export function browserCommand(url, platform) {
+	if (platform === 'darwin') {
+		return ['open', [url]];
+	}
+	if (platform === 'win32') {
+		// The empty first argument is `start`'s window title, which it would otherwise take the URL for.
+		return ['cmd', ['/c', 'start', '""', url]];
+	}
+	return ['xdg-open', [url]];
 }

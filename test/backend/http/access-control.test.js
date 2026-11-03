@@ -67,6 +67,28 @@ describe('AccessControl', () => {
 		});
 	});
 
+	describe('revokeAll', () => {
+		it('forgets every allowed device and every request, announces the change, and keeps the bans', () => {
+			const { control } = setup([1, 2]);
+			control.request(PHONE);
+			control.answer(PHONE, 'allow');
+			control.request(TABLET);
+			while (!control.strike('10.0.0.9')) {
+				// Strikes until it is banned.
+			}
+			let changes = 0;
+			control.onChange(() => changes++);
+			control.revokeAll();
+			assert.equal(control.isAllowed('secret-1'), false);
+			assert.deepEqual(control.pending(), []);
+			assert.deepEqual(control.status(PHONE), { status: 'none' });
+			assert.equal(control.isBanned('10.0.0.9'), true);
+			assert.equal(changes, 1);
+			control.revokeAll();
+			assert.equal(changes, 1);
+		});
+	});
+
 	describe('answering', () => {
 		it('allows a device, hands its secret over once and then recognizes it', () => {
 			const { control } = setup([9]);

@@ -62,6 +62,7 @@ export class HttpStartupApi {
 	 * @param {string} method
 	 * @param {string} path
 	 * @param {unknown} [body]
+	 * @returns {Promise<any>}
 	 */
 	async #call(method, path, body) {
 		const response = await fetch(this.#baseUrl + path, {
@@ -71,7 +72,7 @@ export class HttpStartupApi {
 			body: body === undefined ? undefined : JSON.stringify(body),
 		});
 		if (!response.ok) {
-			const { error } = await response.json().catch(() => ({ error: null }));
+			const { error } = /** @type {{ error?: unknown }} */ (await response.json().catch(() => ({})));
 			throw new Error(typeof error === 'string' ? error : `HTTP ${response.status}`);
 		}
 		return response.status === 204 ? undefined : response.json();

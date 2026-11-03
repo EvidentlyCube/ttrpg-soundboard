@@ -489,4 +489,39 @@ describe('startServer', () => {
 			{ code: 'EADDRINUSE' },
 		);
 	});
+
+	it('ends every event stream with startup.closed when it closes, even with pairing requests to announce', async () => {
+		const outcome = await new BootstrapService({ prompter: new FakePrompter(), reporter: new FakeReporter() }).run(musicRoot);
+		assert.equal(outcome.status, 'ready');
+		/** @type {unknown[]} */
+		const errors = [];
+		const own = await startServer({
+			library: outcome.library,
+			settings: outcome.settings,
+			port: 0,
+			logError: (error) => errors.push(error),
+			lan: { address: '127.0.0.1', addresses: [], names: [] },
+		});
+		// A pending pairing request: closing announces that it is gone, after the streams have ended.
+		await fetch(`${own.url}/api/access/requests`, { method: 'POST' });
+		const streams = ['page=a', 'role=remote'].map((query) => new Promise((resolve, reject) => {
+			const outgoing = request(`${own.url}/api/events?${query}`, (response) => {
+				let text = '';
+				response.setEncoding('utf8');
+				response.on('data', (chunk) => {
+					text += chunk;
+				});
+				response.on('end', () => resolve(text));
+			});
+			outgoing.on('error', reject);
+			outgoing.end();
+		}));
+		// Gives both streams time to connect.
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		await own.close();
+		for (const text of await Promise.all(streams)) {
+			assert.match(/** @type {string} */ (text), /data: \{"type":"startup\.closed"\}\n\n$/);
+		}
+		assert.deepEqual(errors, []);
+	});
 });

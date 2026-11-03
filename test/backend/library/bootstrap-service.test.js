@@ -4,6 +4,8 @@ import { copyFile, mkdir, readdir, readFile, stat, utimes, writeFile } from 'nod
 import { join } from 'node:path';
 import {
 	BootstrapService,
+	LARGE_FOLDER_FILES,
+	LARGE_FOLDER_QUESTION,
 	METADATA_TITLES_QUESTION,
 	NESTED_DIRECTORIES_QUESTION,
 } from '../../../src/library/bootstrap-service.js';
@@ -103,6 +105,20 @@ describe('BootstrapService', () => {
 			assert.deepEqual(outcome.settings.settings, { volumes: { master: 1, music: 1, sfx: 1 } });
 			assert.deepEqual(reporter.callsTo('optionsGenerated'), [3]);
 			assert.deepEqual(reporter.callsTo('libraryLoaded'), [outcome.library]);
+		});
+
+		it(`asks before writing next to more than ${LARGE_FOLDER_FILES} files, and writes nothing on No`, async () => {
+			/** @type {Record<string, string>} */
+			const files = {};
+			for (let index = 0; index <= LARGE_FOLDER_FILES; index++) {
+				files[`${index}.mp3`] = '';
+			}
+			const root = await tree({ 'Sounds': files, 'Boom.mp3': '' });
+			const { outcome, prompter, reporter } = await bootstrap(root, [false]);
+			assert.deepEqual(prompter.questions, [LARGE_FOLDER_QUESTION]);
+			assert.deepEqual(reporter.callsTo('largeFolder'), [LARGE_FOLDER_FILES + 2]);
+			assert.equal(outcome.status, 'cancelled');
+			assert.deepEqual((await readdir(root)).sort(), ['Boom.mp3', 'Sounds']);
 		});
 
 		it('offers metadata titles and uses them when accepted', async () => {
@@ -355,6 +371,16 @@ describe('BootstrapService', () => {
 			assert.equal(readyLibrary(outcome).sounds.find((sound) => sound.id === SOUND)?.duration, options.duration);
 			assert.ok(readyLibrary(outcome).playlists.every((playlist) => playlist.tracks.every((track) => (track.duration ?? 0) > 9.9)));
 			assert.deepEqual(reporter.callsTo('measuringDurations'), [16]);
+			assert.deepEqual(reporter.callsTo('measured'), Array.from({ length: 16 }, (_, index) => [index + 1, 16]));
+		});
+
+		it('counts only the files it measures', async () => {
+			const root = await fixture();
+			await bootstrap(root, [true]);
+			const touched = new Date('2030-01-01T00:00:00Z');
+			await utimes(join(root, SOUND), touched, touched);
+			const { reporter } = await bootstrap(root);
+			assert.deepEqual(reporter.callsTo('measured'), [[1, 1]]);
 		});
 
 		it('reads nothing again on a later run when nothing changed', async () => {
