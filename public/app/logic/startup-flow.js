@@ -63,8 +63,9 @@ export const STARTUP_POLL_MS = 500;
  * @property {Place[]} places
  * @property {FolderListing | null} listing the folder being browsed
  * @property {string | null} error the last action's failure, until the next action
- * @property {number} browseFailures counts the folders that could not be shown, so the page can put the path it shows
- * 	back each time, even when the same refused path is typed twice
+ * @property {string | null} browseError why the last folder asked for could not be shown
+ * @property {number} browseFailures counts the folders that could not be shown, so the page can tell about each one and
+ * 	put the path it shows back, even when the same refused path is typed twice
  * @property {boolean} busy while an action runs
  */
 
@@ -80,7 +81,7 @@ export class StartupFlow {
 	#onChange;
 	#onLeave;
 	/** @type {StartupView} */
-	#view = { state: null, connected: true, places: [], listing: null, error: null, browseFailures: 0, busy: false };
+	#view = { state: null, connected: true, places: [], listing: null, error: null, browseError: null, browseFailures: 0, busy: false };
 	/** @type {number | null} */
 	#timer = null;
 	/** Answers to polls that started before an action are older than the action's result, so they are dropped. */
@@ -136,7 +137,7 @@ export class StartupFlow {
 
 	/**
 	 * Shows a folder. One that can't be shown, such as a folder outside the allowed ones, leaves the current folder in
-	 * place and sets `error` (DESIGN.md §9.18).
+	 * place and sets `browseError` (DESIGN.md §9.18).
 	 * @param {string} path
 	 */
 	async browse(path) {
@@ -144,11 +145,11 @@ export class StartupFlow {
 		try {
 			const listing = await this.#api.listFolder(path);
 			if (generation === this.#browseGeneration) {
-				this.#set({ listing, error: null });
+				this.#set({ listing });
 			}
 		} catch (error) {
 			if (generation === this.#browseGeneration) {
-				this.#set({ error: messageOf(error), browseFailures: this.#view.browseFailures + 1 });
+				this.#set({ browseError: messageOf(error), browseFailures: this.#view.browseFailures + 1 });
 			}
 		}
 	}

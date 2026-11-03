@@ -134,7 +134,31 @@ function render(view) {
 	if (view.browseFailures !== drawn.browseFailures) {
 		drawn.browseFailures = view.browseFailures;
 		pathInput.value = view.listing?.path ?? '';
+		showToast(view.browseError ?? '');
 	}
+}
+
+const toast = h('div', {
+	'class': 'pointer-events-none fixed right-4 bottom-4 max-w-sm rounded-md border border-danger/50 bg-panel px-4 py-2 text-sm text-danger opacity-0 shadow-lg transition-opacity duration-300 data-[visible=true]:opacity-100',
+	'role': 'status',
+	'data-toast': true,
+	'data-visible': 'false',
+});
+document.body.append(toast);
+/** @type {ReturnType<typeof setTimeout> | undefined} */
+let toastTimer;
+
+/**
+ * A short note in the corner that fades after a second, for a folder that can't be shown.
+ * @param {string} message
+ */
+function showToast(message) {
+	toast.textContent = message;
+	toast.dataset.visible = 'true';
+	clearTimeout(toastTimer);
+	toastTimer = setTimeout(() => {
+		toast.dataset.visible = 'false';
+	}, 1000);
 }
 
 /**

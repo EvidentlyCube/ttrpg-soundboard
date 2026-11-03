@@ -13,7 +13,7 @@ import { ChangeWatcher } from '../library/change-watcher.js';
 import { resolvedPath } from '../startup/folder-rules.js';
 import { configFolder, RecentFolders } from '../startup/recent-folders.js';
 import { StartupSession } from '../startup/startup-session.js';
-import { parseArguments, USAGE, UsageError } from './args.js';
+import { HELP, parseArguments, USAGE, UsageError } from './args.js';
 import { createColors, shouldUseColor } from './colors.js';
 import { openInBrowser } from './open-browser.js';
 
@@ -57,8 +57,12 @@ export async function main(argv, {
 		if (!(error instanceof UsageError)) {
 			throw error;
 		}
-		errorOutput.write(`${error.message}\n\n${USAGE}\n`);
+		errorOutput.write(`${error.message}\n\n${USAGE}\nRun with --help to see what each option does.\n`);
 		return 1;
+	}
+	if (args.help) {
+		output.write(`${HELP}\n`);
+		return 0;
 	}
 
 	const colors = createColors(shouldUseColor(output, env));

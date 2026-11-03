@@ -11,6 +11,7 @@ const DEFAULTS = {
 	lanManager: false,
 	roots: [],
 	allowHidden: false,
+	help: false,
 };
 
 describe('parseArguments', () => {
@@ -51,6 +52,11 @@ describe('parseArguments', () => {
 		assert.deepEqual(parseArguments(['--whitelisted-root', '%HOME%/Sounds', '--whitelisted-root=/mnt/sfx']).roots, ['%HOME%/Sounds', '/mnt/sfx']);
 		assert.equal(parseArguments(['--allow-hidden']).allowHidden, true);
 		assert.throws(() => parseArguments(['--whitelisted-root=']), new UsageError('--whitelisted-root needs a path.'));
+	});
+
+	it('accepts --help and -h', () => {
+		assert.equal(parseArguments(['--help']).help, true);
+		assert.equal(parseArguments(['-h']).help, true);
 	});
 
 	it('reads the wildcard addresses as every interface, so the links list real addresses', () => {
