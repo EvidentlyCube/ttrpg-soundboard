@@ -38,7 +38,8 @@ test.describe('the Selector', () => {
 			await expect(page.locator('[data-folder-summary]')).toHaveText('Choose a folder inside this one.');
 			await expect(page.locator('[data-folder-open]')).toBeDisabled();
 			await expect(page.locator('[data-tool=ffmpeg]')).toContainText('not installed');
-			await expect(page.locator('[data-app-version]')).toHaveText(`Soundboard ${VERSION}`);
+			await expect(page.getByRole('heading', { name: 'Soundboard Selection' })).toBeVisible();
+			await expect(page.locator('[data-app-version]')).toHaveText(`v${VERSION}`);
 		});
 
 		await test.step('Go into Board: it isn’t a soundboard yet', async () => {

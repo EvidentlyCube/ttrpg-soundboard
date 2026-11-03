@@ -40,16 +40,19 @@ export function showError(element, message) {
 }
 
 /**
- * The app's version and the download tools' state, at the bottom of the Selector (DESIGN.md §9.18).
+ * The Selector's title bar, styled like the Soundboard page's, with the app's version and the download tools' state (DESIGN.md §9.18).
+ * @param {string} title
  * @returns {{ element: HTMLElement, show: (tools: ToolsInfo) => void }}
  */
-export function toolsFooter() {
-	const app = h('span', { 'data-app-version': true });
+export function toolsHeader(title) {
+	const app = h('span', { 'class': 'text-xs text-muted', 'data-app-version': true });
 	const ytDlp = h('span', { 'data-tool': 'yt-dlp' });
 	const ffmpeg = h('span', { 'data-tool': 'ffmpeg' });
-	const element = h('footer', {
-		class: 'flex flex-wrap justify-center gap-x-6 gap-y-1 border-t border-line px-5 py-3 text-xs text-muted',
-	}, app, ytDlp, ffmpeg);
+	const element = h('header', {
+		class: 'sticky top-0 z-10 flex shrink-0 flex-wrap items-center justify-between gap-x-6 gap-y-1 border-b border-line bg-panel px-5 py-3',
+	},
+	h('div', { class: 'flex items-baseline gap-2' }, h('h1', { class: 'text-lg font-semibold tracking-tight' }, title), app),
+	h('div', { class: 'flex flex-wrap justify-end gap-x-6 gap-y-1 text-xs text-muted' }, ytDlp, ffmpeg));
 	let drawn = '';
 	return {
 		element,
@@ -59,13 +62,13 @@ export function toolsFooter() {
 				return;
 			}
 			drawn = key;
-			app.textContent = `Soundboard ${tools.app}`;
+			app.textContent = `v${tools.app}`;
 			const update = tools.ytDlp.update;
 			const updateText = update === null
 				? ''
-				: { current: ' · up to date', updated: ' · updated', outdated: ' · update failed', failed: ' · could not check for updates' }[update.state];
+				: { current: ' ✓', updated: ' · updated', outdated: ' · update failed', failed: ' · could not check for updates' }[update.state];
 			ytDlp.replaceChildren(...toolText('yt-dlp', tools.ytDlp.version, tools.checking, updateText));
-			ytDlp.title = update?.error ?? '';
+			ytDlp.title = update?.error ?? (update?.state === 'current' ? 'Up to date' : '');
 			ffmpeg.replaceChildren(...toolText('ffmpeg', tools.ffmpeg, tools.checking, ''));
 		},
 	};

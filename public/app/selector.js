@@ -2,7 +2,7 @@ import { HttpStartupApi } from './api/startup-api.js';
 import { browserClock } from './browser-clock.js';
 import { StartupFlow } from './logic/startup-flow.js';
 import { h } from './ui/dom.js';
-import { connectionNotice, errorNotice, pageHeader, showError, toolsFooter } from './ui/startup-parts.js';
+import { connectionNotice, errorNotice, showError, toolsHeader } from './ui/startup-parts.js';
 
 /** @typedef {import('./logic/startup-flow.js').StartupView} StartupView */
 /** @typedef {import('./logic/startup-flow.js').FolderListing} FolderListing */
@@ -51,16 +51,15 @@ const current = h('div', { class: 'flex flex-wrap items-center gap-3 rounded-lg 
 const folderList = h('ul', { 'class': 'max-h-[50vh] divide-y divide-line overflow-y-auto rounded-lg border border-line bg-panel', 'data-folder-list': true });
 const browse = h('section', { class: 'space-y-3', hidden: true }, sectionTitle('Browse'), places, pathForm, current, folderList);
 
-const footer = toolsFooter();
+const header = toolsHeader('Soundboard Selection');
 root.replaceChildren(
+	header.element,
 	h('main', { class: 'mx-auto w-full max-w-3xl flex-1 space-y-6 px-5 py-8' },
-		pageHeader('Choose a soundboard'),
 		offline.element,
 		error,
 		given,
 		recent,
 		browse),
-	footer.element,
 );
 
 /** Each part is drawn again only when what it shows changed, so polling never resets a hover or a typed path. */
@@ -76,7 +75,7 @@ function render(view) {
 	if (!state) {
 		return;
 	}
-	footer.show(state.tools);
+	header.show(state.tools);
 	if (state.paths === null && !browsing) {
 		browsing = true;
 		flow.browseStart();
