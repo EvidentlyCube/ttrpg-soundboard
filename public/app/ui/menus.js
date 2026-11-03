@@ -22,6 +22,7 @@ export function appMenuItems({ hosting, started = true }) {
 			? { id: 'stopHosting', label: 'Stop hosting', enabled: started, group: 1 }
 			: { id: 'becomeHost', label: 'Become host', enabled: started, group: 1 },
 		{ id: 'connectPhone', label: 'Connect a phone', enabled: started, group: 1 },
+		{ id: 'options', label: 'Options', enabled: started, group: 2 },
 		{ id: 'info', label: 'Info', enabled: true, group: 2 },
 		{ id: 'changeSoundboard', label: 'Change soundboard', enabled: true, group: 3 },
 	];

@@ -79,7 +79,7 @@ test.describe('the Selector', () => {
 			await page.locator('[data-folder-up]').click();
 			await expect(page.locator('[data-path-input]')).toHaveValue(app.home);
 			const board = page.locator(`[data-folder="${app.board}"]`);
-			await expect(board).toContainText('🎵');
+			await expect(board).toContainText('🗂️');
 			await expect(board.locator('button')).toHaveCount(1);
 			await expect(board.locator('[data-folder-quick-open]')).toBeVisible();
 			await page.locator('[data-browse-back]').click();
@@ -121,6 +121,36 @@ test.describe('the Selector', () => {
 			await page.locator('[data-path-input]').fill(join(app.home, '.hidden'));
 			await page.locator('[data-path-input]').press('Enter');
 			await expect(toast).toHaveText('Hidden folders can’t be used.');
+		});
+	});
+
+	test('lists the audio files, a soundboard’s own name after its folder’s, and the folders with a soundboard inside', async ({ page, app }) => {
+		await mkdir(join(app.home, 'tavern', 'Combat'), { recursive: true });
+		await writeFile(join(app.home, 'tavern', '.soundboard'), JSON.stringify({ version: 1, name: 'Tavern night' }));
+		await mkdir(join(app.home, 'same'));
+		await writeFile(join(app.home, 'same', '.soundboard'), JSON.stringify({ version: 1, name: 'same' }));
+		await mkdir(join(app.home, 'Campaigns', 'Old', 'board'), { recursive: true });
+		await writeFile(join(app.home, 'Campaigns', 'Old', 'board', '.soundboard'), '{ "version": 1 }');
+		await writeFile(join(app.home, 'Theme.mp3'), '');
+		await page.goto(app.url);
+
+		await test.step('A named soundboard shows its folder’s name, then its own in parentheses, unless they match', async () => {
+			const tavern = page.locator(`[data-folder="${join(app.home, 'tavern')}"]`);
+			await expect(tavern).toContainText('🗂️tavern');
+			await expect(tavern.locator('[data-folder-title]')).toHaveText('(Tavern night)');
+			await expect(page.locator(`[data-folder="${join(app.home, 'same')}"] [data-folder-title]`)).toHaveCount(0);
+		});
+
+		await test.step('A folder with a soundboard two levels inside gets the mark; Board, a level of audio only, doesn’t', async () => {
+			await expect(page.locator(`[data-folder="${join(app.home, 'Campaigns')}"] [data-holds-soundboard]`)).toHaveAttribute('title', 'A soundboard is somewhere inside this folder');
+			await expect(page.locator(`[data-folder="${app.board}"] [data-holds-soundboard]`)).toHaveCount(0);
+		});
+
+		await test.step('The audio files follow the folders and can’t be clicked', async () => {
+			const file = page.locator('[data-audio-file="Theme.mp3"]');
+			await expect(file).toHaveText('🎵Theme.mp3');
+			await expect(file.locator('button')).toHaveCount(0);
+			await expect(page.locator('[data-folder-list] > li').last()).toHaveAttribute('data-audio-file', 'Theme.mp3');
 		});
 	});
 

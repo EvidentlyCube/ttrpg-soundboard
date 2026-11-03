@@ -6,6 +6,11 @@
 /** @typedef {'mp3' | 'ogg' | 'opus'} AudioFormat */
 /** @typedef {'master' | 'music' | 'sfx'} Bus */
 /** @typedef {Record<Bus, number>} Volumes */
+/**
+ * What `GET /api/settings` answers (DESIGN.md §5.2): `name` is the soundboard's own, null without one; `folderName`
+ * shows instead.
+ * @typedef {{ volumes: Volumes, name: string | null, folderName: string }} SettingsJson
+ */
 
 /**
  * @typedef {object} AudioFileJson
@@ -103,8 +108,9 @@
 /**
  * @typedef {object} BackendApi
  * @property {() => Promise<LibraryJson>} fetchLibrary
- * @property {() => Promise<{ volumes: Volumes }>} fetchSettings
+ * @property {() => Promise<SettingsJson>} fetchSettings
  * @property {(volumes: Volumes, options: { keepalive: boolean }) => Promise<void>} saveVolumes
+ * @property {(name: string | null, options: { keepalive: boolean }) => Promise<void>} saveName null removes the name
  * @property {(soundId: string, options: ItemOptions, request: { keepalive: boolean }) => Promise<void>} saveSoundOptions
  * @property {(playlistId: string, options: ItemOptions, request: { keepalive: boolean }) => Promise<void>} savePlaylistOptions
  * @property {(trackId: string, options: ItemOptions, request: { keepalive: boolean }) => Promise<void>} saveTrackOptions

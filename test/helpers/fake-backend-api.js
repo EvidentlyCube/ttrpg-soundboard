@@ -55,8 +55,10 @@ export function exampleLibrary() {
  */
 export class FakeBackendApi {
 	library = exampleLibrary();
-	/** @type {{ volumes: Volumes }} */
-	settings = { volumes: { master: 1, music: 1, sfx: 1 } };
+	/** @type {import('../../public/app/logic/ports.js').SettingsJson} */
+	settings = { volumes: { master: 1, music: 1, sfx: 1 }, name: null, folderName: 'Board' };
+	/** @type {{ name: string | null, keepalive: boolean }[]} */
+	nameSaves = [];
 	/** @type {Error | null} */
 	libraryError = null;
 	/** @type {Error | null} */
@@ -309,6 +311,17 @@ export class FakeBackendApi {
 	 */
 	async saveVolumes(volumes, { keepalive }) {
 		this.saves.push({ volumes, keepalive });
+		if (this.saveError) {
+			throw this.saveError;
+		}
+	}
+
+	/**
+	 * @param {string | null} name
+	 * @param {{ keepalive: boolean }} options
+	 */
+	async saveName(name, { keepalive }) {
+		this.nameSaves.push({ name, keepalive });
 		if (this.saveError) {
 			throw this.saveError;
 		}

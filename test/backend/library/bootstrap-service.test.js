@@ -102,7 +102,7 @@ describe('BootstrapService', () => {
 			assert.equal(outcome.status, 'ready');
 			assert.deepEqual(outcome.library.sounds.map((sound) => sound.title), ['Boom.mp3']);
 			assert.deepEqual(outcome.library.playlists.map((playlist) => playlist.id), ['Combat']);
-			assert.deepEqual(outcome.settings.settings, { volumes: { master: 1, music: 1, sfx: 1 } });
+			assert.deepEqual(outcome.settings.settings, { volumes: { master: 1, music: 1, sfx: 1 }, name: null });
 			assert.deepEqual(reporter.callsTo('optionsGenerated'), [3]);
 			assert.deepEqual(reporter.callsTo('libraryLoaded'), [outcome.library]);
 		});

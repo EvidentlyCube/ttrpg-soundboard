@@ -1,6 +1,6 @@
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { realpath } from 'node:fs/promises';
+import { realpath, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
 	LARGE_FOLDER_QUESTION,
@@ -354,5 +354,15 @@ describe('StartupSession', () => {
 		await recent.add(join(root, 'board'));
 		await session.forgetRecent(join(root, 'board'));
 		assert.deepEqual((await session.state()).recent, []);
+	});
+
+	it('names a soundboard by its own name in the recent and the given folders', async () => {
+		const { session, root, recent } = await setup();
+		await writeFile(join(root, 'board', '.soundboard'), JSON.stringify({ version: 1, name: 'Tavern' }));
+		await recent.add(join(root, 'board'));
+		assert.equal((await session.state()).recent[0].name, 'Tavern');
+		const given = await setup({ paths: ['board'] });
+		await writeFile(join(given.root, 'board', '.soundboard'), JSON.stringify({ version: 1, name: 'Tavern' }));
+		assert.equal((await given.session.state()).paths?.[0].name, 'Tavern');
 	});
 });

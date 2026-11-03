@@ -24,6 +24,8 @@ const root = document.getElementById('app');
 if (!root) {
 	throw new Error('index.html is missing the #app element');
 }
+// Until the name is known the page stays an empty dark background, so its first drawing already shows the name.
+await soundboard.loadName();
 new App(soundboard, remote).mount(root);
 
 // A volume change still waiting for its debounced save must not be lost when the tab closes.

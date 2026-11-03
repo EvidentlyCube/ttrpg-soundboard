@@ -35,8 +35,10 @@ export const STARTUP_POLL_MS = 500;
  * @typedef {object} FolderListing
  * @property {string} path
  * @property {string | null} parent
- * @property {{ name: string, path: string, soundboard: boolean, refused: string | null }[]} folders
+ * @property {{ name: string, title: string | null, path: string, soundboard: boolean, holdsSoundboard: boolean, refused: string | null }[]} folders
+ * 	`title`: a soundboard's own name; `holdsSoundboard`: a soundboard was found up to three levels inside
  * @property {number} audioFiles
+ * @property {string[]} files the audio files' names
  * @property {boolean} soundboard
  * @property {boolean} allowed
  * @property {string | null} reason

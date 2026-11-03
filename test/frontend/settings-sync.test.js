@@ -17,7 +17,8 @@ function setup() {
 	const sync = new SettingsSync({
 		clock,
 		logger: { warn: (...args) => warnings.push(args), error: () => {} },
-		saveVolumes: (saved, { keepalive }) => new Promise((resolve, reject) => {
+		what: 'volumes',
+		save: (/** @type {Volumes} */ saved, { keepalive }) => new Promise((resolve, reject) => {
 			saves.push({ volumes: saved, keepalive, finish: (error) => (error ? reject(error) : resolve()) });
 		}),
 	});
@@ -71,7 +72,7 @@ describe('SettingsSync', () => {
 		saves[0].finish(new Error('offline'));
 		await settle();
 		assert.equal(warnings.length, 1);
-		assert.match(String(warnings[0][0]), /Could not save volumes/);
+		assert.match(String(warnings[0][0]), /Could not save the volumes/);
 		sync.schedule(volumes(0.5));
 		clock.advance(500);
 		assert.deepEqual(saves.map((save) => save.volumes.music), [0.4, 0.5]);
@@ -122,5 +123,22 @@ describe('SettingsSync', () => {
 			await settling;
 			assert.equal(warnings.length, 1);
 		});
+	});
+
+	it('saves null like any other value, as when the name is cleared', () => {
+		const clock = new FakeClock();
+		/** @type {(string | null)[]} */
+		const saved = [];
+		const sync = new SettingsSync({
+			what: 'name',
+			clock,
+			logger: { warn: () => {}, error: () => {} },
+			save: async (/** @type {string | null} */ name) => {
+				saved.push(name);
+			},
+		});
+		sync.schedule(null);
+		clock.advance(500);
+		assert.deepEqual(saved, [null]);
 	});
 });

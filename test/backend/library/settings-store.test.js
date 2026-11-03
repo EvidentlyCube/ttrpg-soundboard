@@ -49,7 +49,7 @@ describe('SettingsStore', () => {
 	it('fills in default volumes for missing buses', async () => {
 		await writeSettings({ version: 1, volumes: { music: 0.4 } });
 		const store = await SettingsStore.load(path);
-		assert.deepEqual(store.settings, { volumes: { master: 1, music: 0.4, sfx: 1 } });
+		assert.deepEqual(store.settings, { volumes: { master: 1, music: 0.4, sfx: 1 }, name: null });
 	});
 
 	it('rejects an invalid settings file', async () => {
@@ -63,7 +63,7 @@ describe('SettingsStore', () => {
 
 		const settings = await store.updateVolumes({ sfx: 0.25 });
 
-		assert.deepEqual(settings, { volumes: { master: 0.9, music: 1, sfx: 0.25 } });
+		assert.deepEqual(settings, { volumes: { master: 0.9, music: 1, sfx: 0.25 }, name: null });
 		assert.deepEqual(await readSettings(), {
 			version: 1,
 			volumes: { master: 0.9, music: 1, sfx: 0.25 },
@@ -75,14 +75,14 @@ describe('SettingsStore', () => {
 		await writeSettings({ version: 1 });
 		const store = await SettingsStore.load(path);
 		await store.updateVolumes(/** @type {any} */ ({ music: 0.5, extra: 0.1 }));
-		assert.deepEqual(store.settings, { volumes: { master: 1, music: 0.5, sfx: 1 } });
+		assert.deepEqual(store.settings, { volumes: { master: 1, music: 0.5, sfx: 1 }, name: null });
 	});
 
 	it('rejects invalid volumes without changing anything', async () => {
 		await writeSettings({ version: 1 });
 		const store = await SettingsStore.load(path);
 		await assert.rejects(store.updateVolumes({ music: 0.5, sfx: 2 }), ValidationError);
-		assert.deepEqual(store.settings, { volumes: { master: 1, music: 1, sfx: 1 } });
+		assert.deepEqual(store.settings, { volumes: { master: 1, music: 1, sfx: 1 }, name: null });
 		assert.deepEqual(await readSettings(), { version: 1 });
 	});
 
@@ -136,5 +136,44 @@ describe('SettingsStore', () => {
 		assert.deepEqual(store.settings.volumes.music, 0.5);
 		await store.updateVolumes({ sfx: 0.5 });
 		assert.equal(attempts, 2);
+	});
+
+	describe('the name', () => {
+		it('loads it trimmed, and gives the folder’s name to show without one', async () => {
+			await writeSettings({ version: 1, name: '  Tavern night ' });
+			const store = await SettingsStore.load(path);
+			assert.equal(store.settings.name, 'Tavern night');
+			assert.equal(store.folderName, tree.root.split('/').at(-1));
+		});
+
+		it('rejects a file whose name is empty, too long or not a string', async () => {
+			for (const name of ['  ', 'x'.repeat(101), 3]) {
+				await writeSettings({ version: 1, name });
+				await assert.rejects(SettingsStore.load(path), ValidationError, String(name));
+			}
+		});
+
+		it('saves a new name trimmed next to the volumes, and removes the key when cleared', async () => {
+			await writeSettings({ version: 1, volumes: { music: 0.4 }, futureKey: 'kept' });
+			const store = await SettingsStore.load(path);
+			assert.deepEqual(await store.updateName(' Tavern '), { volumes: { master: 1, music: 0.4, sfx: 1 }, name: 'Tavern' });
+			assert.deepEqual(await readSettings(), { version: 1, volumes: { master: 1, music: 0.4, sfx: 1 }, futureKey: 'kept', name: 'Tavern' });
+			await store.updateVolumes({ sfx: 0.5 });
+			assert.equal((await readSettings()).name, 'Tavern');
+			await store.updateName('   ');
+			assert.equal(store.settings.name, null);
+			assert.equal('name' in (await readSettings()), false);
+			await store.updateName('Again');
+			await store.updateName(null);
+			assert.equal('name' in (await readSettings()), false);
+		});
+
+		it('rejects a name that is too long without changing anything', async () => {
+			await writeSettings({ version: 1, name: 'Kept' });
+			const store = await SettingsStore.load(path);
+			await assert.rejects(store.updateName('x'.repeat(101)), ValidationError);
+			assert.equal(store.settings.name, 'Kept');
+			assert.equal((await readSettings()).name, 'Kept');
+		});
 	});
 });

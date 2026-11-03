@@ -24,7 +24,7 @@ const EVENT_TYPES = /** @type {const} */ ([
 	'waveforms.progress', 'waveform.ready',
 	'library.externalChanges', 'library.refreshing', 'library.refreshed', 'library.refreshFailed',
 	'download.changed', 'download.log', 'sound.added', 'playlist.added', 'sound.removed', 'playlist.removed',
-	'trash.changed', 'problems.changed',
+	'trash.changed', 'problems.changed', 'name.changed',
 ]);
 
 /** Stands in for the server's pushed messages; the test sends them with `push`. */
@@ -98,7 +98,7 @@ describe('Soundboard', () => {
 
 		it('loads the library and settings, applies the volumes, and announces it is ready', async () => {
 			const { soundboard, engine, api, eventsOf } = setup({ canPlay: (format) => format === 'mp3' });
-			api.settings = { volumes: { master: 0.5, music: 1, sfx: 0 } };
+			api.settings = { volumes: { master: 0.5, music: 1, sfx: 0 }, name: null, folderName: 'Board' };
 			await soundboard.start();
 
 			assert.deepEqual(engine.busGains, { master: 0.25, music: 1, sfx: 0 });
@@ -358,6 +358,47 @@ describe('Soundboard', () => {
 			soundboard.setVolume('sfx', 0.2);
 			soundboard.flushSettings();
 			assert.deepEqual(api.saves, [{ volumes: { master: 1, music: 1, sfx: 0.2 }, keepalive: true }]);
+		});
+	});
+
+	describe('the name', () => {
+		it('loads the name before the start, and shows the folder’s without one, or "Soundboard" without an answer', async () => {
+			const { soundboard, api } = setup();
+			assert.equal(soundboard.displayName(), 'Soundboard');
+			await soundboard.loadName();
+			assert.equal(soundboard.displayName(), 'Board');
+			api.settings = { ...api.settings, name: 'Tavern' };
+			await soundboard.loadName();
+			assert.deepEqual(soundboard.nameSettings(), { name: 'Tavern', folderName: 'Board' });
+			assert.equal(soundboard.displayName(), 'Tavern');
+			assert.equal(api.libraryRequests, 0);
+
+			const failing = setup();
+			failing.api.fetchSettings = async () => {
+				throw new Error('offline');
+			};
+			await failing.soundboard.loadName();
+			assert.equal(failing.soundboard.displayName(), 'Soundboard');
+			assert.equal(failing.logged.length, 1);
+		});
+
+		it('renames at once, trimmed, and saves after a pause; blank clears it', async () => {
+			const { soundboard, api, clock, eventsOf } = setup();
+			await soundboard.loadName();
+			soundboard.setName(' Tav');
+			soundboard.setName(' Tavern ');
+			soundboard.setName('Tavern  ');
+			assert.deepEqual(eventsOf('name.changed'), [
+				{ type: 'name.changed', name: 'Tav', displayName: 'Tav' },
+				{ type: 'name.changed', name: 'Tavern', displayName: 'Tavern' },
+			]);
+			assert.deepEqual(api.nameSaves, []);
+			clock.advance(500);
+			assert.deepEqual(api.nameSaves, [{ name: 'Tavern', keepalive: false }]);
+			soundboard.setName('   ');
+			assert.equal(soundboard.displayName(), 'Board');
+			soundboard.flushSettings();
+			assert.deepEqual(api.nameSaves.at(-1), { name: null, keepalive: true });
 		});
 	});
 

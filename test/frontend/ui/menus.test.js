@@ -6,12 +6,12 @@ import { appMenuItems, playlistMenuItems, soundMenuItems } from '../../../public
 const enabledLabels = (items) => items.filter((item) => item.enabled).map((item) => item.label);
 
 describe('appMenuItems', () => {
-	it('offers regenerating the waveforms, becoming the host and the info', () => {
-		assert.deepEqual(enabledLabels(appMenuItems({ hosting: false })), ['Regenerate waveforms', 'Become host', 'Connect a phone', 'Info', 'Change soundboard']);
+	it('offers regenerating the waveforms, becoming the host, the options and the info', () => {
+		assert.deepEqual(enabledLabels(appMenuItems({ hosting: false })), ['Regenerate waveforms', 'Become host', 'Connect a phone', 'Options', 'Info', 'Change soundboard']);
 	});
 
 	it('offers to stop hosting instead while the page is the host', () => {
-		assert.deepEqual(enabledLabels(appMenuItems({ hosting: true })), ['Regenerate waveforms', 'Stop hosting', 'Connect a phone', 'Info', 'Change soundboard']);
+		assert.deepEqual(enabledLabels(appMenuItems({ hosting: true })), ['Regenerate waveforms', 'Stop hosting', 'Connect a phone', 'Options', 'Info', 'Change soundboard']);
 	});
 
 	it('before the start lists the same items, but only Info and Change soundboard can be chosen', () => {

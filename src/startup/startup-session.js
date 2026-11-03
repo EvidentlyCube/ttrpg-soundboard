@@ -7,6 +7,7 @@ import {
 } from '../library/bootstrap-service.js';
 import { FolderRefusedError, StartupStateError } from './errors.js';
 import { checkFolder } from './folder-rules.js';
+import { displayName } from './folders.js';
 
 /** @typedef {import('../library/bootstrap-service.js').Prompter} Prompter */
 /** @typedef {import('../library/bootstrap-service.js').Reporter} Reporter */
@@ -140,13 +141,13 @@ export class StartupSession {
 		const paths = this.#paths && await Promise.all(this.#paths.map(async (path) => {
 			const { allowed, reason } = await checkFolder(path, this.#platform);
 			// The path as given, which is what `select` accepts.
-			return { path, name: basename(path) || path, allowed, reason };
+			return { path, name: await displayName(path), allowed, reason };
 		}));
 		const recent = this.#paths ? [] : await this.#recent.list();
 		return {
 			phase: this.#phase,
 			paths,
-			recent: recent.map((folder) => ({ ...folder, name: basename(folder.path) || folder.path })),
+			recent: await Promise.all(recent.map(async (folder) => ({ ...folder, name: await displayName(folder.path) }))),
 			initializer: this.#initializer && { ...this.#initializer },
 		};
 	}

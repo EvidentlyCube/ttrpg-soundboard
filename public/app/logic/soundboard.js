@@ -22,6 +22,9 @@ import { VolumeControl } from './volume.js';
 /** @typedef {import('./ports.js').Logger} Logger */
 /** @typedef {import('./ports.js').ServerEvents} ServerEvents */
 /** @typedef {import('./ports.js').Volumes} Volumes */
+
+/** Matches the server's limit on `.soundboard`'s name (DESIGN.md §2.3). */
+export const MAX_NAME_LENGTH = 100;
 /** @typedef {import('./ports.js').WaveformDecoder} WaveformDecoder */
 /** @typedef {import('./waveform-service.js').WaveformEvent} WaveformEvent */
 /** @typedef {import('./waveform-service.js').WaveformStatus} WaveformStatus */
@@ -42,10 +45,12 @@ import { VolumeControl } from './volume.js';
  * 	| { type: 'audio.resumed' }
  * 	| { type: 'panic.changed', state: PanicState }
  * 	| { type: 'host.changed', hosting: boolean }
- * 	| { type: 'app.closed' }} AppEvent
+ * 	| { type: 'app.closed' }
+ * 	| { type: 'name.changed', name: string | null, displayName: string }} AppEvent
  * `panic.changed`: Panic Stop moved between its two states (`panicState()`). `host.changed`: this page became the host that
  * remotes control, or stopped being it (DESIGN.md §6.10). `app.closed`: the soundboard was closed, from this page or
- * another, and the page should load `/` for the Selector (DESIGN.md §9.3); it comes once.
+ * another, and the page should load `/` for the Selector (DESIGN.md §9.3); it comes once. `name.changed`: Options
+ * renamed the soundboard on this page; `displayName` is what the header shows.
  * @typedef {{ type: 'playlist.levelChanged', playlistId: string, level: number }} LevelEvent
  * `playlist.levelChanged`: a playlist's live level (DESIGN.md §6.4) changed; `level` is a slider position, 0..1.
  * @typedef {{ type: 'sound.changed', sound: AudioFileJson }
@@ -118,6 +123,11 @@ export class Soundboard {
 	#events;
 	#volume;
 	#settingsSync;
+	/** @type {SettingsSync<string | null>} */
+	#nameSync;
+	/** @type {string | null} */
+	#name = null;
+	#folderName = '';
 	#optionsSync;
 	#random;
 	#decoder;
@@ -197,7 +207,8 @@ export class Soundboard {
 		this.#monitor = new VoiceMonitor({ engine, clock, onChange: () => emit({ type: 'voices.changed' }) });
 		this.#engine = this.#monitor;
 		this.#volume = new VolumeControl({ setBusGain: (bus, gain) => engine.setBusGain(bus, gain), emit });
-		this.#settingsSync = new SettingsSync({ saveVolumes: (volumes, options) => api.saveVolumes(volumes, options), clock, logger });
+		this.#settingsSync = new SettingsSync({ save: (/** @type {Volumes} */ volumes, options) => api.saveVolumes(volumes, options), what: 'volumes', clock, logger });
+		this.#nameSync = new SettingsSync({ save: (/** @type {string | null} */ name, options) => api.saveName(name, options), what: 'name', clock, logger });
 		/** @type {Record<ItemKind, (id: string, options: ItemOptions, request: { keepalive: boolean }) => Promise<void>>} */
 		const savers = {
 			sound: (id, options, request) => api.saveSoundOptions(id, options, request),
@@ -559,10 +570,49 @@ export class Soundboard {
 		}
 	}
 
-	/** Saves pending volume and option changes immediately; call it when the page is being hidden or closed. */
+	/** Saves pending volume, name and option changes immediately; call it when the page is being hidden or closed. */
 	flushSettings() {
 		this.#settingsSync.flush();
+		this.#nameSync.flush();
 		this.#optionsSync.flushAll();
+	}
+
+	/**
+	 * Fetches the soundboard's name before the page is drawn, so the first render already shows it (DESIGN.md §9.0). It
+	 * starts no audio. Without an answer, the name stays unknown and "Soundboard" shows.
+	 */
+	async loadName() {
+		try {
+			const { name, folderName } = await this.#api.fetchSettings();
+			this.#name = name;
+			this.#folderName = folderName;
+		} catch (error) {
+			this.#logger.warn('Could not fetch the soundboard’s name.', error);
+		}
+	}
+
+	/** @returns {{ name: string | null, folderName: string }} the name set in Options, and the folder's, which shows without one */
+	nameSettings() {
+		return { name: this.#name, folderName: this.#folderName };
+	}
+
+	/** @returns {string} what the header shows */
+	displayName() {
+		return this.#name ?? (this.#folderName || 'Soundboard');
+	}
+
+	/**
+	 * Renames the soundboard at once and saves it after the usual debounce (DESIGN.md §6.4). Blank removes the name.
+	 * @param {string} name
+	 */
+	setName(name) {
+		const trimmed = name.trim().slice(0, MAX_NAME_LENGTH) || null;
+		if (trimmed === this.#name) {
+			return;
+		}
+		this.#name = trimmed;
+		this.#nameSync.schedule(trimmed);
+		this.#events.emit({ type: 'name.changed', name: trimmed, displayName: this.displayName() });
 	}
 
 	/**
@@ -608,7 +658,7 @@ export class Soundboard {
 				return;
 			case 'volume.set':
 				this.#volume.setVolume(command.bus, command.value);
-				this.#settingsSync.schedule(this.#volume.volumes);
+				this.#settingsSync.schedule({ ...this.#volume.volumes });
 				return;
 			case 'track.customize': {
 				const { title, gain, startAt, endAt } = command;
@@ -1052,7 +1102,7 @@ export class Soundboard {
 		this.#refreshing = true;
 		this.#events.emit({ type: 'library.refreshing' });
 		try {
-			await Promise.all([this.#settingsSync.settle(), this.#optionsSync.settleAll()]);
+			await Promise.all([this.#settingsSync.settle(), this.#nameSync.settle(), this.#optionsSync.settleAll()]);
 			const result = await this.#api.refresh();
 			if (result.status === 'refreshed') {
 				this.#events.emit({ type: 'library.refreshed' });

@@ -21,9 +21,17 @@ export class HttpBackendApi {
 		return this.#request('GET', '/api/library');
 	}
 
-	/** @returns {Promise<{ volumes: Volumes }>} */
+	/** @returns {Promise<import('../logic/ports.js').SettingsJson>} */
 	fetchSettings() {
 		return this.#request('GET', '/api/settings');
+	}
+
+	/**
+	 * @param {string | null} name
+	 * @param {{ keepalive: boolean }} options
+	 */
+	async saveName(name, { keepalive }) {
+		await this.#request('PUT', '/api/settings/name', { body: { name }, keepalive });
 	}
 
 	/**

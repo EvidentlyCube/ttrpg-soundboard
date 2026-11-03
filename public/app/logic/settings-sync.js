@@ -1,18 +1,19 @@
 /** @typedef {import('./ports.js').Clock} Clock */
 /** @typedef {import('./ports.js').Logger} Logger */
-/** @typedef {import('./ports.js').Volumes} Volumes */
 
 const SAVE_DELAY_MS = 500;
 
 /**
- * Saves volume changes to the server (DESIGN.md §6.4): debounced while a slider is dragged, one request at a time so
- * saves cannot arrive out of order, and flushed immediately when the page is closing.
+ * Saves one setting of the soundboard, the volumes or the name, to the server (DESIGN.md §6.4): debounced while it
+ * changes, one request at a time so saves cannot arrive out of order, and flushed immediately when the page is closing.
+ * @template T
  */
 export class SettingsSync {
-	#saveVolumes;
+	#save;
+	#what;
 	#clock;
 	#logger;
-	/** @type {Volumes | null} */
+	/** Wrapped, since null can be a value to save. @type {{ value: T } | null} */
 	#pending = null;
 	/** @type {number | null} */
 	#timer = null;
@@ -21,19 +22,21 @@ export class SettingsSync {
 
 	/**
 	 * @param {object} options
-	 * @param {(volumes: Volumes, options: { keepalive: boolean }) => Promise<void>} options.saveVolumes
+	 * @param {(value: T, options: { keepalive: boolean }) => Promise<void>} options.save
+	 * @param {string} options.what named in the warning when a save fails
 	 * @param {Clock} options.clock
 	 * @param {Logger} options.logger
 	 */
-	constructor({ saveVolumes, clock, logger }) {
-		this.#saveVolumes = saveVolumes;
+	constructor({ save, what, clock, logger }) {
+		this.#save = save;
+		this.#what = what;
 		this.#clock = clock;
 		this.#logger = logger;
 	}
 
-	/** @param {Volumes} volumes the full, current set */
-	schedule(volumes) {
-		this.#pending = { ...volumes };
+	/** @param {T} value the full, current value, not changed afterwards */
+	schedule(value) {
+		this.#pending = { value };
 		this.#cancelTimer();
 		this.#timer = this.#clock.setTimeout(() => {
 			this.#timer = null;
@@ -46,10 +49,10 @@ export class SettingsSync {
 	 */
 	flush() {
 		this.#cancelTimer();
-		const volumes = this.#pending;
-		if (volumes) {
+		const pending = this.#pending;
+		if (pending) {
 			this.#pending = null;
-			this.#send(volumes, true);
+			this.#send(pending.value, true);
 		}
 	}
 
@@ -66,24 +69,24 @@ export class SettingsSync {
 	}
 
 	#drain() {
-		const volumes = this.#pending;
-		if (this.#saving || !volumes) {
+		const pending = this.#pending;
+		if (this.#saving || !pending) {
 			return;
 		}
 		this.#pending = null;
-		this.#saving = this.#send(volumes, false).finally(() => {
+		this.#saving = this.#send(pending.value, false).finally(() => {
 			this.#saving = null;
 			this.#drain();
 		});
 	}
 
 	/**
-	 * @param {Volumes} volumes
+	 * @param {T} value
 	 * @param {boolean} keepalive
 	 */
-	#send(volumes, keepalive) {
-		return this.#saveVolumes(volumes, { keepalive }).catch((error) => {
-			this.#logger.warn('Could not save volumes; they will be saved with the next change.', error);
+	#send(value, keepalive) {
+		return this.#save(value, { keepalive }).catch((error) => {
+			this.#logger.warn(`Could not save the ${this.#what}; it will be saved with the next change.`, error);
 		});
 	}
 

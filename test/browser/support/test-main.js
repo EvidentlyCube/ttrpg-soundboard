@@ -54,4 +54,6 @@ const root = document.getElementById('app');
 if (!root) {
 	throw new Error('index.html is missing the #app element');
 }
+// As main.js does: the page is drawn once the name is known.
+await soundboard.loadName();
 new App(soundboard, remote).mount(root);

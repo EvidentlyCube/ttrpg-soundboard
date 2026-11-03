@@ -266,10 +266,16 @@ function drawListing(listing, busy) {
 			'onClick': () => flow.select(listing.path),
 		}, listing.soundboard ? 'Open' : 'Create soundboard here')),
 	);
-	if (listing.folders.length === 0) {
-		folderList.replaceChildren(h('li', { class: 'px-3 py-2 text-sm text-muted' }, 'No folders inside.'));
+	if (listing.folders.length === 0 && listing.files.length === 0) {
+		folderList.replaceChildren(h('li', { class: 'px-3 py-2 text-sm text-muted' }, 'No folders or audio files inside.'));
 		return;
 	}
+	// The audio files are only there to show what the folder holds, so they can't be clicked.
+	const files = listing.files.map((file) => h('li', {
+		'class': 'truncate px-3 py-2 text-sm text-muted',
+		'title': file,
+		'data-audio-file': file,
+	}, folderIcon('🎵'), file));
 	folderList.replaceChildren(...listing.folders.map((folder) => h('li', {
 		'class': 'flex items-center gap-2 pr-2 hover:bg-raised-hover data-[refused=true]:text-muted',
 		'title': folder.refused ?? '',
@@ -278,12 +284,25 @@ function drawListing(listing, busy) {
 	},
 	// A soundboard is opened, never browsed into: its folders are its playlists.
 	folder.soundboard
-		? h('span', { class: 'min-w-0 flex-1 truncate px-3 py-2 text-sm' }, folderIcon('🎵'), folder.name)
+		? h('span', { class: 'min-w-0 flex-1 truncate px-3 py-2 text-sm' },
+				folderIcon('🗂️'),
+				folder.name,
+				folder.title && folder.title !== folder.name
+					? h('span', { 'class': 'ml-2 text-xs text-muted', 'data-folder-title': true }, `(${folder.title})`)
+					: null)
 		: h('button', {
 				type: 'button',
 				class: 'min-w-0 flex-1 cursor-pointer truncate px-3 py-2 text-left text-sm',
 				onClick: () => flow.browse(folder.path),
 			}, folderIcon('📁'), folder.name),
+	folder.holdsSoundboard
+		? h('span', {
+				'class': 'shrink-0 text-sm',
+				'title': 'A soundboard is somewhere inside this folder',
+				'aria-label': 'A soundboard is somewhere inside this folder',
+				'data-holds-soundboard': true,
+			}, '🎵')
+		: null,
 	folder.soundboard ? h('span', { class: 'rounded bg-music/20 px-1.5 py-0.5 text-xs text-music' }, 'Soundboard') : null,
 	folder.soundboard && folder.refused === null
 		? h('button', {
@@ -293,7 +312,7 @@ function drawListing(listing, busy) {
 				'data-folder-quick-open': true,
 				'onClick': () => flow.select(folder.path),
 			}, 'Open')
-		: null)));
+		: null)), ...files);
 }
 
 /**

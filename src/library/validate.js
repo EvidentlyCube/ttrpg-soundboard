@@ -20,9 +20,10 @@
 /** @typedef {typeof PLAYBACK_ORDERS[number]} PlaybackOrder */
 /** @typedef {typeof STOP_MODES[number]} StopMode */
 /** @typedef {{ master: number, music: number, sfx: number }} Volumes */
-/** @typedef {{ version: number, volumes?: Partial<Volumes> }} SettingsFile */
+/** @typedef {{ version: number, volumes?: Partial<Volumes>, name?: string }} SettingsFile */
 
 export const SETTINGS_VERSION = 1;
+export const MAX_NAME_LENGTH = 100;
 
 /** @type {readonly (keyof Volumes)[]} */
 export const VOLUME_BUSES = ['master', 'music', 'sfx'];
@@ -184,7 +185,21 @@ export function validateSettingsFile(value) {
 			? validateVolumes(value.volumes, 'volumes.')
 			: ['"volumes" must be a JSON object']));
 	}
+	if ('name' in value) {
+		problems.push(...validateName(value.name));
+	}
 	return problems;
+}
+
+/**
+ * The soundboard's own name, kept in `.soundboard`.
+ * @param {unknown} value
+ * @returns {string[]}
+ */
+export function validateName(value) {
+	return typeof value === 'string' && value.trim() !== '' && value.length <= MAX_NAME_LENGTH
+		? []
+		: [`"name" must be a non-empty string of at most ${MAX_NAME_LENGTH} characters`];
 }
 
 /**

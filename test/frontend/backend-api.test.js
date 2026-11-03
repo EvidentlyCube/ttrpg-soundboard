@@ -36,8 +36,16 @@ describe('HttpBackendApi against the real server', () => {
 		assert.deepEqual(library.sounds.map((sound) => sound.url), ['/media/Boom.mp3']);
 	});
 
-	it('fetches the settings', async () => {
-		assert.deepEqual(await api.fetchSettings(), { volumes: { master: 1, music: 0.5, sfx: 1 } });
+	it('fetches the settings, with the folder’s name to show without a name of its own', async () => {
+		assert.deepEqual(await api.fetchSettings(), { volumes: { master: 1, music: 0.5, sfx: 1 }, name: null, folderName: tree.root.split('/').at(-1) });
+	});
+
+	it('saves and clears the name', async () => {
+		await api.saveName('Tavern', { keepalive: false });
+		assert.equal((await api.fetchSettings()).name, 'Tavern');
+		assert.equal(JSON.parse(await readFile(join(tree.root, '.soundboard'), 'utf8')).name, 'Tavern');
+		await api.saveName(null, { keepalive: true });
+		assert.equal((await api.fetchSettings()).name, null);
 	});
 
 	it('saves volumes, with or without keepalive', async () => {

@@ -148,10 +148,13 @@ async function route(request, response, context) {
 		sendJson(response, 200, toLibraryJson(library));
 	} else if (pathname === '/api/settings') {
 		allowMethods(request, ['GET']);
-		sendJson(response, 200, settings.settings);
+		sendJson(response, 200, { ...settings.settings, folderName: settings.folderName });
 	} else if (pathname === '/api/settings/volumes') {
 		allowMethods(request, ['PUT']);
 		sendJson(response, 200, await updateVolumes(settings, await readJsonBody(request)));
+	} else if (pathname === '/api/settings/name') {
+		allowMethods(request, ['PUT']);
+		sendJson(response, 200, await updateName(settings, await readJsonBody(request)));
 	} else if (pathname === '/api/waveforms') {
 		allowMethods(request, ['GET']);
 		sendJson(response, 200, { missing: await waveforms.missing() });
@@ -508,6 +511,25 @@ async function updateVolumes(settings, body) {
 	}
 	try {
 		return await settings.updateVolumes(body);
+	} catch (error) {
+		if (error instanceof ValidationError) {
+			throw new HttpError(400, error.message);
+		}
+		throw error;
+	}
+}
+
+/**
+ * @param {SettingsStore} settings
+ * @param {unknown} body
+ */
+async function updateName(settings, body) {
+	const name = isPlainObject(body) ? body.name : undefined;
+	if (name !== null && typeof name !== 'string') {
+		throw new HttpError(400, 'Expected { name: string | null }');
+	}
+	try {
+		return await settings.updateName(name);
 	} catch (error) {
 		if (error instanceof ValidationError) {
 			throw new HttpError(400, error.message);

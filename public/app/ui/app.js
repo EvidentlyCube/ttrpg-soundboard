@@ -13,6 +13,7 @@ import { icon } from './icons.js';
 import { appMenuItems } from './menus.js';
 import { MetadataDialog } from './metadata-dialog.js';
 import { MoveDialog } from './move-dialog.js';
+import { OptionsDialog } from './options-dialog.js';
 import { Overlay } from './overlay.js';
 import { PanicButton } from './panic-button.js';
 import { dockLayout, PlayerDock } from './player-dock.js';
@@ -78,6 +79,10 @@ export class App extends Component {
 		this.#splash = splash;
 		// From any page, including before it has started, since the menu offers Change soundboard from the start.
 		this.own(soundboard.on('app.closed', () => window.location.assign('/')));
+		document.title = `${soundboard.displayName()} · Soundboard`;
+		this.own(soundboard.on('name.changed', ({ displayName }) => {
+			document.title = `${displayName} · Soundboard`;
+		}));
 		this.own(() => this.#frame?.destroy());
 		// The splash is the one place that asks the server something before the page has chosen what to be.
 		this.#remote.checkHost().then((hostExists) => {
@@ -212,8 +217,17 @@ function appMenuButton(overlay, items, onSelect) {
 	return button;
 }
 
-function appTitle() {
-	return h('h1', { class: 'text-lg font-semibold tracking-tight' }, 'Soundboard');
+/**
+ * The soundboard's name, kept up to date as Options changes it.
+ * @param {Component} owner
+ * @param {Soundboard} soundboard
+ */
+function appTitle(owner, soundboard) {
+	const title = h('h1', { 'class': 'truncate text-lg font-semibold tracking-tight', 'data-app-title': true }, soundboard.displayName());
+	owner.own(soundboard.on('name.changed', ({ displayName }) => {
+		title.textContent = displayName;
+	}));
+	return title;
 }
 
 /**
@@ -267,7 +281,7 @@ class StartFrame extends Component {
 				closeSoundboard(soundboard);
 			}
 		});
-		const header = h('header', { 'class': HEADER_CLASS, 'data-start-header': true }, h('div', { class: 'flex items-center gap-3' }, menuButton, appTitle()));
+		const header = h('header', { 'class': HEADER_CLASS, 'data-start-header': true }, h('div', { class: 'flex min-w-0 items-center gap-3' }, menuButton, appTitle(this, soundboard)));
 		const { footer, panicSlot } = dockLayout();
 		const panic = new PanicButton(soundboard, { disabled: true }).mount(panicSlot);
 		this.own(() => panic.destroy());
@@ -291,6 +305,7 @@ class Board extends Component {
 	#replaceHostDialog = new Dialog();
 	#connectPhoneDialog = new Dialog();
 	#infoDialog = new Dialog();
+	#optionsDialog = new Dialog();
 	/** The item whose Customize dialog is open, so the dialog can close when the item is deleted or moved away. @type {{ kind: 'sound' | 'playlist', id: string } | null} */
 	#editing = null;
 	/** @type {Map<string, SoundTile>} */
@@ -339,6 +354,8 @@ class Board extends Component {
 				soundboard.stopHosting();
 			} else if (item === 'connectPhone') {
 				this.#openConnectPhone();
+			} else if (item === 'options') {
+				this.#openOptions();
 			} else if (item === 'info') {
 				this.#openInfo();
 			} else if (item === 'changeSoundboard') {
@@ -349,7 +366,7 @@ class Board extends Component {
 			'class': `group/header ${HEADER_CLASS} data-[role=host]:border-host data-[role=host]:bg-host/15`,
 			'data-role': soundboard.isHosting() ? 'host' : 'standalone',
 		},
-		h('div', { class: 'flex items-center gap-3' }, menuButton, appTitle(), roleLabel),
+		h('div', { class: 'flex min-w-0 items-center gap-3' }, menuButton, appTitle(this, soundboard), roleLabel),
 		controls);
 		this.own(soundboard.on('host.changed', ({ hosting }) => {
 			header.dataset.role = hosting ? 'host' : 'standalone';
@@ -441,6 +458,7 @@ class Board extends Component {
 		this.own(() => this.#replaceHostDialog.close());
 		this.own(() => this.#connectPhoneDialog.close());
 		this.own(() => this.#infoDialog.close());
+		this.own(() => this.#optionsDialog.close());
 		return root;
 	}
 
@@ -453,6 +471,14 @@ class Board extends Component {
 
 	#openInfo() {
 		openInfo(this.#infoDialog, this.#soundboard);
+	}
+
+	#openOptions() {
+		const options = new OptionsDialog(this.#soundboard);
+		const body = h('div');
+		options.mount(body);
+		this.#optionsDialog.open({ title: 'Options', body, onClose: () => options.destroy() });
+		body.querySelector('input')?.focus();
 	}
 
 	/**

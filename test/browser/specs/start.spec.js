@@ -1,6 +1,6 @@
 import { expect, test } from '../support/fixtures.js';
 
-test('the page shows the splash and only asks whether a host exists before the click', async ({ page, soundboard, splash }) => {
+test('the page shows the splash and only asks for the name and whether a host exists before the click', async ({ page, soundboard, splash }) => {
 	/** @type {string[]} */
 	const requests = [];
 
@@ -9,9 +9,9 @@ test('the page shows the splash and only asks whether a host exists before the c
 		await soundboard.open();
 	});
 
-	await test.step('The splash is shown and the only API call was the host check', async () => {
+	await test.step('The splash is shown and the only API calls were the name and the host check', async () => {
 		await splash.expectVisible();
-		await expect.poll(() => requests.filter((path) => path.startsWith('/api/'))).toEqual(['/api/remote']);
+		await expect.poll(() => requests.filter((path) => path.startsWith('/api/'))).toEqual(['/api/settings', '/api/remote']);
 	});
 });
 
@@ -23,7 +23,8 @@ test('the splash sits between the header and the footer, where only Info and Cha
 
 	await test.step('The header has the menu and the title only, and the footer a disabled Stop All', async () => {
 		const header = page.locator('[data-start-header]');
-		await expect(header).toHaveText('Soundboard');
+		await expect(header.locator('[data-app-title]')).toHaveText(/\S/);
+		await expect(header.locator('button')).toHaveCount(1);
 		await expect(header.locator('[data-app-menu]')).toBeVisible();
 		await expect(page.locator('[data-player-dock]')).toContainText('No playlist playing');
 		await expect(page.locator('[data-panic-button]')).toBeDisabled();
@@ -32,8 +33,8 @@ test('the splash sits between the header and the footer, where only Info and Cha
 	await test.step('The menu lists every item, with only Info and Change soundboard enabled', async () => {
 		await page.locator('[data-app-menu]').click();
 		const items = page.getByRole('menuitem');
-		await expect(items).toHaveText(['Regenerate waveforms', 'Become host', 'Connect a phone', 'Info', 'Change soundboard']);
-		for (const name of ['Regenerate waveforms', 'Become host', 'Connect a phone']) {
+		await expect(items).toHaveText(['Regenerate waveforms', 'Become host', 'Connect a phone', 'Options', 'Info', 'Change soundboard']);
+		for (const name of ['Regenerate waveforms', 'Become host', 'Connect a phone', 'Options']) {
 			await expect(page.getByRole('menuitem', { name })).toBeDisabled();
 		}
 	});

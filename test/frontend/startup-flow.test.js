@@ -32,7 +32,7 @@ function state(changes = {}) {
  * @returns {FolderListing}
  */
 function listing(path) {
-	return { path, parent: '/home', folders: [], audioFiles: 0, soundboard: false, allowed: true, reason: null };
+	return { path, parent: '/home', folders: [], audioFiles: 0, files: [], soundboard: false, allowed: true, reason: null };
 }
 
 /**

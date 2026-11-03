@@ -201,7 +201,7 @@ describe('server', () => {
 		it('saves a volume change and returns the full settings', async () => {
 			const response = await putVolumes({ sfx: 0.25 });
 			assert.equal(response.status, 200);
-			assert.deepEqual(await response.json(), { volumes: { master: 1, music: 0.5, sfx: 0.25 } });
+			assert.deepEqual(await response.json(), { volumes: { master: 1, music: 0.5, sfx: 0.25 }, name: null });
 			assert.deepEqual(JSON.parse(await readFile(join(musicRoot, '.soundboard'), 'utf8')), {
 				version: 1,
 				volumes: { master: 1, music: 0.5, sfx: 0.25 },
@@ -228,6 +228,21 @@ describe('server', () => {
 		it('rejects oversized bodies with 413', async () => {
 			const response = await putVolumes(JSON.stringify({ music: 0.5, padding: 'x'.repeat(20_000) }));
 			assert.equal(response.status, 413);
+		});
+
+		it('renames the soundboard, refuses a bad name with 400, and clears it with null', async () => {
+			const putName = (/** @type {unknown} */ body) => get('/api/settings/name', { method: 'PUT', headers: JSON_TYPE, body: JSON.stringify(body) });
+			assert.equal((await json(await get('/api/settings'))).folderName, musicRoot.split('/').at(-1));
+			const renamed = await putName({ name: ' Tavern ' });
+			assert.equal(renamed.status, 200);
+			assert.equal((await json(renamed)).name, 'Tavern');
+			assert.equal(JSON.parse(await readFile(join(musicRoot, '.soundboard'), 'utf8')).name, 'Tavern');
+			for (const body of [{ name: 3 }, {}, { name: 'x'.repeat(101) }]) {
+				assert.equal((await putName(body)).status, 400, JSON.stringify(body));
+			}
+			assert.equal((await json(await get('/api/settings'))).name, 'Tavern');
+			assert.equal((await json(await putName({ name: null }))).name, null);
+			assert.equal((await get('/api/settings/name')).status, 405);
 		});
 
 		it('only allows PUT for volumes and GET for settings', async () => {
