@@ -16,7 +16,7 @@ Project documents:
 - `npm run typecheck`, `npm run lint`, `npm run lint:fix`
 - `npm run check`: typecheck + lint + test
 
-To try the app by hand, use `test_fixtures/example_soundboard`. **Copy it to a temp directory first**, because the app writes `.json` files into the directory it's given and the fixture must stay pristine.
+To try the app by hand, use `test_fixtures/example_soundboard`. **Copy it to a temp directory first**, because the app writes `.json` files into the directory it's given and the fixture must stay pristine. The app only opens folders inside the home folder unless told otherwise, so allow the temp directory: `npm start -- --whitelisted-root /tmp/sb /tmp/sb`. Add `--no-open` when nobody will look at the browser.
 
 ## Hard rules
 
