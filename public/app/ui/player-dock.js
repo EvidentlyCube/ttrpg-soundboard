@@ -9,6 +9,24 @@ import { PlayerBar } from './player-bar.js';
 /** @typedef {import('./overlay.js').Overlay} Overlay */
 
 /**
+ * The footer's elements, shared with the footer shown under the splash before the board is there, so the two match.
+ * @returns {{ footer: HTMLElement, grid: HTMLElement, placeholder: HTMLElement, panicSlot: HTMLElement }}
+ */
+export function dockLayout() {
+	// The placeholder is as tall as a bar (h-28), so the footer keeps the height of one row while nothing plays.
+	const placeholder = h('div', {
+		'class': 'col-span-3 flex h-28 items-center justify-center rounded-lg border border-dashed border-line text-sm text-muted',
+		'data-dock-placeholder': true,
+	}, 'No playlist playing');
+	// Bars are h-28 (7rem): two rows plus the gap and padding is 16.25rem.
+	const grid = h('div', { class: 'grid max-h-[16.25rem] grid-cols-3 gap-3 overflow-y-auto p-3' }, placeholder);
+	// The button's slot is as tall as one bar and stays at the top right, so it never moves.
+	const panicSlot = h('div', { class: 'h-28 w-32 shrink-0 self-start py-0 pt-3 pr-3' });
+	const footer = h('footer', { 'class': 'flex shrink-0 border-t border-line bg-panel', 'data-player-dock': true }, h('div', { class: 'min-w-0 flex-1' }, grid), panicSlot);
+	return { footer, grid, placeholder, panicSlot };
+}
+
+/**
  * The footer: one player bar per active playlist, in the order they started, three per row; after two rows it
  * scrolls (DESIGN.md §9.1). Sound effects never appear here. Always visible, so the layout never shifts.
  */
@@ -39,16 +57,7 @@ export class PlayerDock extends Component {
 
 	/** @override */
 	render() {
-		// The placeholder is as tall as a bar (h-28), so the footer keeps the height of one row while nothing plays.
-		const placeholder = h('div', {
-			'class': 'col-span-3 flex h-28 items-center justify-center rounded-lg border border-dashed border-line text-sm text-muted',
-			'data-dock-placeholder': true,
-		}, 'No playlist playing');
-		// Bars are h-28 (7rem): two rows plus the gap and padding is 16.25rem.
-		const grid = h('div', { class: 'grid max-h-[16.25rem] grid-cols-3 gap-3 overflow-y-auto p-3' }, placeholder);
-		// The button's slot is as tall as one bar and stays at the top right, so it never moves.
-		const panicSlot = h('div', { class: 'h-28 w-32 shrink-0 self-start py-0 pt-3 pr-3' });
-		const footer = h('footer', { 'class': 'flex shrink-0 border-t border-line bg-panel', 'data-player-dock': true }, h('div', { class: 'min-w-0 flex-1' }, grid), panicSlot);
+		const { footer, grid, placeholder, panicSlot } = dockLayout();
 		this.#panic.mount(panicSlot);
 
 		this.own(this.#soundboard.on('playlist.stateChanged', ({ playlistId, state }) => {

@@ -15,6 +15,35 @@ test('the page shows the splash and only asks whether a host exists before the c
 	});
 });
 
+test('the splash sits between the header and the footer, where only Info and Change soundboard work yet', async ({ page, soundboard, splash }) => {
+	await test.step('Open the page', async () => {
+		await soundboard.open();
+		await splash.expectVisible();
+	});
+
+	await test.step('The header has the menu and the title only, and the footer a disabled Stop All', async () => {
+		const header = page.locator('[data-start-header]');
+		await expect(header).toHaveText('Soundboard');
+		await expect(header.locator('[data-app-menu]')).toBeVisible();
+		await expect(page.locator('[data-player-dock]')).toContainText('No playlist playing');
+		await expect(page.locator('[data-panic-button]')).toBeDisabled();
+	});
+
+	await test.step('The menu lists every item, with only Info and Change soundboard enabled', async () => {
+		await page.locator('[data-app-menu]').click();
+		const items = page.getByRole('menuitem');
+		await expect(items).toHaveText(['Regenerate waveforms', 'Become host', 'Connect a phone', 'Info', 'Change soundboard']);
+		for (const name of ['Regenerate waveforms', 'Become host', 'Connect a phone']) {
+			await expect(page.getByRole('menuitem', { name })).toBeDisabled();
+		}
+	});
+
+	await test.step('Info opens over the splash', async () => {
+		await page.getByRole('menuitem', { name: 'Info' }).click();
+		await expect(page.locator('[data-info-row=app]')).toHaveText(/^\d+\.\d+\.\d+$/);
+	});
+});
+
 test('clicking the splash loads the soundboard with the library', async ({ soundboard, splash, playlists }) => {
 	await test.step('Open the page and click the splash', async () => {
 		await soundboard.open();

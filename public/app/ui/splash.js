@@ -49,9 +49,10 @@ export class Splash extends Component {
 			this.#choices.append(h('div', { class: 'w-64' }, button, note));
 		}
 		return h('div', {
-			'class': 'fixed inset-0 z-50 flex cursor-pointer select-none flex-col items-center justify-center gap-3 bg-surface/95 data-[mode=choices]:cursor-default',
+			'class': 'fixed inset-0 z-50 flex cursor-pointer select-none flex-col items-center justify-center gap-3 bg-surface/95 data-[framed=true]:absolute data-[framed=true]:z-0 data-[mode=choices]:cursor-default',
 			'data-splash': true,
 			'data-mode': 'message',
+			'data-framed': 'true',
 			'onClick': () => {
 				if (this.element.dataset.mode === 'message') {
 					this.#onClick();
@@ -93,5 +94,14 @@ export class Splash extends Component {
 
 	hide() {
 		this.element.hidden = true;
+	}
+
+	/**
+	 * Framed, it fills the space between the header and the footer shown before the board; otherwise it covers the
+	 * whole page.
+	 * @param {boolean} framed
+	 */
+	setFramed(framed) {
+		this.element.dataset.framed = String(framed);
 	}
 }

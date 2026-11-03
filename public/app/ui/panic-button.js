@@ -19,11 +19,16 @@ const LABELS = { fade: 'Stop All', now: 'STOP NOW!' };
  */
 export class PanicButton extends Component {
 	#soundboard;
+	#disabled;
 
-	/** @param {PanicSource} soundboard */
-	constructor(soundboard) {
+	/**
+	 * @param {PanicSource} soundboard
+	 * @param {{ disabled?: boolean }} [options] disabled while nothing can play yet
+	 */
+	constructor(soundboard, { disabled = false } = {}) {
 		super();
 		this.#soundboard = soundboard;
+		this.#disabled = disabled;
 	}
 
 	/** @override */
@@ -32,8 +37,9 @@ export class PanicButton extends Component {
 		const mode = h('span', {});
 		const button = h('button', {
 			'type': 'button',
-			'class': 'flex h-full w-full cursor-pointer flex-col items-center justify-center rounded-lg border border-notice bg-notice/15 text-base leading-tight font-bold text-notice hover:bg-notice/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-notice data-[state=now]:border-danger data-[state=now]:bg-danger data-[state=now]:text-surface data-[state=now]:hover:bg-danger data-[state=now]:hover:brightness-110 data-[state=now]:focus-visible:outline-danger',
+			'class': 'flex h-full w-full cursor-pointer flex-col items-center justify-center rounded-lg border border-notice bg-notice/15 text-base leading-tight font-bold text-notice hover:bg-notice/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-notice data-[state=now]:border-danger data-[state=now]:bg-danger data-[state=now]:text-surface data-[state=now]:hover:bg-danger data-[state=now]:hover:brightness-110 data-[state=now]:focus-visible:outline-danger disabled:cursor-default disabled:opacity-40 disabled:hover:bg-notice/15',
 			'title': 'Fade out everything that plays. Press again while it fades to stop it at once.',
+			'disabled': this.#disabled,
 			'data-panic-button': true,
 		}, mode);
 

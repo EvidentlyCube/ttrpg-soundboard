@@ -13,6 +13,12 @@ describe('appMenuItems', () => {
 	it('offers to stop hosting instead while the page is the host', () => {
 		assert.deepEqual(enabledLabels(appMenuItems({ hosting: true })), ['Regenerate waveforms', 'Stop hosting', 'Connect a phone', 'Info', 'Change soundboard']);
 	});
+
+	it('before the start lists the same items, but only Info and Change soundboard can be chosen', () => {
+		const items = appMenuItems({ hosting: false, started: false });
+		assert.deepEqual(items.map((item) => item.label), appMenuItems({ hosting: false }).map((item) => item.label));
+		assert.deepEqual(enabledLabels(items), ['Info', 'Change soundboard']);
+	});
 });
 
 describe('soundMenuItems', () => {

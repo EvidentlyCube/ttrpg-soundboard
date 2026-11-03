@@ -140,6 +140,7 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 
 **Start and audio**
 - [ ] The splash appears on load; nothing plays or loads until the click.
+- [ ] The splash sits between a header (☰ and "Soundboard" only) and the footer with a dimmed Stop All. The ☰ menu greys out everything but Info and Change soundboard, which both work. Choosing Standalone swaps in the board without the header or footer moving; choosing Remote control shows the remote page without them.
 - [ ] Close the lid for a minute and reopen: the "resume" splash appears and audio continues after a click.
 - [ ] Switching the audio output (speakers, headphones, Bluetooth) while playing.
 - [ ] Ogg tiles play, or are disabled with an explanation where the browser can't play Ogg.

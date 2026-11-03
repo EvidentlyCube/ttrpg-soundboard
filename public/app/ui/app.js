@@ -14,7 +14,8 @@ import { appMenuItems } from './menus.js';
 import { MetadataDialog } from './metadata-dialog.js';
 import { MoveDialog } from './move-dialog.js';
 import { Overlay } from './overlay.js';
-import { PlayerDock } from './player-dock.js';
+import { PanicButton } from './panic-button.js';
+import { dockLayout, PlayerDock } from './player-dock.js';
 import { PlaylistEditor } from './playlist-editor.js';
 import { PlaylistTile } from './playlist-tile.js';
 import { RemoteView } from './remote-view.js';
@@ -51,6 +52,8 @@ export class App extends Component {
 	#phase = 'start';
 	/** @type {Splash | null} */
 	#splash = null;
+	/** The header and footer around the splash until the board replaces them. @type {StartFrame | null} */
+	#frame = null;
 	/** @type {Board | null} */
 	#board = null;
 
@@ -68,9 +71,14 @@ export class App extends Component {
 	render() {
 		const soundboard = this.#soundboard;
 		const root = h('div', { class: 'h-full' });
-		const splash = new Splash({ onClick: () => this.#onSplashClick(), onChoose: (mode) => this.#choose(mode, root) }).mount(root);
+		const frame = new StartFrame({ soundboard, overlay: this.#overlay }).mount(root);
+		this.#frame = frame;
+		const splash = new Splash({ onClick: () => this.#onSplashClick(), onChoose: (mode) => this.#choose(mode, root) }).mount(frame.body);
 		splash.showChoices();
 		this.#splash = splash;
+		// From any page, including before it has started, since the menu offers Change soundboard from the start.
+		this.own(soundboard.on('app.closed', () => window.location.assign('/')));
+		this.own(() => this.#frame?.destroy());
 		// The splash is the one place that asks the server something before the page has chosen what to be.
 		this.#remote.checkHost().then((hostExists) => {
 			if (this.#phase === 'start') {
@@ -88,6 +96,11 @@ export class App extends Component {
 		this.own(soundboard.on('app.ready', ({ library, unplayable }) => {
 			this.#phase = 'ready';
 			splash.hide();
+			// The splash outlives the frame: later messages, such as suspended audio, cover the whole board.
+			splash.setFramed(false);
+			root.append(splash.element);
+			this.#frame?.destroy();
+			this.#frame = null;
 			const board = new Board({ soundboard, overlay: this.#overlay, library, unplayable: new Set(unplayable) });
 			board.mount(root);
 			this.#board = board;
@@ -151,6 +164,8 @@ export class App extends Component {
 			// A remote control never starts the audio: nothing here may create or resume the audio context.
 			this.#phase = 'remote';
 			this.#splash?.hide();
+			this.#frame?.destroy();
+			this.#frame = null;
 			this.own(() => this.#remote.stop());
 			new RemoteView(this.#remote).mount(root);
 			this.#remote.start();
@@ -170,6 +185,94 @@ export class App extends Component {
 		} else if (this.#phase === 'suspended') {
 			this.#soundboard.unlockAudio();
 		}
+	}
+}
+
+const HEADER_CLASS = 'flex shrink-0 items-center justify-between gap-6 border-b border-line bg-panel px-5 py-3';
+
+/**
+ * The header's ☰ button, which opens the app menu below itself.
+ * @param {Overlay} overlay
+ * @param {() => import('./menus.js').MenuItem[]} items
+ * @param {(id: string) => void} onSelect
+ */
+function appMenuButton(overlay, items, onSelect) {
+	const button = h('button', {
+		'type': 'button',
+		'class': 'grid size-8 cursor-pointer place-items-center rounded-md text-muted hover:bg-raised-hover hover:text-text focus-visible:outline-2 focus-visible:outline-music',
+		'title': 'Menu',
+		'aria-label': 'Menu',
+		'aria-haspopup': 'menu',
+		'data-app-menu': true,
+		'onClick': () => {
+			const { left, bottom } = button.getBoundingClientRect();
+			openContextMenu(overlay, items(), { x: left, y: bottom + 4 }, onSelect);
+		},
+	}, icon('menu', 'size-5'));
+	return button;
+}
+
+function appTitle() {
+	return h('h1', { class: 'text-lg font-semibold tracking-tight' }, 'Soundboard');
+}
+
+/**
+ * @param {Dialog} dialog
+ * @param {Soundboard} soundboard
+ */
+function openInfo(dialog, soundboard) {
+	const info = new InfoDialog(soundboard);
+	const body = h('div');
+	info.mount(body);
+	dialog.open({ title: 'Info', body, onClose: () => info.destroy() });
+}
+
+/**
+ * Leaving the page stops all audio; `/` then shows the Selector, once `app.closed` comes.
+ * @param {Soundboard} soundboard
+ */
+function closeSoundboard(soundboard) {
+	soundboard.closeSoundboard().catch((error) => console.error('Could not close the soundboard', error));
+}
+
+/**
+ * The board's header and footer, shown around the splash while it asks how to start and while it loads, so the page
+ * doesn't change shape when the board comes. Only Info and Change soundboard work yet, and Stop All is disabled.
+ */
+class StartFrame extends Component {
+	#soundboard;
+	#overlay;
+	#infoDialog = new Dialog();
+	/** Where the splash goes. */
+	body = h('div', { class: 'relative min-h-0 flex-1' });
+
+	/**
+	 * @param {object} options
+	 * @param {Soundboard} options.soundboard
+	 * @param {Overlay} options.overlay
+	 */
+	constructor({ soundboard, overlay }) {
+		super();
+		this.#soundboard = soundboard;
+		this.#overlay = overlay;
+	}
+
+	/** @override */
+	render() {
+		const soundboard = this.#soundboard;
+		const menuButton = appMenuButton(this.#overlay, () => appMenuItems({ hosting: false, started: false }), (item) => {
+			if (item === 'info') {
+				openInfo(this.#infoDialog, soundboard);
+			} else if (item === 'changeSoundboard') {
+				closeSoundboard(soundboard);
+			}
+		});
+		const header = h('header', { 'class': HEADER_CLASS, 'data-start-header': true }, h('div', { class: 'flex items-center gap-3' }, menuButton, appTitle()));
+		const { footer, panicSlot } = dockLayout();
+		const panic = new PanicButton(soundboard, { disabled: true }).mount(panicSlot);
+		this.own(() => panic.destroy());
+		this.own(() => this.#infoDialog.close());
+		return h('div', { class: 'flex h-full flex-col' }, header, this.body, footer);
 	}
 }
 
@@ -227,43 +330,30 @@ class Board extends Component {
 			'title': 'A remote control can control this page',
 			'data-role-label': true,
 		}, 'Host');
-		const menuButton = h('button', {
-			'type': 'button',
-			'class': 'grid size-8 cursor-pointer place-items-center rounded-md text-muted hover:bg-raised-hover hover:text-text focus-visible:outline-2 focus-visible:outline-music',
-			'title': 'Menu',
-			'aria-label': 'Menu',
-			'aria-haspopup': 'menu',
-			'data-app-menu': true,
-			'onClick': () => {
-				const { left, bottom } = menuButton.getBoundingClientRect();
-				openContextMenu(overlay, appMenuItems({ hosting: soundboard.isHosting() }), { x: left, y: bottom + 4 }, (item) => {
-					if (item === 'regenerateWaves') {
-						soundboard.regenerateWaveforms();
-					} else if (item === 'becomeHost') {
-						this.becomeHost();
-					} else if (item === 'stopHosting') {
-						soundboard.stopHosting();
-					} else if (item === 'connectPhone') {
-						this.#openConnectPhone();
-					} else if (item === 'info') {
-						this.#openInfo();
-					} else if (item === 'changeSoundboard') {
-						soundboard.closeSoundboard().catch((error) => console.error('Could not close the soundboard', error));
-					}
-				});
-			},
-		}, icon('menu', 'size-5'));
+		const menuButton = appMenuButton(overlay, () => appMenuItems({ hosting: soundboard.isHosting() }), (item) => {
+			if (item === 'regenerateWaves') {
+				soundboard.regenerateWaveforms();
+			} else if (item === 'becomeHost') {
+				this.becomeHost();
+			} else if (item === 'stopHosting') {
+				soundboard.stopHosting();
+			} else if (item === 'connectPhone') {
+				this.#openConnectPhone();
+			} else if (item === 'info') {
+				this.#openInfo();
+			} else if (item === 'changeSoundboard') {
+				closeSoundboard(soundboard);
+			}
+		});
 		const header = h('header', {
-			'class': 'group/header flex shrink-0 items-center justify-between gap-6 border-b border-line bg-panel px-5 py-3 data-[role=host]:border-host data-[role=host]:bg-host/15',
+			'class': `group/header ${HEADER_CLASS} data-[role=host]:border-host data-[role=host]:bg-host/15`,
 			'data-role': soundboard.isHosting() ? 'host' : 'standalone',
 		},
-		h('div', { class: 'flex items-center gap-3' }, menuButton, h('h1', { class: 'text-lg font-semibold tracking-tight' }, 'Soundboard'), roleLabel),
+		h('div', { class: 'flex items-center gap-3' }, menuButton, appTitle(), roleLabel),
 		controls);
 		this.own(soundboard.on('host.changed', ({ hosting }) => {
 			header.dataset.role = hosting ? 'host' : 'standalone';
 		}));
-		// Leaving the page stops all audio; `/` now shows the Selector.
-		this.own(soundboard.on('app.closed', () => window.location.assign('/')));
 		this.#adopt(new ProblemsButton(soundboard, () => this.#openProblems()).mount(controls));
 		this.#adopt(new ExternalChangesButton(soundboard, (problems) => this.#showRefreshProblems(problems)).mount(controls));
 		this.#adopt(new WaveformIndicator(soundboard).mount(controls));
@@ -362,10 +452,7 @@ class Board extends Component {
 	}
 
 	#openInfo() {
-		const dialog = new InfoDialog(this.#soundboard);
-		const body = h('div');
-		dialog.mount(body);
-		this.#infoDialog.open({ title: 'Info', body, onClose: () => dialog.destroy() });
+		openInfo(this.#infoDialog, this.#soundboard);
 	}
 
 	/**

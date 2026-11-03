@@ -159,9 +159,10 @@ test.describe('the Selector', () => {
 		await page.locator('[data-path-input]').press('Enter');
 		await page.locator('[data-folder-open]').click();
 		await page.locator('[data-answer=no]').click();
-		await page.locator('[data-start-mode=standalone]').click();
+		// Straight from the splash, before choosing how to start.
+		await expect(page.locator('[data-start-mode=standalone]')).toBeVisible();
 		await page.locator('[data-app-menu]').click();
-		await page.getByText('Change soundboard').click();
+		await page.getByRole('menuitem', { name: 'Change soundboard' }).click();
 		await page.locator(`[data-forget="${app.board}"]`).click();
 		await expect(page.locator('[data-folder-card]')).toHaveCount(0);
 		await expect(page.locator('[data-browse]')).toBeEnabled();
