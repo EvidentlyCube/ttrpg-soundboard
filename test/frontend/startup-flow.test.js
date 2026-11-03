@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { ServerError } from '../../public/app/logic/errors.js';
 import { STARTUP_POLL_MS, StartupFlow } from '../../public/app/logic/startup-flow.js';
 import { FakeClock } from '../helpers/fake-clock.js';
 
@@ -193,6 +194,31 @@ describe('StartupFlow', () => {
 		slow(listing('/slow'));
 		await first;
 		assert.equal(flow.view.listing?.path, '/fast');
+	});
+
+	it('keeps a folder asked for while the first one loads, which then isn’t shown', async () => {
+		const { flow, calls } = setup({ browsed: '/home/ana/Music/Battle' });
+		const start = flow.browseStart();
+		await flow.browse('/home/ana/typed');
+		await start;
+		assert.equal(flow.view.listing?.path, '/home/ana/typed');
+		assert.deepEqual(calls, ['list /home/ana/typed']);
+	});
+
+	it('keeps the error of a server answer with its code, for the page to translate', async () => {
+		const { flow, folders } = setup();
+		folders.set('/etc', new ServerError('This folder is outside the folders the app may open.', 'folder.outside', {}));
+		await flow.browse('/etc');
+		assert.deepEqual(flow.view.browseError, { message: 'This folder is outside the folders the app may open.', code: 'folder.outside', params: {} });
+	});
+
+	it('saves the language, and says whether it was saved', async () => {
+		const { flow, calls, failActions } = setup();
+		assert.equal(await flow.setLanguage('pl'), true);
+		assert.equal(await flow.setLanguage(null), true);
+		failActions(new Error('Expected { language: … }'));
+		assert.equal(await flow.setLanguage('xx'), false);
+		assert.deepEqual(calls, ['language pl', 'language null', 'language xx']);
 	});
 
 	it('sends each action, then asks for the state at once', async () => {

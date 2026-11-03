@@ -1,6 +1,6 @@
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { realpath } from 'node:fs/promises';
+import { readFile, realpath } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { networkInterfaces } from 'node:os';
 import { join } from 'node:path';
@@ -42,7 +42,7 @@ async function setup({ ask = false, paths = null, lan, lanManager = false, port 
 			'initializer.html': 'Initializer page',
 			'waiting.html': 'Waiting page',
 			'favicon.svg': '<svg/>',
-			'app': { 'selector.js': 'script' },
+			'app': { 'selector.js': 'script', 'language.js': 'loader', 'i18n': { 'en.js': 'English', 'pl.js': 'Polish', 'notes.txt': '' } },
 		},
 		config: {},
 	});
@@ -95,7 +95,7 @@ async function setup({ ask = false, paths = null, lan, lanManager = false, port 
 	cleanups.push(() => app.close());
 	cleanups.push(() => session.shutdown());
 	const base = `http://127.0.0.1:${app.port}`;
-	return { app, session, music, closed, base };
+	return { app, session, music, closed, base, root };
 }
 
 /**
@@ -232,6 +232,18 @@ describe('startApp', () => {
 		assert.deepEqual((await call(`${base}/api/startup`)).json.recent, [{ path: join(music, 'board'), name: 'board', exists: true }]);
 	});
 
+	it('tells the language and the language files there are, and saves the language chosen in the settings', async () => {
+		const { base, root } = await setup();
+		assert.deepEqual((await call(`${base}/api/language`)).json, { language: null, available: ['en', 'pl'] });
+		assert.equal((await call(`${base}/api/startup/language`, 'PUT', { language: 'pl' })).status, 204);
+		assert.deepEqual((await call(`${base}/api/language`)).json, { language: 'pl', available: ['en', 'pl'] });
+		assert.deepEqual(JSON.parse(await readFile(join(root, 'config', 'settings.json'), 'utf8')), { language: 'pl' });
+		assert.equal((await call(`${base}/api/startup/language`, 'PUT', { language: 'de' })).status, 400);
+		assert.equal((await call(`${base}/api/startup/language`, 'PUT', {})).status, 400);
+		assert.equal((await call(`${base}/api/startup/language`, 'PUT', { language: null })).status, 204);
+		assert.deepEqual((await call(`${base}/api/language`)).json.language, null);
+	});
+
 	it('forgets a recent folder', async () => {
 		const { base, music, session } = await setup();
 		await call(`${base}/api/startup/select`, 'POST', { path: join(music, 'board') });
@@ -322,9 +334,15 @@ describe('startApp with --lan, seen from another device', { skip: networkAddress
 		assert.equal((await call(`${remote}/api/startup`)).status, 503);
 		assert.equal((await call(`${remote}/api/info`)).status, 503);
 		assert.deepEqual((await call(`${remote}/api/startup/ready`)).json, { ready: false });
+		// The waiting page is drawn in the app's language.
+		assert.deepEqual((await call(`${remote}/api/language`)).json, { language: null, available: ['en', 'pl'] });
+		assert.equal((await call(`${remote}/app/language.js`)).text, 'loader');
+		assert.equal((await call(`${remote}/app/i18n/pl.js`)).text, 'Polish');
+		assert.equal((await call(`${remote}/api/startup/language`, 'PUT', { language: 'pl' })).status, 503);
 		await call(`${base}/api/startup/select`, 'POST', { path: join(music, 'board') });
 		await phase(session, 'ready');
 		assert.deepEqual((await call(`${remote}/api/startup/ready`)).json, { ready: true });
+		assert.equal((await call(`${remote}/api/language`)).json.language, null);
 		assert.equal((await call(`${remote}/`)).text, 'board /');
 		assert.equal((await call(`${remote}/api/startup/close`, 'POST')).text, 'board /api/startup/close');
 	});

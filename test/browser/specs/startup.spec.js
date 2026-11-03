@@ -45,7 +45,7 @@ test.describe('the Selector', () => {
 		await test.step('Go into Board: it isn’t a soundboard yet', async () => {
 			await page.locator(`[data-folder="${app.board}"] button`).first().click();
 			await expect(page.locator('[data-path-input]')).toHaveValue(app.board);
-			await expect(page.locator('[data-folder-summary]')).toContainText('No soundboard here yet');
+			await expect(page.locator('[data-folder-summary]')).toHaveText('4 folders, 4 audio files');
 			await expect(page.locator('[data-folder-open]')).toHaveText('Create soundboard here');
 		});
 
