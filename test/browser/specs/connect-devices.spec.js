@@ -79,9 +79,11 @@ test.describe('with --lan', () => {
 		});
 	});
 
-	test('the menu shows a QR code with the address to open on a phone', async ({ page, soundboard }) => {
-		await test.step('Open the page', async () => {
-			await soundboard.startAndWaitUntilLoaded();
+	test('the host’s menu shows a QR code with the address to open on a phone', async ({ page, soundboard, splash }) => {
+		await test.step('Open the page as the host', async () => {
+			await soundboard.open();
+			await splash.choose('host');
+			await soundboard.waitUntilLoaded();
 		});
 
 		await test.step('Choose Connect a phone in the menu', async () => {
@@ -115,9 +117,11 @@ test.describe('with --lan', () => {
 	});
 });
 
-test('without --lan, the menu says how to connect a phone', async ({ page, soundboard }) => {
-	await test.step('Open the page', async () => {
-		await soundboard.startAndWaitUntilLoaded();
+test('without --lan, the host’s menu says how to connect a phone', async ({ page, soundboard, splash }) => {
+	await test.step('Open the page as the host', async () => {
+		await soundboard.open();
+		await splash.choose('host');
+		await soundboard.waitUntilLoaded();
 	});
 
 	await test.step('Choose Connect a phone in the menu', async () => {

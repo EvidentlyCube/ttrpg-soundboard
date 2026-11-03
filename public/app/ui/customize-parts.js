@@ -14,6 +14,7 @@ import { icon } from './icons.js';
 const CARD_ACCENTS = {
 	music: 'group-hover:bg-music group-focus-within:bg-music',
 	sfx: 'group-hover:bg-sfx group-focus-within:bg-sfx',
+	neutral: 'group-hover:bg-muted group-focus-within:bg-muted',
 };
 
 /**

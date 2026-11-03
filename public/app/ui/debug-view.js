@@ -15,12 +15,15 @@ const BADGES = {
 };
 
 /**
- * The debug view (DESIGN.md §9.8): a header button and the panel it opens below itself, listing the voices the audio
- * engine is playing, oldest first, with their status and own volume. The list is static: a voice keeps its row until it
- * goes away, and rows are updated in place.
+ * The debug view (DESIGN.md §9.8): a panel below a red header button, listing the voices the audio engine is playing,
+ * oldest first, with their status and own volume. Both are hidden until the Debug dialog shows them, and the button only
+ * hides them again. The list is static: a voice keeps its row until it goes away, and rows are updated in place.
  */
 export class DebugView extends Component {
 	#soundboard;
+	#shown = false;
+	/** @type {(shown: boolean) => void} */
+	#setShown = () => {};
 
 	/** @param {Soundboard} soundboard */
 	constructor(soundboard) {
@@ -28,12 +31,23 @@ export class DebugView extends Component {
 		this.#soundboard = soundboard;
 	}
 
+	isShown() {
+		return this.#shown;
+	}
+
+	show() {
+		this.#setShown(true);
+	}
+
+	hide() {
+		this.#setShown(false);
+	}
+
 	/** @override */
 	render() {
 		const soundboard = this.#soundboard;
 		/** @type {Map<number, { row: HTMLElement, status: HTMLElement, volume: HTMLElement }>} */
 		const rows = new Map();
-		let open = false;
 		/** @type {number | null} */
 		let timer = null;
 
@@ -42,7 +56,6 @@ export class DebugView extends Component {
 		const panel = h('div', {
 			'id': 'debug-panel',
 			'class': 'absolute top-full right-0 z-[60] mt-2 overflow-hidden rounded-lg border border-line bg-panel shadow-xl shadow-black/40',
-			'hidden': true,
 			'data-debug-panel': true,
 		}, list);
 
@@ -87,41 +100,39 @@ export class DebugView extends Component {
 			empty.hidden = rows.size > 0;
 		};
 
-		/** @param {boolean} value */
-		const setOpen = (value) => {
-			open = value;
-			panel.hidden = !open;
-			button.setAttribute('aria-expanded', String(open));
+		const button = h('button', {
+			'type': 'button',
+			'class': 'flex size-8 cursor-pointer items-center justify-center rounded-md bg-danger/15 text-danger hover:bg-danger/25',
+			'title': 'Hide debug view',
+			'aria-label': 'Hide debug view',
+			'aria-controls': 'debug-panel',
+			'data-debug-toggle': true,
+			'onClick': () => this.hide(),
+		}, icon('bug', 'size-5'));
+		const view = h('div', { 'class': 'relative', 'hidden': true, 'data-debug-view': true }, button, panel);
+
+		this.#setShown = (shown) => {
+			this.#shown = shown;
+			view.hidden = !shown;
 			if (timer !== null) {
 				window.clearInterval(timer);
 				timer = null;
 			}
-			if (open) {
+			if (shown) {
 				refresh();
 				timer = window.setInterval(refresh, REFRESH_MS);
 			}
 		};
 
-		const button = h('button', {
-			'type': 'button',
-			'class': 'flex size-8 cursor-pointer items-center justify-center rounded-md text-muted hover:bg-raised-hover hover:text-text aria-expanded:bg-music/20 aria-expanded:text-music',
-			'title': 'Debug view',
-			'aria-label': 'Debug view',
-			'aria-expanded': 'false',
-			'aria-controls': 'debug-panel',
-			'data-debug-toggle': true,
-			'onClick': () => setOpen(!open),
-		}, icon('bug', 'size-5'));
-
 		this.own(soundboard.on('voices.changed', () => {
-			if (open) {
+			if (this.#shown) {
 				refresh();
 			}
 		}));
-		// A dialog or a menu on top takes Esc first; this only closes the panel when nothing else is open.
+		// A dialog or a menu on top takes Esc first; this only hides the view when nothing else is open.
 		this.own(on(document, 'keydown', (event) => {
-			if (event.key === 'Escape' && open && !document.querySelector('[data-overlay-backdrop], [data-dialog-body]')) {
-				setOpen(false);
+			if (event.key === 'Escape' && this.#shown && !document.querySelector('[data-overlay-backdrop], [data-dialog-body]')) {
+				this.hide();
 			}
 		}));
 		this.own(() => {
@@ -129,7 +140,7 @@ export class DebugView extends Component {
 				window.clearInterval(timer);
 			}
 		});
-		return h('div', { class: 'relative' }, button, panel);
+		return view;
 	}
 }
 

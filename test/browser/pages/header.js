@@ -76,10 +76,18 @@ export class HeaderPage {
 		await expect(this.#page.locator('[data-waveform-indicator]')).toBeHidden();
 	}
 
-	/** Picks "Regenerate waveforms" in the ☰ menu. */
-	async regenerateWaveforms() {
+	/** Opens the Debug dialog from the ☰ menu (DESIGN.md §9.8). */
+	async openDebugDialog() {
 		await this.#page.getByRole('button', { name: 'Menu' }).click();
-		await this.#page.getByRole('menuitem', { name: 'Regenerate waveforms', exact: true }).click();
+		await this.#page.getByRole('menuitem', { name: 'Debug', exact: true }).click();
+		await expect(this.#page.locator('[data-debug-dialog]')).toBeVisible();
+	}
+
+	/** Presses "Regenerate waveforms" in the Debug dialog, then closes the dialog with Esc. */
+	async regenerateWaveforms() {
+		await this.openDebugDialog();
+		await this.#page.locator('[data-debug-tool=regenerateWaveforms]').click();
+		await this.#page.keyboard.press('Escape');
 	}
 
 	async stopWaveforms() {
@@ -112,14 +120,22 @@ export class HeaderPage {
 		await this.#page.locator('[data-problems-button]').click();
 	}
 
-	/** The bug button that opens or closes the debug view (DESIGN.md §9.8). */
-	async toggleDebug() {
-		await this.#page.getByRole('button', { name: 'Debug view' }).click();
+	/** Shows the debug view from the Debug dialog, then closes the dialog with Esc. */
+	async showDebug() {
+		await this.openDebugDialog();
+		await this.#page.locator('[data-debug-tool=toggleDebugView]').click();
+		await this.#page.keyboard.press('Escape');
 	}
 
-	/** @param {boolean} open whether the debug panel is on screen */
+	/** Presses the red bug button, which hides the debug view and itself (DESIGN.md §9.8). */
+	async hideDebug() {
+		await this.#page.getByRole('button', { name: 'Hide debug view' }).click();
+	}
+
+	/** @param {boolean} open whether the debug panel and its button are on screen */
 	async expectDebugOpen(open) {
 		await expect(this.#page.locator('[data-debug-panel]')).toBeVisible({ visible: open });
+		await expect(this.#page.locator('[data-debug-toggle]')).toBeVisible({ visible: open });
 	}
 
 	async expectDebugEmpty() {

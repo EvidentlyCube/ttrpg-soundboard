@@ -1,5 +1,6 @@
 import { MAX_NAME_LENGTH } from '../logic/soundboard.js';
 import { Component } from './component.js';
+import { card } from './customize-parts.js';
 import { h } from './dom.js';
 import { filledField } from './filled-field.js';
 
@@ -29,6 +30,7 @@ export class OptionsDialog extends Component {
 		});
 		input.addEventListener('input', () => this.#soundboard.setName(input.value));
 		const hint = h('p', { class: 'text-xs text-muted' }, `Shown in the header and the Selector. Left empty, the folder’s name “${folderName}” is used.`);
-		return h('div', { 'class': 'w-96 max-w-full space-y-1.5', 'data-options': true }, field, hint);
+		return h('div', { 'class': 'w-full min-w-96 pt-3', 'data-options': true },
+			card('Soundboard', 'neutral', h('div', { class: 'space-y-1.5' }, field, hint)));
 	}
 }

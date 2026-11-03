@@ -33,8 +33,8 @@ test('the splash sits between the header and the footer, where only Info and Cha
 	await test.step('The menu lists every item, with only Info and Change soundboard enabled', async () => {
 		await page.locator('[data-app-menu]').click();
 		const items = page.getByRole('menuitem');
-		await expect(items).toHaveText(['Regenerate waveforms', 'Become host', 'Connect a phone', 'Options', 'Info', 'Change soundboard']);
-		for (const name of ['Regenerate waveforms', 'Become host', 'Connect a phone', 'Options']) {
+		await expect(items).toHaveText(['Become host', 'Options', 'Info', 'Debug', 'Change soundboard']);
+		for (const name of ['Become host', 'Options', 'Debug']) {
 			await expect(page.getByRole('menuitem', { name })).toBeDisabled();
 		}
 	});

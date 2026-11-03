@@ -4,6 +4,7 @@ import { Component } from './component.js';
 import { ConnectPhoneDialog } from './connect-phone-dialog.js';
 import { InfoDialog } from './info-dialog.js';
 import { openContextMenu } from './context-menu.js';
+import { DebugDialog } from './debug-dialog.js';
 import { DebugView } from './debug-view.js';
 import { DownloadDialog } from './download-dialog.js';
 import { ExternalChangesButton } from './external-changes-button.js';
@@ -306,6 +307,7 @@ class Board extends Component {
 	#connectPhoneDialog = new Dialog();
 	#infoDialog = new Dialog();
 	#optionsDialog = new Dialog();
+	#debugDialog = new Dialog();
 	/** The item whose Customize dialog is open, so the dialog can close when the item is deleted or moved away. @type {{ kind: 'sound' | 'playlist', id: string } | null} */
 	#editing = null;
 	/** @type {Map<string, SoundTile>} */
@@ -346,9 +348,7 @@ class Board extends Component {
 			'data-role-label': true,
 		}, 'Host');
 		const menuButton = appMenuButton(overlay, () => appMenuItems({ hosting: soundboard.isHosting() }), (item) => {
-			if (item === 'regenerateWaves') {
-				soundboard.regenerateWaveforms();
-			} else if (item === 'becomeHost') {
+			if (item === 'becomeHost') {
 				this.becomeHost();
 			} else if (item === 'stopHosting') {
 				soundboard.stopHosting();
@@ -358,10 +358,13 @@ class Board extends Component {
 				this.#openOptions();
 			} else if (item === 'info') {
 				this.#openInfo();
+			} else if (item === 'debug') {
+				this.#openDebug(debugView);
 			} else if (item === 'changeSoundboard') {
 				closeSoundboard(soundboard);
 			}
 		});
+		const debugView = new DebugView(soundboard);
 		const header = h('header', {
 			'class': `group/header ${HEADER_CLASS} data-[role=host]:border-host data-[role=host]:bg-host/15`,
 			'data-role': soundboard.isHosting() ? 'host' : 'standalone',
@@ -376,7 +379,7 @@ class Board extends Component {
 		this.#adopt(new WaveformIndicator(soundboard).mount(controls));
 		this.#adopt(new TrashButton(soundboard, () => this.#openTrash()).mount(controls));
 		this.#adopt(new VolumeControls(soundboard).mount(controls));
-		this.#adopt(new DebugView(soundboard).mount(controls));
+		this.#adopt(debugView.mount(controls));
 
 		const main = h('main', { class: 'min-h-0 flex-1 space-y-8 overflow-y-auto px-5 py-5' });
 		const { playlists, sounds } = this.#library;
@@ -459,6 +462,7 @@ class Board extends Component {
 		this.own(() => this.#connectPhoneDialog.close());
 		this.own(() => this.#infoDialog.close());
 		this.own(() => this.#optionsDialog.close());
+		this.own(() => this.#debugDialog.close());
 		return root;
 	}
 
@@ -471,6 +475,14 @@ class Board extends Component {
 
 	#openInfo() {
 		openInfo(this.#infoDialog, this.#soundboard);
+	}
+
+	/** @param {DebugView} debugView */
+	#openDebug(debugView) {
+		const debug = new DebugDialog(this.#soundboard, debugView);
+		const body = h('div');
+		debug.mount(body);
+		this.#debugDialog.open({ title: 'Debug', body, onClose: () => debug.destroy() });
 	}
 
 	#openOptions() {

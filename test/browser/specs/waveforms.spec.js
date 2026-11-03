@@ -1,4 +1,4 @@
-import { test } from '../support/fixtures.js';
+import { expect, test } from '../support/fixtures.js';
 
 test('while waveforms are made the header counts them, and the indicator goes when all are done', async ({ soundboard, splash, header, audio, disk }) => {
 	await test.step('Hold waveform making, open the page and click through the splash', async () => {
@@ -46,7 +46,7 @@ test('the stop button halts the making and the play button carries on', async ({
 	});
 });
 
-test('the menu regenerates every waveform, sounds and tracks alike, even when none is missing', async ({ soundboard, header, audio }) => {
+test('the Debug dialog regenerates every waveform, sounds and tracks alike, even when none is missing', async ({ soundboard, header, audio }) => {
 	await test.step('Open the page and let all 16 waveforms be made', async () => {
 		await soundboard.startAndWaitUntilLoaded();
 		await audio.finishWaveforms();
@@ -64,6 +64,36 @@ test('the menu regenerates every waveform, sounds and tracks alike, even when no
 		await audio.finishWaveforms();
 		await header.expectNoWaveforms();
 		await audio.expectDecodedCount(32);
+	});
+});
+
+test('the Debug dialog says regenerating started, and its button waits until it is done', async ({ page, soundboard, header, audio }) => {
+	const regenerate = page.locator('[data-debug-tool=regenerateWaveforms]');
+
+	await test.step('Make all the waveforms and open the Debug dialog', async () => {
+		await soundboard.startAndWaitUntilLoaded();
+		await audio.finishWaveforms();
+		await header.openDebugDialog();
+		await expect(regenerate).toHaveText('Regenerate waveforms');
+	});
+
+	await test.step('Press Regenerate waveforms while holding the work', async () => {
+		await audio.holdWaveforms();
+		await regenerate.click();
+	});
+
+	await test.step('A note in the corner says so, the dialog stays and its button is busy', async () => {
+		await expect(page.locator('[data-toast]')).toHaveText('Regenerating every waveform.');
+		await expect(page.locator('[data-toast]')).toHaveAttribute('data-visible', 'true');
+		await expect(regenerate).toBeDisabled();
+		await expect(regenerate).toHaveText('Making waveforms…');
+	});
+
+	await test.step('Let the work run: the button comes back', async () => {
+		await audio.releaseWaveforms();
+		await audio.finishWaveforms();
+		await expect(regenerate).toBeEnabled();
+		await expect(regenerate).toHaveText('Regenerate waveforms');
 	});
 });
 

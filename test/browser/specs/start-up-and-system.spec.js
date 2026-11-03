@@ -1,4 +1,4 @@
-import { test } from '../support/fixtures.js';
+import { expect, test } from '../support/fixtures.js';
 
 test('when the library cannot be loaded the splash says so and a click tries again', async ({ page, soundboard, splash }) => {
 	await test.step('Make loading the library fail', async () => {
@@ -127,13 +127,13 @@ test.describe('the debug view', () => {
 		});
 	});
 
-	test('opens from its button and says so while no voice is playing', async ({ header }) => {
-		await test.step('It starts closed', async () => {
+	test('is shown from the Debug dialog, with its red button, and says so while no voice is playing', async ({ header }) => {
+		await test.step('It starts hidden, and so does its button', async () => {
 			await header.expectDebugOpen(false);
 		});
 
-		await test.step('Click its button', async () => {
-			await header.toggleDebug();
+		await test.step('Show it from the Debug dialog', async () => {
+			await header.showDebug();
 		});
 
 		await test.step('It opens and says no voice is playing', async () => {
@@ -143,9 +143,9 @@ test.describe('the debug view', () => {
 	});
 
 	test('lists the voices the engine was asked to play, with their status', async ({ sounds, header, audio }) => {
-		await test.step('Make the sound 1 s long and open the debug view', async () => {
+		await test.step('Make the sound 1 s long and show the debug view', async () => {
 			await audio.givenFile('Base Connected', { duration: 1 });
-			await header.toggleDebug();
+			await header.showDebug();
 		});
 
 		await test.step('Play the sound: the view lists its voice as playing', async () => {
@@ -159,24 +159,47 @@ test.describe('the debug view', () => {
 		});
 	});
 
-	test('closes with the button again, and with Esc when nothing else is open', async ({ page, header }) => {
-		await test.step('Open it and close it with the button', async () => {
-			await header.toggleDebug();
+	test('hides with its button, and with Esc when nothing else is open, the button going too', async ({ page, header }) => {
+		await test.step('Show it and hide it with the button', async () => {
+			await header.showDebug();
 			await header.expectDebugOpen(true);
-			await header.toggleDebug();
+			await header.hideDebug();
 			await header.expectDebugOpen(false);
 		});
 
-		await test.step('Open it and close it with Esc', async () => {
-			await header.toggleDebug();
+		await test.step('Show it and hide it with Esc', async () => {
+			await header.showDebug();
+			await header.expectDebugOpen(true);
 			await page.keyboard.press('Escape');
 			await header.expectDebugOpen(false);
 		});
 	});
 
+	test('the Debug dialog stays open and its button shows or hides the view', async ({ page, header }) => {
+		const toggle = page.locator('[data-debug-tool=toggleDebugView]');
+
+		await test.step('Open the Debug dialog and press Show debug view', async () => {
+			await header.openDebugDialog();
+			await expect(toggle).toHaveText('Show debug view');
+			await toggle.click();
+		});
+
+		await test.step('The view is shown, the dialog stays and offers to hide it', async () => {
+			await header.expectDebugOpen(true);
+			await expect(page.locator('[data-debug-dialog]')).toBeVisible();
+			await expect(toggle).toHaveText('Hide debug view');
+		});
+
+		await test.step('Press it again: the view is hidden', async () => {
+			await toggle.click();
+			await header.expectDebugOpen(false);
+			await expect(toggle).toHaveText('Show debug view');
+		});
+	});
+
 	test('Esc closes a dialog on top of it first and leaves the panel open', async ({ page, sounds, dialogs, header }) => {
-		await test.step('Open the debug view and a Customize dialog on top of it', async () => {
-			await header.toggleDebug();
+		await test.step('Show the debug view and open a Customize dialog on top of it', async () => {
+			await header.showDebug();
 			await sounds.useMenu('Base Connected', 'Customize');
 		});
 

@@ -31,9 +31,10 @@ test('a standalone page is not a host, and its menu offers to become one', async
 		await expect(roleLabel(page)).toBeHidden();
 	});
 
-	await test.step('Its menu offers Become host', async () => {
+	await test.step('Its menu offers Become host, and no Connect a phone', async () => {
 		await page.locator('[data-app-menu]').click();
 		await expect(page.getByRole('menuitem', { name: 'Become host' })).toBeVisible();
+		await expect(page.getByRole('menuitem', { name: 'Connect a phone' })).toHaveCount(0);
 	});
 });
 

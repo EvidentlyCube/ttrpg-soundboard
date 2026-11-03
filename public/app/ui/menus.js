@@ -11,19 +11,20 @@
 /**
  * The header's app menu (DESIGN.md §9.1).
  * @param {{ hosting: boolean, started?: boolean }} state `hosting`: whether remotes control this page, which decides
- * 	whether it offers to become the host or to stop being it; `started`: false while the splash asks how to start, when
+ * 	whether it offers to become the host or to stop being it, and whether a phone can connect; `started`: false while the splash asks how to start, when
  * 	only Info and Change soundboard can do anything
  * @returns {MenuItem[]}
  */
 export function appMenuItems({ hosting, started = true }) {
 	return [
-		{ id: 'regenerateWaves', label: 'Regenerate waveforms', enabled: started, group: 0 },
 		hosting
 			? { id: 'stopHosting', label: 'Stop hosting', enabled: started, group: 1 }
 			: { id: 'becomeHost', label: 'Become host', enabled: started, group: 1 },
-		{ id: 'connectPhone', label: 'Connect a phone', enabled: started, group: 1 },
+		// A phone can only connect to a host, so the item is not there at all otherwise.
+		...hosting ? [{ id: 'connectPhone', label: 'Connect a phone', enabled: started, group: 1 }] : [],
 		{ id: 'options', label: 'Options', enabled: started, group: 2 },
 		{ id: 'info', label: 'Info', enabled: true, group: 2 },
+		{ id: 'debug', label: 'Debug', enabled: started, group: 2 },
 		{ id: 'changeSoundboard', label: 'Change soundboard', enabled: true, group: 3 },
 	];
 }
