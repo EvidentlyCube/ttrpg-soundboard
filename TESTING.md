@@ -204,7 +204,7 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] Replacing an audio file (or touching its content) makes its waveform be made again; deleting a `.wf` file does too, after a reload.
 - [ ] While a track plays its waveform stays still above the seek bar. A file the browser can't decode counts as failed in the indicator and the rest carry on.
 - [ ] Safari: decoding works, and the tab's memory stays flat while hundreds of waveforms are made.
-- [ ] The ☰ button left of the title opens a menu with "Regenerate waveforms". Choosing it counts every sound and track in the indicator ("Waveforms 0 / N"), rewrites every `.wf` file, and redraws open waveforms as they are made; ■ stops it.
+- [ ] ☰ → Debug → Regenerate waveforms shows "Regenerating every waveform." in the bottom-right corner for 3 seconds, counts every sound and track in the indicator ("Waveforms 0 / N"), rewrites every `.wf` file, and redraws open waveforms as they are made; ■ stops it. Meanwhile the button reads "Making waveforms…" and can't be pressed, and it comes back when the run ends.
 - [ ] Reloading the page right after the splash never flashes the waveform indicator when nothing is missing.
 
 **External changes**
@@ -376,7 +376,7 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] Compare the tab's memory in Activity Monitor at the start and after an hour of play; it should not keep growing.
 
 **Debug view**
-- [ ] A bug button sits at the right end of the header, after the volume controls. Pressing it opens a panel right below it, above the board, the footer, dialogs and menus. Pressing it again closes it. After a reload it starts closed.
+- [ ] ☰ → Debug opens a dialog with two cards, Waveforms (a blue button) and Debug view (a red one), each with its description above the button. Show debug view puts a red bug button at the right end of the header, after the volume controls, with the panel right below it, above the board, the footer, dialogs and menus. The dialog stays open and its button now reads Hide debug view. Pressing the red header button hides both the panel and the button. After a reload both are hidden.
 - [ ] Press a sound several times: each press is a row, oldest at the top and newest at the bottom, with an amber `SFX` badge, the sound's title, a status and its volume in dB. Existing rows never move.
 - [ ] The status goes `loading`, then `playing`; a sound with a fade-in shows `fading in` while its volume climbs from `−∞ dB` to its gain, and one with a fade-out shows `fading out` while it drops.
 - [ ] A sound's volume equals its Customize volume (`0.0 dB` at the default, `−6.0 dB` after setting that), and ignores the Master and Sound Effects sliders.
@@ -403,7 +403,7 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] Deny shows "Denied" on the phone, with "Try again". Not answering for 2 minutes shows "The request expired".
 - [ ] Reloading the phone's connect page more than 5 times within a minute shows "Blocked", and the phone then gets an error page for every address until the server restarts. Other devices are not affected.
 - [ ] After a server restart the phone is asked to pair again.
-- [ ] ☰ → Connect a phone shows a QR code and the address. Scanning it with the phone's camera opens the connect page, and approving there loads the splash (no loop of reloads). Without `--lan` the dialog says to start with `--lan`.
+- [ ] ☰ → Connect a phone is only in the menu while the page is the host. It shows a QR code and the address. Scanning it with the phone's camera opens the connect page, and approving there loads the splash (no loop of reloads). Without `--lan` the dialog says to start with `--lan`.
 - [ ] `/api/library` and a `/media/…` URL from the phone answer `403`, also after it was allowed. Without `--lan` the phone cannot reach the app at all.
 - [ ] On the laptop choose Host (the header turns green and says Host). On the phone choose Remote: the dot is green and the buttons show. A playlist button on the phone starts the playlist on the laptop and the phone shows its row; Stop, Next, Panic Stop and a sound button work, and pressing a playing sound stops it.
 - [ ] The phone makes no sound. A second phone as a remote follows the same state.

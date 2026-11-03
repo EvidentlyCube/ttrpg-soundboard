@@ -1167,7 +1167,7 @@ Browsers only allow audio to start inside a user gesture, so the app starts behi
 
 ### 9.1 Layout
 
-- The page is a full-height column: header (green-tinted with a green border while the page is the host) (the ☰ app menu button and the title, §9.3: the soundboard's `displayName()` (`data-app-title`), cut short with "…" when too long, which the tab title repeats as "<name> · Soundboard"; then the role label "Host" while the page is the host (§9.15), then the Problems button while there are any (§9.14), the external changes button while there are any, the waveform progress while there is any, the Trash button while the trash holds anything, volume controls and the debug button, §9.8), a scrolling main area, then the footer.
+- The page is a full-height column: header (green-tinted with a green border while the page is the host) (the ☰ app menu button and the title, §9.3: the soundboard's `displayName()` (`data-app-title`), cut short with "…" when too long, which the tab title repeats as "<name> · Soundboard"; then the role label "Host" while the page is the host (§9.15), then the Problems button while there are any (§9.14), the external changes button while there are any, the waveform progress while there is any, the Trash button while the trash holds anything, volume controls and the debug button while the debug view is shown, §9.8), a scrolling main area, then the footer.
 - The main area has a "Playlists" section above a "Sound Effects" section. Both are always shown, even empty, because their titles carry the add buttons: **+ Add playlist** in blue and **+ Add sound** in amber (`tileGrid`, §9.9). With no playlists and no sounds, a line above them says none were found in this folder, until a download adds one.
 - Tiles for sounds and playlists added by a download or a move (`sound.added`, `playlist.added`) appear at once in their sorted place. Tiles of sounds and playlists deleted or moved away (`sound.removed`, `playlist.removed`), in this tab or another, disappear at once, and a Customize dialog open for that item closes.
 - Tiles are `<button>`s in a grid of columns at least 10rem (160 px) wide, with titles clamped to 3 lines. The full title shows as a tooltip.
@@ -1208,7 +1208,7 @@ One shared `Overlay` shows the context menus and the track list popover; opening
 - A full-screen backdrop (`black/35`) sits above the page. Presses on it are swallowed. A `click` or right-click on the backdrop **closes the popup**, so nothing on the page reacts. **Esc** also closes it. Closing on `click` rather than `pointerdown` keeps the whole press on the backdrop, so the element underneath never receives a stray click.
 - A popup opens at the cursor (the track list at its chevron button). Where it would overflow the window, it flips to the other side of that point, and as a last resort it is clamped inside an 8 px margin. It is placed again whenever its size changes, because Tailwind may only style a newly used class after the popup has been measured.
 - Right-clicking a tile suppresses the browser's own context menu. Choosing a menu item closes the menu first, then runs the action. Disabled items are greyed out.
-- The ☰ app menu has **Become host** while the page is standalone and **Stop hosting** while it hosts. Become host calls `becomeHost`; on `'taken'` the replace dialog opens (§9.15).
+- The ☰ app menu has **Become host** while the page is standalone and **Stop hosting** while it hosts. Become host calls `becomeHost`; on `'taken'` the replace dialog opens (§9.15). **Connect a phone** is there only while the page hosts, since a phone can only connect to a host; the menu is built each time it opens, so it follows the role.
 - The ☰ app menu ends with **Change soundboard**, in a group of its own. It calls `closeSoundboard` (§6.1), and on `app.closed` the page loads `/` (from the splash too, §9.0), which is now the Selector (§9.18); leaving the page stops its audio. Every other page of the soundboard follows through `startup.closed`. A failure is only logged to the console.
 
 **Sound menu**
@@ -1240,11 +1240,12 @@ Tracks are added from the Tracks tab of the playlist dialog (§9.9), so the menu
 
 | Item | Behavior |
 |---|---|
-| Regenerate waveforms | `regenerateWaveforms` (§6.6) |
 | Become host / Stop hosting | `becomeHost` / `stopHosting` (§6.10) |
-| Connect a phone | opens the QR code dialog (§9.16) |
+| Connect a phone | opens the QR code dialog (§9.16); only while the page hosts |
 | Options | opens the Options dialog (§9.20) |
 | Info | opens the Info dialog (§9.17) |
+| Debug | opens the Debug dialog (§9.8) |
+| Change soundboard | `closeSoundboard` (§6.1) |
 
 "Active" means `loading`, `playing` or `paused`. The plain items follow the playlist's fades and crossfade; with those off, each behaves like its "(Instant)" twin, except for cutting voices already fading out. Separators divide the groups.
 
@@ -1374,13 +1375,20 @@ In the footer: Play / Stop (`playSound`, or stopping all instances; it follows `
 
 ### 9.8 Debug view
 
-`ui/debug-view.js`. A small bug-icon button (title "Debug view", `aria-expanded`, `aria-controls`) sits at the right end of the header, after the volume controls, and is lit in the music accent while the panel is open. The panel starts closed after every reload.
+`ui/debug-view.js` (`data-debug-view`). The view is a panel and the small bug-icon button it hangs from (title "Hide debug view", `aria-controls`), at the right end of the header, after the volume controls. Both are hidden until the Debug dialog shows them, and the view is hidden again after every reload. The button is red (`text-danger` on `bg-danger/15`), so it is clear the debug view is on.
 
 - **Position.** The panel hangs below the button, right-aligned, absolutely positioned with `z-[60]`: above dialogs, popups and the splash. It is non-modal: no backdrop, no focus taken, and the board keeps working under it.
-- **Closing.** The button toggles it. Esc closes it only when no popup or dialog is open (`[data-overlay-backdrop]`, `[data-dialog-body]`), which take Esc first.
+- **Hiding.** The button only hides the view, and itself with it. Esc does the same, but only when no popup or dialog is open (`[data-overlay-backdrop]`, `[data-dialog-body]`), which take Esc first.
 - **Rows.** One per voice from `getVoices()` (§6.5), oldest first, so the list is static: a badge in the bus color (amber `SFX`, blue `Music`), the label, the status and the volume in dB (`formatDb`, as in the gain widget). A finished voice (`data-finished="true"`) is muted until the monitor removes it. An error status shows its message as a tooltip and is red. With no voices the panel says "No voices." The list scrolls inside 60 % of the window height.
 - **Refreshing.** Rows are created once and updated in place, rewriting text only when it changed. The panel refreshes on `voices.changed` and every 250 ms while open, because volumes move without any event. Nothing runs while it is closed; the monitor keeps recording regardless (§6.5).
 - No position or duration columns.
+
+**Debug dialog** (☰ → Debug, `ui/debug-dialog.js`, `data-debug-dialog`), titled "Debug", holds the tools for troubleshooting, each in its own card (§9.7) with its description above its button. Pressing a button never closes the dialog.
+
+- **Waveforms.** A blue **Regenerate waveforms** button (`data-debug-tool="regenerateWaveforms"`) calls `regenerateWaveforms` (§6.6) and shows "Regenerating every waveform." in the corner toast for 3 seconds. While `getWaveformStatus().running`, whatever started the run, the button is disabled and reads "Making waveforms…". It follows `waveforms.progress` and comes back when the run ends.
+- **Debug view.** A red button (`data-debug-tool="toggleDebugView"`) reads **Show debug view** or **Hide debug view** and does that.
+
+**Corner toast** (`ui/toast.js`, `showToast(message, { tone, ms })`). One short note at a time in the bottom-right corner (`data-toast`, `role="status"`, `z-[70]`), which fades in, stays `ms` (1 second by default) and fades out (`data-visible`, an opacity transition). A new note replaces the one showing. `tone` is `info` (the default) or `danger`, set as `data-tone`. The board and the Selector (§9.18) share it.
 
 ### 9.9 Add dialog
 
@@ -1514,7 +1522,7 @@ Under yt-dlp's version, a small line (`data-update-state`) says what `yt-dlp -U`
   - a row with a summary (`data-folder-summary`: "Soundboard folder", "No soundboard here yet: 3 folders, 12 audio files", or the reason it can't be opened, in yellow) and the action button (`data-folder-open`): **Open** for a soundboard, **Create soundboard here** otherwise, disabled when refused, with the reason as a tooltip;
   - the subfolders (`data-folder-list`, at most half the window high, scrolling), each row highlighted whole under the pointer. A folder is 📁 and its name opens it in the browser; a refused one is muted with its reason as the `title`. One with a soundboard inside it (`holdsSoundboard`, §5.7) ends in a 🎵 (`data-holds-soundboard`) whose tooltip is "A soundboard is somewhere inside this folder". A soundboard is 🗂️ with its folder's name, then its own name in smaller grey text in parentheses when it has one that differs (`data-folder-title`), a "Soundboard" badge and its own blue **Open** button; its name isn't a link, since its folders are its playlists. A soundboard's path can still be typed into the address bar.
   - after the folders, the audio files (`data-audio-file`), 🎵 and the file name in muted text, only to show what the folder holds: they can't be clicked and aren't highlighted. With neither, the list says "No folders or audio files inside."
-- **A folder that can't be shown**, typed in or reached with Up, shows its reason in a small red notice in the bottom-right corner (`data-toast`, `role="status"`). It fades in, stays a second, and fades out (`data-visible`, an opacity transition); the path field goes back to the folder shown, even when the same path is refused twice.
+- **A folder that can't be shown**, typed in or reached with Up, shows its reason in the corner toast (§9.8) in red (`danger`) for a second; the path field goes back to the folder shown, even when the same path is refused twice.
 - **Header** (`ui/startup-parts.js`), styled like the Soundboard page's and staying at the top while the page scrolls: "Soundboard Selection" with the app's version from `tools.app` beside it in smaller grey text, "v0.1.0" (`data-app-version`); on the right yt-dlp and ffmpeg (`data-tool`), each "checking…", its version, or "not installed, so downloads are off" in yellow. yt-dlp's adds ✓ when up to date (tooltip "Up to date"), or "updated", "update failed" or "could not check for updates", with the error as its tooltip.
 - Parts are drawn again only when what they show changed, so polling never resets a hover or a typed path.
 - **Extension point**: startup settings, such as LAN access, would go into a section of their own here.
@@ -1537,7 +1545,7 @@ Under yt-dlp's version, a small line (`data-update-state`) says what `yt-dlp -U`
 
 ### 9.20 Options dialog
 
-`ui/options-dialog.js`, opened from the ☰ menu (§9.3), titled "Options" (`data-options`), with its field focused. It has one filled field (§9.7), **Name** (`data-options-name`, at most 100 characters), holding the soundboard's own name, empty without one, and a line under it: "Shown in the header and the Selector. Left empty, the folder's name "…" is used." Every keystroke calls `setName` (§6.1), so the header and the tab title follow as it is typed, and the name is saved 500 ms after the last one. Other open pages show it after a reload. The remote page shows no name.
+`ui/options-dialog.js`, opened from the ☰ menu (§9.3), titled "Options" (`data-options`), with its field focused. A card (§9.7) titled "Soundboard", the dialog's full width, holds one filled field, **Name** (`data-options-name`, at most 100 characters), holding the soundboard's own name, empty without one, and a line under it: "Shown in the header and the Selector. Left empty, the folder's name "…" is used." Every keystroke calls `setName` (§6.1), so the header and the tab title follow as it is typed, and the name is saved 500 ms after the last one. Other open pages show it after a reload. The remote page shows no name.
 
 ---
 
@@ -1584,7 +1592,7 @@ public/
 		            splash.js  overlay.js  context-menu.js  track-list.js  tile-grid.js
 		            playlist-tile.js  sound-tile.js  player-dock.js  player-bar.js  level-bar.js  panic-button.js  volume-controls.js
 		            dialog.js  customize-parts.js  filled-field.js  sound-editor.js  playlist-editor.js  track-accordion.js
-		            gain-control.js  gain-scale.js  debug-view.js  waveform-indicator.js  waveform-draw.js  waveform-canvas.js
+		            gain-control.js  gain-scale.js  debug-view.js  debug-dialog.js  toast.js  waveform-indicator.js  waveform-draw.js  waveform-canvas.js
 		            seconds-control.js  seconds-scale.js  range-control.js  range-scale.js  add-dialog.js  download-dialog.js
 		            hold-button.js  replace-host-dialog.js  remote-view.js  move-dialog.js  trash-button.js  trash-dialog.js  metadata-dialog.js  source-fields.js  problems-button.js  problems-dialog.js
 		            access-requests-banner.js  connect-phone-dialog.js  info-dialog.js  options-dialog.js  startup-parts.js

@@ -29,29 +29,7 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## Proposals
 
-### Debug dialog
-
-**Goal.** Tools for troubleshooting move out of the way. The app menu gets a **Debug** item that opens a small dialog with **Regenerate waveforms** and **Show debug view**. The header's bug button is no longer always there: it appears, in red, only while the debug view is shown, and clicking it closes the view and hides the button again.
-
-**Design changes.**
-- §9.1 Layout: the header lists the debug button as "while the debug view is shown" instead of always.
-- §9.3 Overlay and context menus: the app menu loses **Regenerate waveforms** and gains **Debug**, which opens the Debug dialog. The menu table changes to match, and so does the splash's disabled list (`appMenuItems({ started: false })`, §9.0).
-- §9.8 Debug view: the button is hidden until the view is shown from the Debug dialog, is red (`danger`) instead of lit in the music accent, and a click closes the panel *and* hides the button, so it no longer toggles. A new paragraph describes the Debug dialog: title "Debug", the two buttons, each closing the dialog.
-- §6.6 waveforms: no change; the dialog calls the same `regenerateWaveforms()`.
-
-**Open questions.**
-1. *Is Regenerate waveforms removed from the top level of the menu?* Recommended: **yes**. It's only in the Debug dialog now.
-2. *Where does Debug go in the menu?* Recommended: in the group with **Options** and **Info**, after Info. Like them, it's disabled on the splash before the board starts.
-3. *What do the dialog's buttons do to the dialog?* Recommended: **both close it**. The debug panel sits above dialogs (`z-[60]`), so leaving the dialog open would put the panel on top of it. The waveform progress already shows in the header.
-4. *What does the dialog show while the debug view is already shown?* Recommended: the button reads **Hide debug view** and hides it, so the dialog is a toggle as well as the header button.
-5. *Does Esc still close the panel?* Recommended: **yes, and it hides the button too**. Closing the view always means the same thing, whichever way it's done.
-6. *Is the choice remembered across a reload?* Recommended: **no**. The view starts hidden after every reload, as the panel does today.
-7. *What does "red" look like?* Recommended: a red icon on a faint red background (`text-danger bg-danger/15`, `hover:bg-danger/25`), like the outlined Problems button. That makes it clearly "debug mode is on" without looking like an error.
-
-**Plan.** Lean flow: code first, the owner checks the UI, then tests and docs in one sweep.
-1. `appMenuItems`: replace `regenerateWaves` with `debug`. Add a `ui/debug-dialog.js` with the two buttons. `DebugView` gets `show()` / `hide()` and an `isShown()` the dialog reads, the button is hidden while the view is hidden, and its click and Esc hide both. The owner checks it in the browser.
-2. Tests: the `appMenuItems` unit test. Browser specs for the menu, the dialog, showing and hiding the view from the button, from Esc and from the dialog, and regenerating from the dialog. The existing debug view and waveform specs move to the new route. Then `npm run check` and a commit.
-3. `DESIGN.md` §9.0, §9.1, §9.3 and §9.8 in their own commit. Remove this proposal.
+None at the moment.
 
 ---
 
