@@ -29,7 +29,48 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## Proposals
 
-None at the moment.
+### Release packages
+
+**Goal.** A player downloads one zip for their system, unpacks it and double-clicks a launcher. A terminal window opens, the browser opens the Selector, and the app runs. Node.js doesn't need to be installed, because each zip carries the official Node binary for its platform. Single executable applications (SEA) were considered and set aside: the owner prefers a plain folder with a real `node` binary, the app files and a launcher. A developer builds every zip with one command, `npm run pack`, which uses only Node built-ins, so no new dev dependency is needed.
+
+Each zip unpacks to one folder:
+
+```
+soundboard-0.2.0-macos-arm64/
+	Start Soundboard.command      launcher (Start Soundboard.cmd on Windows, start-soundboard.sh on Linux)
+	README.txt                    short version: how to start, stop, update, the system warning on first start
+	app/                          index.js  package.json  LICENSE  src/  public/
+	runtime/                      node (node.exe on Windows)  LICENSE (Node's own)
+```
+
+The launcher changes to its own folder, runs `runtime/node app/index.js` with any arguments passed through, and leaves the terminal window open on a non-zero exit (`Press Enter to close.`), so a failure stays readable. `app/package.json` stays next to `src/`, because the Info dialog reads the app's version from it (§9.17). The app code itself does not change: it already starts without a folder, in the Selector (§3), and finds `public/` relative to its own files.
+
+**Design changes.**
+- §1: the last bullet ("a launcher may open") names the launchers and what they do.
+- §1.1: a new **Distribution** row (release zips per platform with the official Node binary, or run from source with your own Node 24.14+). The **External programs** row is unchanged: `yt-dlp` and `ffmpeg` are still not bundled.
+- §10: `scripts/pack.js` and `scripts/pack/`, `packaging/` (launcher and README templates), `dist/` (output, git-ignored), `test/scripts/`.
+- §10.2: `npm run pack`, and `npm test` also covering `test/scripts/`.
+- New **§13 Release packages**: the platforms, the zip layout, the launchers, how the Node binary is fetched and checked, and how the version and file names are chosen.
+- `README.md` is rewritten around the zips. It is already out of date (port `3000`, questions in the terminal). Running from source stays as a shorter section.
+
+**Open questions.**
+
+- **A. Platforms.** Recommended: `windows-x64`, `macos-arm64` (the MacBook Neo, §12), `macos-x64` and `linux-x64`. ARM Windows and ARM Linux are left out until someone asks for them; they are one line each in a platform table.
+- **B. Which Node.** Recommended: an exact version pinned in one constant in `scripts/pack/platforms.js`, the newest 24.x at the time of the first release, and changed by hand. `engines` stays `>=24.14.0` for running from source. Every download is checked against the release's `SHASUMS256.txt` from nodejs.org and cached in `dist/cache/`, so repeated packs work offline.
+- **C. Where releases are built.** The repository has no remote yet. Recommended: `npm run pack` locally is the whole feature, and the owner uploads the zips by hand. A GitHub Actions workflow (on a `v*` tag: run check, pack, try each zip on Linux, macOS and Windows runners, then create a **draft** release with the zips attached) is step 6, done only once the repository is on GitHub.
+- **D. What goes into `app/`.** Recommended: exactly `index.js`, `package.json`, `LICENSE`, `src/` and `public/`, limited to files git tracks, so stray local files are never shipped. The pack refuses to run when those paths have uncommitted changes, so a zip always matches a commit; `--allow-dirty` overrides that for trying things out. `README.md`, tests, docs, fixtures and tooling stay out.
+- **E. Version and names.** Recommended: the version comes from `package.json` (now `0.1.0`), and zips are named `soundboard-<version>-<platform>.zip`. A release is cut by bumping the version in its own commit (`Release 0.2.0`) and tagging it `v0.2.0`. Zip entries get the commit's date as their timestamp, so packing the same commit twice gives byte-identical zips.
+- **F. Launchers.** Recommended: `Start Soundboard.cmd` (Windows) and `Start Soundboard.command` (macOS) are double-clickable. On Linux, double-clicking a `.sh` opens it in a text editor in most file managers, and a `.desktop` file needs absolute paths, so `start-soundboard.sh` is run from a terminal and `README.txt` says so. On Windows, Ctrl+C makes `cmd` ask "Terminate batch job (Y/N)?" after the app has already stopped. That is accepted: typing `exit` stops it cleanly, and closing the window works too.
+- **G. Unsigned files.** The Node binaries are signed (and notarized on macOS) by the Node project, but the launchers are not. On macOS, Gatekeeper blocks the first double-click on a downloaded `.command`, and the user allows it once in System Settings → Privacy & Security → **Open Anyway**. On Windows, SmartScreen may warn about the `.cmd` (**More info → Run anyway**). Recommended: no signing (an Apple Developer ID costs a yearly fee, and Windows signing needs a certificate). `README.txt` and `README.md` walk through both warnings with the exact button names.
+- **H. Zip and tar handling.** Recommended: two small modules on Node built-ins (`zlib` for deflate, gunzip and `crc32`; `crypto` for the checksums), not the system's `zip`/`tar` and not an npm package. The zip writer stores Unix permissions, so `node`, the `.command` and the `.sh` stay executable after unpacking on macOS and Linux. The tar reader only needs to pull `bin/node` and `LICENSE` out of Node's `.tar.gz`. Windows takes `node.exe` as a direct download, which `SHASUMS256.txt` also lists, and Node's `LICENSE` from the Linux tarball, which is the same file.
+
+**Plan.**
+1. Zip writer and tar reader (`scripts/pack/zip.js`, `scripts/pack/tar.js`).
+2. Node runtime fetching (`scripts/pack/node-runtime.js`): download, checksum check, cache, pulling the binary and `LICENSE` out.
+3. Launchers and `README.txt` (`packaging/`), and the pack script (`scripts/pack.js`, `npm run pack [-- --platform <name>…] [--allow-dirty]`): file list from git, dirty check, zip layout, output to `dist/`, `dist/` added to `.gitignore`. The owner tries the zips on their machines.
+4. `README.md` rewritten around the zips.
+5. Tests sweep: zip round trip (entries, contents, permissions, timestamps), tar extraction, checksum mismatch rejected, file selection and the dirty check, and an end-to-end test that packs `linux-x64` from a fake cached runtime and starts the unpacked app with `--help`. `npm test` also runs `test/scripts/**`, and the backend type-check project covers it. Manual checks in `TESTING.md`: each launcher on its system, the Gatekeeper and SmartScreen steps, stopping, and the window staying open after a failure. Then `DESIGN.md`.
+6. Only once the repository is on GitHub (question C): the release workflow.
 
 ---
 
