@@ -1,4 +1,5 @@
 import { h } from './dom.js';
+import { t } from './text.js';
 
 /** @typedef {import('../logic/startup-flow.js').StartupState['tools']} ToolsInfo */
 
@@ -8,7 +9,7 @@ import { h } from './dom.js';
  */
 export function pageHeader(subtitle) {
 	const line = h('p', { 'class': 'text-muted', 'data-page-subtitle': true }, subtitle);
-	return h('header', { class: 'space-y-1' }, h('h1', { class: 'text-2xl font-semibold tracking-tight' }, 'Soundboard'), line);
+	return h('header', { class: 'space-y-1' }, h('h1', { class: 'text-2xl font-semibold tracking-tight' }, t('app.name')), line);
 }
 
 /** @returns {{ element: HTMLElement, show: (visible: boolean) => void }} said while the server doesn't answer */
@@ -17,7 +18,7 @@ export function connectionNotice() {
 		'class': 'rounded-md border border-notice/50 bg-notice/10 px-3 py-2 text-sm text-notice',
 		'data-connection-lost': true,
 		'hidden': true,
-	}, 'The app doesn’t answer. If it was stopped, start it again; this page carries on by itself.');
+	}, t('startup.noAnswer'));
 	return { element, show: (visible) => void (element.hidden = !visible) };
 }
 
@@ -64,11 +65,9 @@ export function toolsHeader(title) {
 			drawn = key;
 			app.textContent = `v${tools.app}`;
 			const update = tools.ytDlp.update;
-			const updateText = update === null
-				? ''
-				: { current: ' ✓', updated: ' · updated', outdated: ' · update failed', failed: ' · could not check for updates' }[update.state];
+			const updateText = update === null ? '' : update.state === 'current' ? ' ✓' : ` · ${t(`startup.tools.${update.state}`)}`;
 			ytDlp.replaceChildren(...toolText('yt-dlp', tools.ytDlp.version, tools.checking, updateText));
-			ytDlp.title = update?.error ?? (update?.state === 'current' ? 'Up to date' : '');
+			ytDlp.title = update?.error ?? (update?.state === 'current' ? t('info.upToDate') : '');
 			ffmpeg.replaceChildren(...toolText('ffmpeg', tools.ffmpeg, tools.checking, ''));
 		},
 	};
@@ -83,7 +82,7 @@ export function toolsHeader(title) {
  */
 function toolText(name, version, checking, suffix) {
 	if (version === null) {
-		return [`${name}: `, checking ? 'checking…' : h('span', { class: 'text-notice' }, 'not installed, so downloads are off')];
+		return [`${name}: `, checking ? t('startup.tools.checking') : h('span', { class: 'text-notice' }, t('startup.tools.missing'))];
 	}
-	return [`${name} ${version}${suffix}${checking && name === 'yt-dlp' ? ' · checking for updates…' : ''}`];
+	return [`${name} ${version}${suffix}${checking && name === 'yt-dlp' ? ` · ${t('startup.tools.checkingUpdates')}` : ''}`];
 }

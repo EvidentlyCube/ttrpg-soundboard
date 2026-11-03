@@ -2,6 +2,7 @@ import { browserClock } from './browser-clock.js';
 import { loadLanguage } from './language.js';
 import { AccessRequester } from './logic/access-requester.js';
 import { h, on } from './ui/dom.js';
+import { t } from './ui/text.js';
 
 /** @typedef {import('./logic/access-requester.js').ConnectApi} ConnectApi */
 /** @typedef {import('./logic/access-requester.js').RequesterState} RequesterState */
@@ -47,29 +48,21 @@ if (!root) {
 	throw new Error('connect.html is missing the #connect element');
 }
 
-const MESSAGES = {
-	starting: ['Connecting…', ''],
-	pending: ['Waiting for approval…', 'Allow this device on the server, next to the soundboard. The code there is the same as below.'],
-	allowed: ['Allowed', 'Opening the remote…'],
-	denied: ['Denied', 'The server did not allow this device.'],
-	expired: ['The request expired', 'Nobody answered in time.'],
-	banned: ['Blocked', 'This device asked too many times. It stays blocked until the server restarts.'],
-};
-
 /** @param {RequesterState} state */
 function render(state) {
-	const [title, detail] = MESSAGES[state.phase];
+	const title = t(`connect.${state.phase}.title`);
+	const detail = t(`connect.${state.phase}.detail`);
 	const retry = state.phase === 'denied' || state.phase === 'expired'
 		? h('button', {
 				type: 'button',
 				class: 'cursor-pointer rounded-md bg-raised px-4 py-2 text-sm font-semibold hover:bg-raised-hover',
-			}, 'Try again')
+			}, t('initializer.retry'))
 		: null;
 	if (retry) {
 		on(retry, 'click', () => requester.start());
 	}
 	root?.replaceChildren(
-		h('h1', { class: 'text-xl font-semibold' }, 'Soundboard'),
+		h('h1', { class: 'text-xl font-semibold' }, t('app.name')),
 		state.code === null
 			? ''
 			: h('p', {

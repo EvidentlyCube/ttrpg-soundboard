@@ -2,6 +2,7 @@ import { Component } from './component.js';
 import { h, on } from './dom.js';
 import { icon } from './icons.js';
 import { PanicButton } from './panic-button.js';
+import { t } from './text.js';
 
 /** @typedef {import('../logic/remote-controller.js').RemoteController} RemoteController */
 /** @typedef {import('../logic/remote-state.js').RemoteState} RemoteState */
@@ -75,7 +76,7 @@ export class RemoteView extends Component {
 		const roleLabel = h('span', {
 			'class': 'rounded bg-remote px-2 py-0.5 text-xs font-bold tracking-widest text-surface uppercase',
 			'data-role-label': true,
-		}, 'Remote');
+		}, t('remote.label'));
 		const hostStatus = h('span', { 'class': 'size-3 rounded-full bg-danger data-[connected=true]:bg-host', 'data-host-status': true, 'role': 'img' });
 		const panic = h('div', { class: 'h-10 w-20' });
 		this.own(() => panicButton.destroy());
@@ -124,33 +125,33 @@ export class RemoteView extends Component {
 				main.scrollTop = main.scrollHeight;
 			},
 		}, symbol);
-		const zoomIn = sizeButton('Larger buttons', '+', 'in', () => {
+		const zoomIn = sizeButton(t('remote.largerButtons'), '+', 'in', () => {
 			columns = Math.max(MIN_COLUMNS, columns - 1);
 		});
-		const zoomOut = sizeButton('Smaller buttons', '−', 'out', () => {
+		const zoomOut = sizeButton(t('remote.smallerButtons'), '−', 'out', () => {
 			columns = Math.min(MAX_COLUMNS, columns + 1);
 		});
-		const fontLarger = sizeButton('Larger text', 'A+', 'font-larger', () => {
+		const fontLarger = sizeButton(t('remote.largerText'), 'A+', 'font-larger', () => {
 			font = Math.min(MAX_FONT, font + 1);
 		});
-		const fontSmaller = sizeButton('Smaller text', 'A−', 'font-smaller', () => {
+		const fontSmaller = sizeButton(t('remote.smallerText'), 'A−', 'font-smaller', () => {
 			font = Math.max(MIN_FONT, font - 1);
 		});
 		applyZoom();
 		const sizes = h('div', { class: 'mt-auto flex justify-center gap-3 pt-2' }, zoomOut, zoomIn, fontSmaller, fontLarger);
 		const section = (/** @type {string} */ title, /** @type {HTMLElement} */ grid) => h('section', { class: 'space-y-1.5' },
 			h('h2', { class: 'text-xs font-semibold tracking-widest text-muted uppercase' }, title), grid);
-		const main = h('main', { class: 'flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-2' }, notice, section('Playlists', playlistGrid), section('Sound Effects', soundGrid), sizes);
+		const main = h('main', { class: 'flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-2' }, notice, section(t('board.playlists'), playlistGrid), section(t('board.sounds'), soundGrid), sizes);
 		const root = h('div', { 'class': 'flex h-full flex-col', 'data-remote-view': true }, header, top, main);
 
 		const show = () => {
 			const connected = remote.hostConnected();
 			const state = remote.state();
-			hostStatus.title = connected ? 'Host connected' : 'No host';
+			hostStatus.title = connected ? t('remote.hostConnected') : t('remote.noHost');
 			hostStatus.setAttribute('aria-label', hostStatus.title);
 			hostStatus.dataset.connected = String(connected);
 			notice.hidden = connected && state !== null;
-			notice.textContent = connected ? 'Waiting for the host…' : 'No host is connected. Start the page that plays as Host, then this one follows it.';
+			notice.textContent = connected ? t('remote.waiting') : t('remote.noHostNotice');
 			if (state) {
 				this.#showState(state, { playlistGrid, soundGrid, players });
 			} else {
@@ -246,8 +247,8 @@ export class RemoteView extends Component {
 				h('div', { class: 'min-w-0 flex-1 text-sm leading-tight' },
 					h('div', { 'class': 'truncate text-xs text-muted', 'data-player-playlist': true }, player.title),
 					h('div', { 'class': 'truncate font-medium', 'data-player-track': true }, player.trackTitle ?? '…')),
-				control('stop', 'Stop', 'stop', () => remote.stopPlaylist(player.id)),
-				control('next', 'Next', 'next', () => remote.nextTrack(player.id)));
+				control('stop', t('player.stop'), 'stop', () => remote.stopPlaylist(player.id)),
+				control('next', t('player.next'), 'next', () => remote.nextTrack(player.id)));
 		}));
 	}
 }

@@ -6,6 +6,7 @@ import { card } from './ui/customize-parts.js';
 import { h } from './ui/dom.js';
 import { icon } from './ui/icons.js';
 import { connectionNotice, errorNotice, showError, toolsHeader } from './ui/startup-parts.js';
+import { t } from './ui/text.js';
 import { showToast } from './ui/toast.js';
 
 /** @typedef {import('./logic/startup-flow.js').StartupView} StartupView */
@@ -34,13 +35,13 @@ const flow = new StartupFlow({
 const offline = connectionNotice();
 const error = errorNotice();
 const givenList = h('div', { class: 'grid gap-2 sm:grid-cols-2' });
-const given = h('section', { class: 'space-y-2', hidden: true }, sectionTitle('Soundboards'), givenList);
+const given = h('section', { class: 'space-y-2', hidden: true }, sectionTitle(t('selector.soundboards')), givenList);
 const recentList = h('div', { class: 'grid gap-2 sm:grid-cols-2' });
-const recent = card('Recent', 'music', recentList);
+const recent = card(t('selector.recent'), 'music', recentList);
 recent.hidden = true;
 const browseButton = browseCard(() => showBrowser(true));
 // Kept when only the given folders may be opened, so the way to other folders is still where it always is.
-const browseRefused = h('div', { title: 'Only the folders given when the app was started can be opened.' }, browseCard(null));
+const browseRefused = h('div', { title: t('selector.onlyGiven') }, browseCard(null));
 
 const places = h('div', {
 	'class': 'absolute top-full left-0 z-20 mt-1 min-w-48 rounded-md border border-line bg-panel py-1 shadow-lg shadow-black/40',
@@ -51,15 +52,15 @@ const places = h('div', {
 const placesButton = h('button', {
 	'type': 'button',
 	'class': `${BAR_BUTTON} gap-1 rounded-l-md border-r`,
-	'title': 'Places',
+	'title': t('selector.places'),
 	'aria-haspopup': 'menu',
 	'data-places-button': true,
 	'onClick': () => showPlaces(places.hidden !== false),
-}, 'Places', icon('chevronDown', 'size-4'));
+}, t('selector.places'), icon('chevronDown', 'size-4'));
 const upButton = h('button', {
 	'type': 'button',
 	'class': `${BAR_BUTTON} border-r`,
-	'aria-label': 'Up',
+	'aria-label': t('selector.up'),
 	'disabled': true,
 	'data-folder-up': true,
 	'onClick': () => upTarget && flow.browse(upTarget),
@@ -69,8 +70,8 @@ let upTarget = /** @type {string | null} */ (null);
 const pathInput = h('input', {
 	'type': 'text',
 	'class': 'min-w-0 flex-1 bg-transparent px-3 py-1.5 font-mono text-sm outline-none',
-	'placeholder': 'Paste a folder path',
-	'aria-label': 'Folder path',
+	'placeholder': t('selector.pathPlaceholder'),
+	'aria-label': t('selector.path'),
 	'spellcheck': 'false',
 	'data-path-input': true,
 });
@@ -79,7 +80,7 @@ const pathForm = h('form', { class: 'flex items-stretch rounded-md border border
 	h('div', { class: 'relative flex' }, placesButton, places),
 	upButton,
 	pathInput,
-	h('button', { type: 'submit', class: `${BAR_BUTTON} rounded-r-md border-l` }, 'Go'));
+	h('button', { type: 'submit', class: `${BAR_BUTTON} rounded-r-md border-l` }, t('selector.go')));
 pathForm.addEventListener('submit', (event) => {
 	event.preventDefault();
 	const path = pathInput.value.trim();
@@ -94,10 +95,10 @@ const backButton = h('button', {
 	'class': BUTTON,
 	'data-browse-back': true,
 	'onClick': () => showBrowser(false),
-}, '← Recent');
+}, t('selector.backToRecent'));
 const browse = h('div', { class: 'space-y-6', hidden: true },
 	backButton,
-	card('Browse', 'music', h('div', { class: 'space-y-3' }, pathForm, current, folderList)));
+	card(t('selector.browse'), 'music', h('div', { class: 'space-y-3' }, pathForm, current, folderList)));
 
 /** @param {boolean} visible */
 function showPlaces(visible) {
@@ -116,7 +117,7 @@ document.addEventListener('keydown', (event) => {
 	}
 });
 
-const header = toolsHeader('Soundboard Selection');
+const header = toolsHeader(t('selector.title'));
 root.replaceChildren(
 	header.element,
 	h('main', { class: 'mx-auto w-full max-w-3xl flex-1 space-y-6 px-5 py-8' },
@@ -182,7 +183,7 @@ function render(view) {
 		recentList.replaceChildren(...state.recent.map((folder) => folderCard({
 			name: folder.name,
 			path: folder.path,
-			reason: folder.exists ? null : 'This folder doesn’t exist any more.',
+			reason: folder.exists ? null : t('selector.gone'),
 			busy,
 			onOpen: () => flow.select(folder.path),
 			onForget: () => flow.forgetRecent(folder.path),
@@ -228,13 +229,16 @@ function render(view) {
  */
 function drawListing(listing, busy) {
 	const summary = listing.soundboard
-		? 'Soundboard folder'
+		? t('selector.soundboardFolder')
 		: listing.allowed
-			? `No soundboard here yet: ${count(listing.folders.length, 'folder')}, ${count(listing.audioFiles, 'audio file')}`
+			? t('selector.noSoundboardYet', {
+					folders: t('selector.folderCount', { count: listing.folders.length }),
+					files: t('selector.audioFileCount', { count: listing.audioFiles }),
+				})
 			: listing.reason;
 	upTarget = listing.parent;
 	upButton.disabled = listing.parent === null;
-	upButton.title = listing.parent === null ? 'Up' : `Up to ${listing.parent}`;
+	upButton.title = listing.parent === null ? t('selector.up') : t('selector.upTo', { path: listing.parent });
 	current.replaceChildren(
 		h('span', {
 			'class': `min-w-0 flex-1 text-sm ${listing.allowed ? 'text-muted' : 'text-notice'}`,
@@ -246,10 +250,10 @@ function drawListing(listing, busy) {
 			'disabled': !listing.allowed || busy,
 			'data-folder-open': true,
 			'onClick': () => flow.select(listing.path),
-		}, listing.soundboard ? 'Open' : 'Create soundboard here')),
+		}, listing.soundboard ? t('selector.open') : t('selector.create'))),
 	);
 	if (listing.folders.length === 0 && listing.files.length === 0) {
-		folderList.replaceChildren(h('li', { class: 'px-3 py-2 text-sm text-muted' }, 'No folders or audio files inside.'));
+		folderList.replaceChildren(h('li', { class: 'px-3 py-2 text-sm text-muted' }, t('selector.emptyFolder')));
 		return;
 	}
 	// The audio files are only there to show what the folder holds, so they can't be clicked.
@@ -280,12 +284,12 @@ function drawListing(listing, busy) {
 	folder.holdsSoundboard
 		? h('span', {
 				'class': 'shrink-0 text-sm',
-				'title': 'A soundboard is somewhere inside this folder',
-				'aria-label': 'A soundboard is somewhere inside this folder',
+				'title': t('selector.holdsSoundboard'),
+				'aria-label': t('selector.holdsSoundboard'),
 				'data-holds-soundboard': true,
 			}, '🎵')
 		: null,
-	folder.soundboard ? h('span', { class: 'rounded bg-music/20 px-1.5 py-0.5 text-xs text-music' }, 'Soundboard') : null,
+	folder.soundboard ? h('span', { class: 'rounded bg-music/20 px-1.5 py-0.5 text-xs text-music' }, t('selector.soundboardBadge')) : null,
 	folder.soundboard && folder.refused === null
 		? h('button', {
 				'type': 'button',
@@ -293,7 +297,7 @@ function drawListing(listing, busy) {
 				'disabled': busy,
 				'data-folder-quick-open': true,
 				'onClick': () => flow.select(folder.path),
-			}, 'Open')
+			}, t('selector.open'))
 		: null)), ...files);
 }
 
@@ -326,8 +330,8 @@ function folderCard({ name, path, reason, busy, onOpen, onForget }) {
 		? h('button', {
 				'type': 'button',
 				'class': 'cursor-pointer px-3 text-lg text-muted hover:bg-raised-hover hover:text-text',
-				'title': 'Forget this folder',
-				'aria-label': `Forget ${name}`,
+				'title': t('selector.forget'),
+				'aria-label': t('selector.forgetNamed', { name }),
 				'data-forget': path,
 				'onClick': onForget,
 			}, '×')
@@ -345,7 +349,7 @@ function browseCard(onClick) {
 		'disabled': onClick === null,
 		'data-browse': true,
 		'onClick': onClick ?? undefined,
-	}, 'Browse folders…');
+	}, t('selector.browseFolders'));
 }
 
 /** @param {string} emoji */
@@ -356,14 +360,6 @@ function folderIcon(emoji) {
 /** @param {string} text */
 function sectionTitle(text) {
 	return h('h2', { class: 'text-xs font-semibold tracking-widest text-muted uppercase' }, text);
-}
-
-/**
- * @param {number} amount
- * @param {string} noun
- */
-function count(amount, noun) {
-	return `${amount} ${noun}${amount === 1 ? '' : 's'}`;
 }
 
 flow.start();

@@ -5,6 +5,7 @@ import { StartupFlow } from './logic/startup-flow.js';
 import { h } from './ui/dom.js';
 import { holdButton } from './ui/hold-button.js';
 import { connectionNotice, errorNotice, pageHeader, showError } from './ui/startup-parts.js';
+import { t } from './ui/text.js';
 
 /** @typedef {import('./logic/startup-flow.js').StartupView} StartupView */
 /** @typedef {import('./logic/startup-flow.js').InitializerState} InitializerState */
@@ -35,7 +36,7 @@ const error = errorNotice();
 const folder = h('div', { class: 'min-w-0' });
 const body = h('section', { 'class': 'space-y-4 rounded-lg border border-line bg-panel p-5', 'data-initializer-step': '' });
 root.replaceChildren(h('main', { class: 'mx-auto w-full max-w-3xl flex-1 space-y-6 px-5 py-8' },
-	pageHeader('Opening a soundboard'),
+	pageHeader(t('initializer.title')),
 	folder,
 	offline.element,
 	error,
@@ -68,7 +69,7 @@ function render(view) {
 	}
 	if (progress && measured) {
 		progress.bar.style.width = `${(100 * measured.done) / Math.max(1, measured.total)}%`;
-		progress.text.textContent = `Measuring the duration of each audio file: ${measured.done} of ${measured.total}`;
+		progress.text.textContent = t('initializer.measuringProgress', { done: measured.done, total: measured.total });
 	}
 }
 
@@ -80,19 +81,19 @@ function render(view) {
 function drawStep(initializer, busy) {
 	switch (initializer.step) {
 		case 'scanning':
-			return [status('Reading the folder…')];
+			return [status(t('initializer.scanning'))];
 		case 'starting':
-			return [status('Opening the soundboard…')];
+			return [status(t('initializer.starting'))];
 		case 'waitingForTools':
-			return [status('Waiting for the yt-dlp update to finish…')];
+			return [status(t('initializer.waitingForTools'))];
 		case 'measuring': {
-			const text = status('Measuring the duration of each audio file…');
+			const text = status(t('initializer.measuring'));
 			const bar = h('div', { class: 'h-full w-0 rounded-full bg-music transition-[width]' });
 			progress = { bar, text };
 			return [
 				text,
 				h('div', { 'class': 'h-2 overflow-hidden rounded-full bg-raised', 'data-progress': true }, bar),
-				h('p', { class: 'text-xs text-muted' }, 'This happens once per file. Later starts only measure files that changed.'),
+				h('p', { class: 'text-xs text-muted' }, t('initializer.measuringNote')),
 			];
 		}
 		case 'question':
@@ -118,26 +119,26 @@ function drawQuestion(question, busy) {
 	switch (question.kind) {
 		case 'largeFolder':
 			return [
-				h('p', { class: 'font-semibold' }, `This folder holds ${question.count.toLocaleString()} audio files and isn’t a soundboard yet.`),
-				h('p', { class: 'text-sm text-muted' }, 'Opening it writes a small options file next to each of them. If this is a whole music collection rather than the sounds for your sessions, go back and choose a smaller folder.'),
-				buttons('Create the options files', 'Back'),
+				h('p', { class: 'font-semibold' }, t('initializer.largeFolder', { count: question.count })),
+				h('p', { class: 'text-sm text-muted' }, t('initializer.largeFolderHint')),
+				buttons(t('initializer.largeFolderYes'), t('initializer.back')),
 			];
 		case 'nestedDirectories':
 			return [
-				h('p', { class: 'font-semibold' }, 'These folders are inside playlists. Their tracks will be merged into the playlists that hold them.'),
+				h('p', { class: 'font-semibold' }, t('initializer.nested')),
 				list(question.paths.map((path) => h('li', { class: 'font-mono text-danger' }, path))),
-				h('p', { class: 'text-sm text-muted' }, 'Choose Back to leave the folder unchanged.'),
-				buttons('Merge them', 'Back'),
+				h('p', { class: 'text-sm text-muted' }, t('initializer.nestedHint')),
+				buttons(t('initializer.nestedYes'), t('initializer.back')),
 			];
 		case 'metadataTitles':
 			return [
-				h('p', { class: 'font-semibold' }, 'These files have titles in their tags. Use them as the titles shown on the soundboard?'),
+				h('p', { class: 'font-semibold' }, t('initializer.titles')),
 				list(question.titles.map(({ path, title }) => h('li', { class: 'flex gap-2' },
 					h('span', { class: 'min-w-0 truncate font-mono text-muted', title: path }, path),
 					h('span', { class: 'shrink-0' }, '→'),
 					h('span', { class: 'min-w-0 truncate' }, `“${title}”`)))),
-				h('p', { class: 'text-sm text-muted' }, 'Otherwise the file names are used. Titles can be changed later in Customize.'),
-				buttons('Use these titles', 'Use the file names'),
+				h('p', { class: 'text-sm text-muted' }, t('initializer.titlesHint')),
+				buttons(t('initializer.titlesYes'), t('initializer.titlesNo')),
 			];
 	}
 }
@@ -148,25 +149,25 @@ function drawQuestion(question, busy) {
  * @returns {Node[]}
  */
 function drawFailure(initializer, busy) {
-	const back = h('button', { 'type': 'button', 'class': BUTTON, 'disabled': busy, 'data-startup-action': 'back', 'onClick': () => flow.back() }, 'Back');
-	const retry = h('button', { 'type': 'button', 'class': BUTTON, 'disabled': busy, 'data-startup-action': 'retry', 'onClick': () => flow.retry() }, 'Try again');
+	const back = h('button', { 'type': 'button', 'class': BUTTON, 'disabled': busy, 'data-startup-action': 'back', 'onClick': () => flow.back() }, t('initializer.back'));
+	const retry = h('button', { 'type': 'button', 'class': BUTTON, 'disabled': busy, 'data-startup-action': 'retry', 'onClick': () => flow.retry() }, t('initializer.retry'));
 	const remove = initializer.canDelete && initializer.failures.length > 0
-		? holdButton({ label: 'Hold to delete these files and start', busyLabel: 'Deleting…', holdMs: 1000, onHold: () => flow.deleteAndRetry() })
+		? holdButton({ label: t('initializer.holdToDelete'), busyLabel: t('customize.deleting'), holdMs: 1000, onHold: () => flow.deleteAndRetry() })
 		: null;
 	remove?.setBusy(busy);
 	return [
 		h('p', { class: 'font-semibold text-danger' }, initializer.failures.length > 0
-			? 'Some of the soundboard’s own files can’t be read, so it can’t open.'
-			: 'The soundboard could not be opened.'),
+			? t('initializer.unreadable')
+			: t('initializer.failed')),
 		initializer.error ? h('p', { 'class': 'text-sm', 'data-startup-failure': true }, initializer.error) : null,
 		initializer.failures.length > 0
 			? list(initializer.failures.map((failure) => h('li', { 'class': 'space-y-0.5', 'data-startup-failure': failure.path },
-					h('p', { class: 'font-mono text-danger' }, failure.path || '(no file)'),
+					h('p', { class: 'font-mono text-danger' }, failure.path || t('initializer.noFile')),
 					...failure.problems.map((problem) => h('p', { class: 'pl-4 text-muted' }, problem)))))
 			: null,
 		h('p', { class: 'text-sm text-muted' }, remove
-			? 'Fix the files and choose Try again, or delete them: the soundboard then makes new ones, and the settings they held are lost.'
-			: 'Fix the problem and choose Try again, or go back and choose another folder.'),
+			? t('initializer.fixOrDelete')
+			: t('initializer.fixOrBack')),
 		h('div', { class: 'flex flex-wrap justify-end gap-2' }, back, retry, remove?.element),
 	].filter((node) => node !== null);
 }
@@ -181,7 +182,7 @@ function list(items) {
 	const shown = items.slice(0, MAX_LISTED);
 	return h('ul', { class: 'max-h-[50vh] space-y-1 overflow-y-auto rounded-md bg-raised px-3 py-2 text-sm' },
 		...shown,
-		items.length > MAX_LISTED ? h('li', { class: 'text-muted' }, `…and ${items.length - MAX_LISTED} more`) : null);
+		items.length > MAX_LISTED ? h('li', { class: 'text-muted' }, t('initializer.more', { count: items.length - MAX_LISTED })) : null);
 }
 
 flow.start();
