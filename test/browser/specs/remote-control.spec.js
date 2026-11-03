@@ -13,6 +13,13 @@ test('the splash offers three ways to start', async ({ page, soundboard, splash 
 		await expect(page.locator('[data-start-mode]')).toHaveCount(3);
 		await expect(page.locator('[data-remote-note]')).toHaveText('No host is running yet. It will work once one starts.');
 	});
+
+	await test.step('It has no app name, and the empty host note still keeps its space', async () => {
+		await expect(page.locator('[data-splash] h1')).toBeHidden();
+		await expect(page.locator('[data-host-note]')).toHaveText('');
+		const box = await page.locator('[data-host-note]').boundingBox();
+		expect(box?.height).toBeGreaterThan(0);
+	});
 });
 
 test('a standalone page is not a host, and its menu offers to become one', async ({ page, soundboard }) => {

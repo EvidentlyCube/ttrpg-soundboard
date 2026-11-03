@@ -18,11 +18,11 @@ const CHOICES = /** @type {const} */ ([
 export class Splash extends Component {
 	#onClick;
 	#onChoose;
-	#message = h('p', { class: 'text-lg text-text' });
+	#message = h('p', { class: 'text-lg text-text group-data-[mode=choices]:text-3xl group-data-[mode=choices]:font-semibold group-data-[mode=choices]:tracking-tight' });
 	#detail = h('p', { class: 'max-w-xl text-center text-sm text-muted' });
 	#choices = h('div', { class: 'mt-4 flex flex-col items-stretch gap-4 sm:flex-row sm:items-start' });
-	#hostNote = h('p', { 'class': 'mt-2 text-xs text-muted', 'data-host-note': true });
-	#remoteNote = h('p', { 'class': 'mt-2 text-xs text-notice', 'data-remote-note': true });
+	#hostNote = h('p', { 'class': 'mt-2 min-h-8 text-xs text-muted', 'data-host-note': true });
+	#remoteNote = h('p', { 'class': 'mt-2 min-h-8 text-xs text-notice', 'data-remote-note': true });
 
 	/**
 	 * @param {object} options
@@ -49,7 +49,7 @@ export class Splash extends Component {
 			this.#choices.append(h('div', { class: 'w-64' }, button, note));
 		}
 		return h('div', {
-			'class': 'fixed inset-0 z-50 flex cursor-pointer select-none flex-col items-center justify-center gap-3 bg-surface/95 data-[framed=true]:absolute data-[framed=true]:z-0 data-[mode=choices]:cursor-default',
+			'class': 'group fixed inset-0 z-50 flex cursor-pointer select-none flex-col items-center justify-center gap-3 bg-surface/95 data-[framed=true]:absolute data-[framed=true]:z-0 data-[mode=choices]:cursor-default',
 			'data-splash': true,
 			'data-mode': 'message',
 			'data-framed': 'true',
@@ -58,7 +58,7 @@ export class Splash extends Component {
 					this.#onClick();
 				}
 			},
-		}, h('h1', { class: 'text-4xl font-semibold tracking-tight text-text' }, 'Soundboard'), this.#message, this.#detail, this.#choices);
+		}, h('h1', { class: 'text-4xl font-semibold tracking-tight text-text group-data-[mode=choices]:hidden' }, 'Soundboard'), this.#message, this.#detail, this.#choices);
 	}
 
 	/**
@@ -75,7 +75,7 @@ export class Splash extends Component {
 
 	/** Shows the three ways to start. */
 	showChoices() {
-		this.#message.textContent = 'Choose how to start';
+		this.#message.textContent = 'Choose a mode';
 		this.#detail.textContent = '';
 		this.#choices.hidden = false;
 		this.element.dataset.mode = 'choices';

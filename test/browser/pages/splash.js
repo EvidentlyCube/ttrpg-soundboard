@@ -24,7 +24,7 @@ export class SplashPage {
 		await this.#page.locator(`[data-start-mode=${mode}]`).click();
 	}
 
-	async expectVisible(text = 'Choose how to start') {
+	async expectVisible(text = 'Choose a mode') {
 		await expect(this.#page.locator('[data-splash]')).toBeVisible();
 		await expect(this.#page.locator('[data-splash]')).toContainText(text);
 	}
