@@ -1,13 +1,17 @@
 import { HttpStartupApi } from './api/startup-api.js';
 import { browserClock } from './browser-clock.js';
 import { StartupFlow } from './logic/startup-flow.js';
+import { card } from './ui/customize-parts.js';
 import { h } from './ui/dom.js';
+import { icon } from './ui/icons.js';
 import { connectionNotice, errorNotice, showError, toolsHeader } from './ui/startup-parts.js';
 
 /** @typedef {import('./logic/startup-flow.js').StartupView} StartupView */
 /** @typedef {import('./logic/startup-flow.js').FolderListing} FolderListing */
 
 const BUTTON = 'cursor-pointer rounded-md bg-raised px-3 py-1.5 text-sm font-medium hover:bg-raised-hover disabled:cursor-default disabled:opacity-50';
+/** A button inside the address bar, which draws the border and the corners around all of them. */
+const BAR_BUTTON = 'flex cursor-pointer items-center border-line px-3 text-sm font-medium text-muted hover:bg-raised-hover hover:text-text disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-muted';
 const PRIMARY = 'cursor-pointer rounded-md bg-music px-4 py-1.5 text-sm font-semibold whitespace-nowrap text-surface hover:brightness-110 disabled:cursor-default disabled:opacity-50';
 
 const root = document.getElementById('selector');
@@ -33,16 +37,44 @@ const browseButton = browseCard(() => showBrowser(true));
 // Kept when only the given folders may be opened, so the way to other folders is still where it always is.
 const browseRefused = h('div', { title: 'Only the folders given when the app was started can be opened.' }, browseCard(null));
 
-const places = h('div', { class: 'flex flex-wrap gap-2' });
+const places = h('div', {
+	'class': 'absolute top-full left-0 z-20 mt-1 min-w-48 rounded-md border border-line bg-panel py-1 shadow-lg shadow-black/40',
+	'role': 'menu',
+	'hidden': true,
+	'data-places-menu': true,
+});
+const placesButton = h('button', {
+	'type': 'button',
+	'class': `${BAR_BUTTON} gap-1 rounded-l-md border-r`,
+	'title': 'Places',
+	'aria-haspopup': 'menu',
+	'data-places-button': true,
+	'onClick': () => showPlaces(places.hidden !== false),
+}, 'Places', icon('chevronDown', 'size-4'));
+const upButton = h('button', {
+	'type': 'button',
+	'class': `${BAR_BUTTON} border-r`,
+	'aria-label': 'Up',
+	'disabled': true,
+	'data-folder-up': true,
+	'onClick': () => upTarget && flow.browse(upTarget),
+}, '↑');
+/** The folder Up goes to, or null at the top of a disk. */
+let upTarget = /** @type {string | null} */ (null);
 const pathInput = h('input', {
 	'type': 'text',
-	'class': 'min-w-0 flex-1 rounded-md border border-line bg-raised px-3 py-1.5 font-mono text-sm outline-none focus:border-music',
+	'class': 'min-w-0 flex-1 bg-transparent px-3 py-1.5 font-mono text-sm outline-none',
 	'placeholder': 'Paste a folder path',
 	'aria-label': 'Folder path',
 	'spellcheck': 'false',
 	'data-path-input': true,
 });
-const pathForm = h('form', { class: 'flex gap-2' }, pathInput, h('button', { type: 'submit', class: BUTTON }, 'Go'));
+// One bordered bar, as in a file manager's address bar: the places, Up, the path and Go.
+const pathForm = h('form', { class: 'flex items-stretch rounded-md border border-line bg-raised focus-within:border-music' },
+	h('div', { class: 'relative flex' }, placesButton, places),
+	upButton,
+	pathInput,
+	h('button', { type: 'submit', class: `${BAR_BUTTON} rounded-r-md border-l` }, 'Go'));
 pathForm.addEventListener('submit', (event) => {
 	event.preventDefault();
 	const path = pathInput.value.trim();
@@ -58,12 +90,26 @@ const backButton = h('button', {
 	'data-browse-back': true,
 	'onClick': () => showBrowser(false),
 }, '← Recent');
-const browse = h('section', { class: 'space-y-3', hidden: true },
-	h('div', { class: 'flex items-center gap-3' }, backButton, sectionTitle('Browse')),
-	places,
-	pathForm,
-	current,
-	folderList);
+const browse = h('div', { class: 'space-y-6', hidden: true },
+	backButton,
+	card('Browse', 'music', h('div', { class: 'space-y-3' }, pathForm, current, folderList)));
+
+/** @param {boolean} visible */
+function showPlaces(visible) {
+	places.hidden = !visible;
+	placesButton.setAttribute('aria-expanded', String(visible));
+}
+document.addEventListener('pointerdown', (event) => {
+	if (!places.hidden && event.target instanceof Node && !placesButton.parentElement?.contains(event.target)) {
+		showPlaces(false);
+	}
+});
+document.addEventListener('keydown', (event) => {
+	if (event.key === 'Escape' && !places.hidden) {
+		showPlaces(false);
+		placesButton.focus();
+	}
+});
 
 const header = toolsHeader('Soundboard Selection');
 root.replaceChildren(
@@ -142,11 +188,15 @@ function render(view) {
 		drawn.places = placesKey;
 		places.replaceChildren(...view.places.map((place) => h('button', {
 			'type': 'button',
-			'class': `${BUTTON} data-[current=true]:bg-music/25 data-[current=true]:text-text`,
+			'class': 'block w-full cursor-pointer px-3 py-1.5 text-left text-sm hover:bg-raised-hover data-[current=true]:text-music',
+			'role': 'menuitem',
 			'title': place.path,
 			'data-place': place.path,
 			'data-current': String(place.path === view.listing?.path),
-			'onClick': () => flow.browse(place.path),
+			'onClick': () => {
+				showPlaces(false);
+				flow.browse(place.path);
+			},
 		}, place.name)));
 	}
 	const listingKey = JSON.stringify([view.listing, busy]);
@@ -199,15 +249,10 @@ function drawListing(listing, busy) {
 		: listing.allowed
 			? `No soundboard here yet: ${count(listing.folders.length, 'folder')}, ${count(listing.audioFiles, 'audio file')}`
 			: listing.reason;
+	upTarget = listing.parent;
+	upButton.disabled = listing.parent === null;
+	upButton.title = listing.parent === null ? 'Up' : `Up to ${listing.parent}`;
 	current.replaceChildren(
-		h('button', {
-			'type': 'button',
-			'class': BUTTON,
-			'disabled': listing.parent === null,
-			'title': listing.parent ?? '',
-			'data-folder-up': true,
-			'onClick': () => listing.parent && flow.browse(listing.parent),
-		}, '↑ Up'),
 		h('span', {
 			'class': `min-w-0 flex-1 text-sm ${listing.allowed ? 'text-muted' : 'text-notice'}`,
 			'data-folder-summary': true,
@@ -225,16 +270,19 @@ function drawListing(listing, busy) {
 		return;
 	}
 	folderList.replaceChildren(...listing.folders.map((folder) => h('li', {
-		'class': 'flex items-center gap-2 pr-2 data-[refused=true]:text-muted',
+		'class': 'flex items-center gap-2 pr-2 hover:bg-raised-hover data-[refused=true]:text-muted',
 		'title': folder.refused ?? '',
 		'data-folder': folder.path,
 		'data-refused': String(folder.refused !== null),
 	},
-	h('button', {
-		type: 'button',
-		class: 'min-w-0 flex-1 cursor-pointer truncate px-3 py-2 text-left text-sm hover:bg-raised-hover',
-		onClick: () => flow.browse(folder.path),
-	}, folder.name),
+	// A soundboard is opened, never browsed into: its folders are its playlists.
+	folder.soundboard
+		? h('span', { class: 'min-w-0 flex-1 truncate px-3 py-2 text-sm' }, folderIcon('🎵'), folder.name)
+		: h('button', {
+				type: 'button',
+				class: 'min-w-0 flex-1 cursor-pointer truncate px-3 py-2 text-left text-sm',
+				onClick: () => flow.browse(folder.path),
+			}, folderIcon('📁'), folder.name),
 	folder.soundboard ? h('span', { class: 'rounded bg-music/20 px-1.5 py-0.5 text-xs text-music' }, 'Soundboard') : null,
 	folder.soundboard && folder.refused === null
 		? h('button', {
@@ -296,6 +344,11 @@ function browseCard(onClick) {
 		'data-browse': true,
 		'onClick': onClick ?? undefined,
 	}, 'Browse folders…');
+}
+
+/** @param {string} emoji */
+function folderIcon(emoji) {
+	return h('span', { 'class': 'mr-2', 'aria-hidden': 'true' }, emoji);
 }
 
 /** @param {string} text */

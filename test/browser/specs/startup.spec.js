@@ -32,9 +32,8 @@ test.describe('the Selector', () => {
 	test('browses the home folder, opens a new soundboard through the Initializer, and comes back with Change soundboard', async ({ page, app }) => {
 		await test.step('The Selector shows the home folder with Board in it', async () => {
 			await page.goto(app.url);
-			await expect(page.locator('[data-place]').first()).toHaveText('Home');
-			await expect(page.locator('[data-place]').first()).toHaveAttribute('data-current', 'true');
 			await expect(page.locator(`[data-folder="${app.board}"]`)).toBeVisible();
+			await expect(page.locator(`[data-folder="${app.board}"]`)).toContainText('📁');
 			await expect(page.locator('[data-folder-summary]')).toHaveText('Choose a folder inside this one.');
 			await expect(page.locator('[data-folder-open]')).toBeDisabled();
 			await expect(page.locator('[data-browse-back]')).toBeHidden();
@@ -73,6 +72,10 @@ test.describe('the Selector', () => {
 			await page.locator('[data-browse]').click();
 			await expect(page.locator('[data-folder-list]')).toBeVisible();
 			await expect(page.locator(`[data-folder-card="${app.board}"]`)).toBeHidden();
+			const board = page.locator(`[data-folder="${app.board}"]`);
+			await expect(board).toContainText('🎵');
+			await expect(board.locator('button')).toHaveCount(1);
+			await expect(board.locator('[data-folder-quick-open]')).toBeVisible();
 			await page.locator('[data-browse-back]').click();
 			await expect(page.locator('[data-folder-list]')).toBeHidden();
 			await expect(page.locator(`[data-folder-card="${app.board}"]`)).toBeVisible();
@@ -112,6 +115,35 @@ test.describe('the Selector', () => {
 			await page.locator('[data-path-input]').fill(join(app.home, '.hidden'));
 			await page.locator('[data-path-input]').press('Enter');
 			await expect(toast).toHaveText('Hidden folders can’t be used.');
+		});
+	});
+
+	test('goes to a place picked from the Places menu, which closes on a pick or Esc', async ({ page, app }) => {
+		await page.goto(app.url);
+		const menu = page.locator('[data-places-menu]');
+		const home = page.locator('[data-place]').first();
+
+		await test.step('In the home folder, Home is the first place and marked as the one shown', async () => {
+			await expect(page.locator('[data-path-input]')).toHaveValue(app.home);
+			await expect(menu).toBeHidden();
+			await page.locator('[data-places-button]').click();
+			await expect(home).toHaveText('Home');
+			await expect(home).toHaveAttribute('data-current', 'true');
+		});
+
+		await test.step('Esc closes the menu', async () => {
+			await page.keyboard.press('Escape');
+			await expect(menu).toBeHidden();
+		});
+
+		await test.step('From Board, picking Home goes back there and closes the menu', async () => {
+			await page.locator(`[data-folder="${app.board}"] button`).first().click();
+			await expect(page.locator('[data-path-input]')).toHaveValue(app.board);
+			await page.locator('[data-places-button]').click();
+			await expect(home).toHaveAttribute('data-current', 'false');
+			await home.click();
+			await expect(menu).toBeHidden();
+			await expect(page.locator('[data-path-input]')).toHaveValue(app.home);
 		});
 	});
 

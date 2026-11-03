@@ -2,7 +2,7 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { realpath, symlink } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { HIDDEN_REASON, NO_AUDIO_REASON, OUTSIDE_REASON } from '../../../src/startup/folder-rules.js';
+import { HIDDEN_REASON, HOLDS_SOUNDBOARD_REASON, NO_AUDIO_REASON, OUTSIDE_REASON } from '../../../src/startup/folder-rules.js';
 import { FolderNotAllowedError, FolderUnreadableError, listFolder, startingPlaces } from '../../../src/startup/folders.js';
 import { createTmpTree } from '../../helpers/tmp-tree.js';
 
@@ -51,8 +51,8 @@ describe('listFolder', () => {
 			],
 			audioFiles: 2,
 			soundboard: false,
-			allowed: true,
-			reason: null,
+			allowed: false,
+			reason: HOLDS_SOUNDBOARD_REASON,
 		});
 	});
 

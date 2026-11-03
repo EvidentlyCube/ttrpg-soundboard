@@ -22,6 +22,7 @@ export const MISSING_REASON = 'This folder doesn’t exist.';
 export const NOT_FOLDER_REASON = 'This is not a folder.';
 export const UNREADABLE_REASON = 'This folder can’t be read.';
 export const NO_AUDIO_REASON = 'No audio files found here.';
+export const HOLDS_SOUNDBOARD_REASON = 'A folder inside this one is already a soundboard.';
 
 /** Refused with everything inside them (DESIGN.md §5.7). */
 const POSIX_SYSTEM = ['/bin', '/boot', '/dev', '/etc', '/lib', '/lib32', '/lib64', '/opt', '/proc', '/root', '/run', '/sbin', '/snap', '/srv', '/sys', '/usr', '/var'];
@@ -153,17 +154,20 @@ export async function checkFolder(path, platform) {
 		return refused(UNREADABLE_REASON);
 	}
 	const allowed = /** @type {FolderCheck} */ ({ allowed: true, reason: null, path: real });
-	if (entries.some((entry) => entry.name === '.soundboard') || entries.some((entry) => entry.isFile() && audioFormatOf(entry.name))) {
+	if (entries.some((entry) => entry.name === '.soundboard')) {
 		return allowed;
 	}
+	let audio = entries.some((entry) => entry.isFile() && audioFormatOf(entry.name));
 	for (const entry of entries) {
 		if (!entry.isDirectory() || entry.name.startsWith('.')) {
 			continue;
 		}
-		const names = await readdir(join(real, entry.name)).catch(() => []);
-		if (names.some((name) => audioFormatOf(name))) {
-			return allowed;
+		const names = await readdir(join(real, entry.name)).catch(() => /** @type {string[]} */ ([]));
+		// A soundboard in a subfolder would become a playlist of this one, and both would write into the same files.
+		if (names.includes('.soundboard')) {
+			return refused(HOLDS_SOUNDBOARD_REASON);
 		}
+		audio ||= names.some((name) => audioFormatOf(name));
 	}
-	return refused(NO_AUDIO_REASON);
+	return audio ? allowed : refused(NO_AUDIO_REASON);
 }
