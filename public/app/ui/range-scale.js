@@ -1,4 +1,5 @@
 import { MIN_CLIP_MS } from '../logic/clip.js';
+import { formatFixed } from './text.js';
 
 /**
  * The math behind a sound's start and end points in its Customize dialog (DESIGN.md §9.7). Everything here works in
@@ -118,7 +119,7 @@ export function fadeBands(clipMs, fadeInMs, fadeOutMs) {
  * @param {number} ms
  */
 export function toFieldText(ms) {
-	return (ms / 1000).toFixed(3);
+	return formatFixed(ms / 1000, 3);
 }
 
 /**

@@ -3,6 +3,7 @@ import { h } from './dom.js';
 import { formatTime } from './format.js';
 import { icon } from './icons.js';
 import { LevelBar } from './level-bar.js';
+import { t } from './text.js';
 import { openTrackList } from './track-list.js';
 import { paintWaveform } from './waveform-canvas.js';
 
@@ -56,7 +57,7 @@ export class PlayerBar extends Component {
 		const trackButton = h('button', {
 			type: 'button',
 			class: 'flex min-w-0 max-w-full cursor-pointer items-center gap-1 text-left font-medium hover:text-music',
-			title: 'Choose a track',
+			title: t('player.chooseTrack'),
 			onClick: () => {
 				const rect = trackButton.getBoundingClientRect();
 				openTrackList(this.#overlay, {
@@ -71,7 +72,7 @@ export class PlayerBar extends Component {
 
 		const playIcon = icon('play');
 		const pauseIcon = icon('pause');
-		const playPause = this.#control('Pause', [playIcon, pauseIcon], () => {
+		const playPause = this.#control('pause', [playIcon, pauseIcon], () => {
 			if (soundboard.getPlaylistSnapshot(id).state === 'paused') {
 				soundboard.resumePlaylist(id);
 			} else {
@@ -83,14 +84,14 @@ export class PlayerBar extends Component {
 		// Where the crossfade into the next track will happen; the fill passes over it as the track plays.
 		const crossfadeBand = h('div', {
 			'class': 'absolute inset-y-0 right-0 rounded-r-full bg-music/40',
-			'title': 'Crossfade into the next track',
+			'title': t('player.crossfade'),
 			'hidden': true,
 			'data-crossfade-band': true,
 		});
 		const wave = h('canvas', { class: 'pointer-events-none absolute inset-0 size-full text-music/35' });
 		const progress = h('div', {
 			'class': 'relative flex h-8 flex-1 cursor-pointer items-center',
-			'title': 'Seek',
+			'title': t('player.seek'),
 			'data-progress': true,
 			'onPointerdown': (/** @type {PointerEvent} */ event) => {
 				const rect = progress.getBoundingClientRect();
@@ -163,10 +164,10 @@ export class PlayerBar extends Component {
 			h('div', { class: 'flex items-center justify-between gap-2' }, playlistTitle, levelHolder, time),
 			trackButton,
 			h('div', { class: 'flex items-center gap-1' },
-				this.#control('Previous', [icon('previous')], () => soundboard.previousTrack(id)),
+				this.#control('previous', [icon('previous')], () => soundboard.previousTrack(id)),
 				playPause,
-				this.#control('Next', [icon('next')], () => soundboard.nextTrack(id)),
-				this.#control('Stop', [icon('stop')], () => soundboard.stopPlaylist(id)),
+				this.#control('next', [icon('next')], () => soundboard.nextTrack(id)),
+				this.#control('stop', [icon('stop')], () => soundboard.stopPlaylist(id)),
 				progress));
 
 		/** @param {number} position */
@@ -198,7 +199,7 @@ export class PlayerBar extends Component {
 			const paused = state === 'paused';
 			playIcon.style.display = paused ? '' : 'none';
 			pauseIcon.style.display = paused ? 'none' : '';
-			playPause.title = paused ? 'Resume' : 'Pause';
+			playPause.title = paused ? t('player.resume') : t('player.pause');
 			playPause.setAttribute('aria-label', playPause.title);
 			showProgress(this.#position);
 			showCrossfade(crossfadeFrom);
@@ -223,11 +224,12 @@ export class PlayerBar extends Component {
 	}
 
 	/**
-	 * @param {string} label
+	 * @param {'previous' | 'pause' | 'next' | 'stop'} name
 	 * @param {SVGSVGElement[]} icons
 	 * @param {() => void} onClick
 	 */
-	#control(label, icons, onClick) {
-		return h('button', { 'type': 'button', 'class': CONTROL_CLASS, 'title': label, 'aria-label': label, 'data-control': label.toLowerCase(), onClick }, icons);
+	#control(name, icons, onClick) {
+		const label = t(`player.${name}`);
+		return h('button', { 'type': 'button', 'class': CONTROL_CLASS, 'title': label, 'aria-label': label, 'data-control': name, onClick }, icons);
 	}
 }

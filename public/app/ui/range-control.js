@@ -2,6 +2,7 @@ import { MIN_CLIP_MS } from '../logic/clip.js';
 import { Component } from './component.js';
 import { h, on } from './dom.js';
 import { filledField } from './filled-field.js';
+import { t } from './text.js';
 import { paintWaveform } from './waveform-canvas.js';
 import { clampEnd, clampStart, fadeBands, formatTime, msAt, nearerHandle, parseTime, shareOf, stepFor, toFieldText } from './range-scale.js';
 
@@ -154,7 +155,7 @@ export class RangeControl extends Component {
 		const unplayed = h('div', { class: 'absolute inset-y-0 right-0 bg-black/45', style: { width: '0%' }, hidden: true });
 		const crossfade = h('div', {
 			class: 'absolute inset-y-0 right-0 bg-white/30',
-			title: 'Crossfade into the next track',
+			title: t('player.crossfade'),
 			style: { width: '0%' },
 			hidden: true,
 		});
@@ -184,7 +185,7 @@ export class RangeControl extends Component {
 				+ `focus-visible:ring-2 ${colors.ring} focus-visible:ring-offset-2 focus-visible:ring-offset-raised`,
 			'style': { left: '0%' },
 		});
-		const handles = { start: handle('start', 'Start point'), end: handle('end', 'End point') };
+		const handles = { start: handle('start', t('controls.startPoint')), end: handle('end', t('controls.endPoint')) };
 		// The waveform has the slider's width and margins, so a handle stands over the sound it cuts at. Outside the handles
 		// it is dimmed by two plain shades, which move with inline styles like the handles do.
 		const wave = h('canvas', { class: `block h-14 w-full ${colors.wave}` });
@@ -193,22 +194,23 @@ export class RangeControl extends Component {
 		const waveBox = h('div', { 'class': 'relative mx-1.5', 'data-range-waveform': true, 'hidden': true }, wave, shadeBefore, shadeAfter);
 		const track = h('div', {
 			'class': 'relative mx-1.5 h-8 cursor-pointer touch-none select-none',
-			'title': 'Drag the handles to choose the part that plays',
+			'title': t('controls.rangeTooltip'),
 			'data-range-track': true,
 		}, h('div', { class: 'absolute inset-x-0 top-3 h-2 rounded-full bg-line' }, lit), handles.start, handles.end);
 
 		/**
 		 * @param {Handle} which
 		 * @param {string} label
+		 * @param {string} ariaLabel
 		 */
-		const field = (which, label) => filledField({
+		const field = (which, label, ariaLabel) => filledField({
 			label,
 			unit: 's',
 			accent: this.#accent,
-			attributes: { 'inputmode': 'decimal', 'aria-label': `${label} point in seconds`, 'data-range-field': which },
+			attributes: { 'inputmode': 'decimal', 'aria-label': ariaLabel, 'data-range-field': which },
 		});
-		const startField = field('start', 'Start');
-		const endField = field('end', 'End');
+		const startField = field('start', t('controls.start'), t('controls.startInSeconds'));
+		const endField = field('end', t('controls.end'), t('controls.endInSeconds'));
 		const fields = { start: startField.input, end: endField.input };
 		const length = h('p', { 'class': 'text-center text-xs text-muted tabular-nums', 'data-range-length': true });
 		// Solid and outlined in the bar's color, so it sits on the bar like a knot in it.
@@ -217,7 +219,7 @@ export class RangeControl extends Component {
 			'class': 'cursor-pointer rounded-full border-2 border-line bg-surface px-3 py-0.5 text-xs text-muted transition-colors '
 				+ `${colors.reset} hover:text-text focus-visible:text-text focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50`,
 			'data-range-reset': true,
-		}, 'Reset');
+		}, t('controls.reset'));
 
 		const show = () => {
 			const points = { start: this.#startMs, end: this.#endMs };
@@ -240,7 +242,7 @@ export class RangeControl extends Component {
 			place(bands.tooLong, 0, fades.tooLong ? 1 : 0);
 			shadeBefore.style.width = `${startShare * 100}%`;
 			shadeAfter.style.width = `${(1 - shareOf(points.end, durationMs)) * 100}%`;
-			length.textContent = `Plays ${formatTime(points.end - points.start)} of ${formatTime(durationMs)}`;
+			length.textContent = t('controls.plays', { part: formatTime(points.end - points.start), whole: formatTime(durationMs) });
 			this.#showPosition?.();
 		};
 		/**
@@ -289,7 +291,7 @@ export class RangeControl extends Component {
 
 		const showMode = (/** @type {boolean} */ playing) => {
 			track.dataset.mode = playing ? 'seek' : 'edit';
-			track.title = playing ? 'Seek' : 'Drag the handles to choose the part that plays';
+			track.title = playing ? t('player.seek') : t('controls.rangeTooltip');
 			handles.start.hidden = playing;
 			handles.end.hidden = playing;
 			startField.input.disabled = playing;

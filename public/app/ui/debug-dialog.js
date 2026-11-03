@@ -1,6 +1,7 @@
 import { Component } from './component.js';
 import { card } from './customize-parts.js';
 import { h, on } from './dom.js';
+import { t } from './text.js';
 import { showToast } from './toast.js';
 
 /** @typedef {import('../logic/soundboard.js').Soundboard} Soundboard */
@@ -41,18 +42,18 @@ export class DebugDialog extends Component {
 		/** @param {boolean} running */
 		const showRunning = (running) => {
 			regenerate.disabled = running;
-			regenerate.textContent = running ? 'Making waveforms…' : 'Regenerate waveforms';
+			regenerate.textContent = running ? t('debug.makingWaveforms') : t('debug.regenerate');
 		};
 		showRunning(soundboard.getWaveformStatus().running);
 		this.own(soundboard.on('waveforms.progress', ({ status }) => showRunning(status.running)));
 		this.own(on(regenerate, 'click', () => {
 			soundboard.regenerateWaveforms();
-			showToast('Regenerating every waveform.', { ms: TOAST_MS });
+			showToast(t('debug.regenerating'), { ms: TOAST_MS });
 		}));
 
 		const toggle = h('button', { 'type': 'button', 'class': `${BUTTON_CLASS} ${COLORS.debugView}`, 'data-debug-tool': 'toggleDebugView' });
 		const showToggle = () => {
-			toggle.textContent = debugView.isShown() ? 'Hide debug view' : 'Show debug view';
+			toggle.textContent = debugView.isShown() ? t('debug.hideView') : t('debug.showView');
 		};
 		showToggle();
 		this.own(on(toggle, 'click', () => {
@@ -65,8 +66,8 @@ export class DebugDialog extends Component {
 		}));
 
 		return h('div', { 'class': 'min-w-96 space-y-8 pt-3 text-sm', 'data-debug-dialog': true },
-			card('Waveforms', 'neutral', tool('Makes every waveform again, even those that exist.', regenerate)),
-			card('Debug view', 'neutral', tool('Lists the voices the audio engine plays, below a red button in the header.', toggle)));
+			card(t('debug.waveforms'), 'neutral', tool(t('debug.regenerateHint'), regenerate)),
+			card(t('debug.view'), 'neutral', tool(t('debug.viewHint'), toggle)));
 	}
 }
 

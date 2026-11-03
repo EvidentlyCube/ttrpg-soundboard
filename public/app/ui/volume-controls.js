@@ -3,12 +3,13 @@ import { h } from './dom.js';
 import { GainControl } from './gain-control.js';
 import { BUS_SCALE } from './gain-scale.js';
 import { icon } from './icons.js';
+import { t } from './text.js';
 
 /** @typedef {import('../logic/ports.js').Bus} Bus */
 /** @typedef {import('../logic/soundboard.js').Soundboard} Soundboard */
 
-/** @type {[Bus, string][]} */
-const CONTROLS = [['master', 'Master'], ['music', 'Music'], ['sfx', 'Sound Effects']];
+/** @type {Bus[]} */
+const BUSES = ['master', 'music', 'sfx'];
 
 /** The three volume controls in the header (DESIGN.md §6.4): gain widgets that stop at 0 dB, without a boost. */
 export class VolumeControls extends Component {
@@ -25,11 +26,12 @@ export class VolumeControls extends Component {
 		const volumes = this.#soundboard.getVolumes();
 		/** @type {Map<Bus, GainControl>} */
 		const controls = new Map();
-		const groups = CONTROLS.map(([bus, label]) => {
+		const groups = BUSES.map((bus) => {
+			const label = t(`volume.${bus}`);
 			const control = new GainControl({
 				value: volumes[bus],
 				scale: BUS_SCALE,
-				label: `${label} volume`,
+				label: t('volume.label', { name: label }),
 				compact: true,
 				onChange: (value) => this.#soundboard.setVolume(bus, value),
 			});

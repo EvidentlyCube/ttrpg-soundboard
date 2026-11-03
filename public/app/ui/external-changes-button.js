@@ -1,5 +1,6 @@
 import { Component } from './component.js';
 import { h, on } from './dom.js';
+import { t } from './text.js';
 
 /** @typedef {import('../logic/soundboard.js').Soundboard} Soundboard */
 
@@ -27,21 +28,21 @@ export class ExternalChangesButton extends Component {
 		const button = h('button', {
 			'type': 'button',
 			'class': 'cursor-pointer rounded-md bg-notice px-3 py-1.5 text-sm font-semibold whitespace-nowrap text-surface hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-notice disabled:cursor-wait disabled:opacity-70',
-			'title': 'Files in the audio folder changed. Load them now; the page reloads and playback stops.',
+			'title': t('refresh.tooltip'),
 			'data-external-changes': true,
-		}, 'External Changes – Refresh');
+		}, t('refresh.button'));
 		button.hidden = !soundboard.hasExternalChanges();
 
 		const idle = () => {
 			button.disabled = false;
-			button.textContent = 'External Changes – Refresh';
+			button.textContent = t('refresh.button');
 		};
 		this.own(soundboard.on('library.externalChanges', ({ pending }) => {
 			button.hidden = !pending;
 		}));
 		this.own(soundboard.on('library.refreshing', () => {
 			button.disabled = true;
-			button.textContent = 'Refreshing…';
+			button.textContent = t('refresh.refreshing');
 		}));
 		this.own(soundboard.on('library.refreshFailed', ({ message, errors, restartNeeded }) => {
 			idle();

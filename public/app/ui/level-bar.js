@@ -1,6 +1,7 @@
 import { Component } from './component.js';
 import { GainControl } from './gain-control.js';
 import { BUS_SCALE } from './gain-scale.js';
+import { t } from './text.js';
 
 /** @typedef {import('../logic/soundboard.js').Soundboard} Soundboard */
 
@@ -31,7 +32,7 @@ export class LevelBar extends Component {
 		const control = new GainControl({
 			value: soundboard.getPlaylistLevel(id),
 			scale: BUS_SCALE,
-			label: 'Live volume',
+			label: t('volume.live'),
 			mini: true,
 			onChange: (value) => soundboard.setPlaylistLevel(id, value),
 		});

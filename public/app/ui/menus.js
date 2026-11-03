@@ -1,3 +1,5 @@
+import { t } from './text.js';
+
 /** @typedef {import('../logic/playlist-player.js').PlaylistState} PlaylistState */
 
 /**
@@ -18,14 +20,14 @@
 export function appMenuItems({ hosting, started = true }) {
 	return [
 		hosting
-			? { id: 'stopHosting', label: 'Stop hosting', enabled: started, group: 1 }
-			: { id: 'becomeHost', label: 'Become host', enabled: started, group: 1 },
+			? { id: 'stopHosting', label: t('menu.stopHosting'), enabled: started, group: 1 }
+			: { id: 'becomeHost', label: t('menu.becomeHost'), enabled: started, group: 1 },
 		// A phone can only connect to a host, so the item is not there at all otherwise.
-		...hosting ? [{ id: 'connectPhone', label: 'Connect a phone', enabled: started, group: 1 }] : [],
-		{ id: 'options', label: 'Options', enabled: started, group: 2 },
-		{ id: 'info', label: 'Info', enabled: true, group: 2 },
-		{ id: 'debug', label: 'Debug', enabled: started, group: 2 },
-		{ id: 'changeSoundboard', label: 'Change soundboard', enabled: true, group: 3 },
+		...hosting ? [{ id: 'connectPhone', label: t('menu.connectPhone'), enabled: started, group: 1 }] : [],
+		{ id: 'options', label: t('menu.options'), enabled: started, group: 2 },
+		{ id: 'info', label: t('menu.info'), enabled: true, group: 2 },
+		{ id: 'debug', label: t('menu.debug'), enabled: started, group: 2 },
+		{ id: 'changeSoundboard', label: t('menu.changeSoundboard'), enabled: true, group: 3 },
 	];
 }
 
@@ -36,10 +38,10 @@ export function appMenuItems({ hosting, started = true }) {
  */
 export function soundMenuItems(isActive) {
 	return [
-		{ id: 'play', label: 'Play', enabled: true, group: 0 },
-		{ id: 'stopAll', label: 'Stop All', enabled: isActive, group: 0 },
-		{ id: 'customize', label: 'Customize', enabled: true, group: 1 },
-		{ id: 'metadata', label: 'Metadata', enabled: true, group: 1 },
+		{ id: 'play', label: t('menu.play'), enabled: true, group: 0 },
+		{ id: 'stopAll', label: t('menu.stopAll'), enabled: isActive, group: 0 },
+		{ id: 'customize', label: t('menu.customize'), enabled: true, group: 1 },
+		{ id: 'metadata', label: t('menu.metadata'), enabled: true, group: 1 },
 	];
 }
 
@@ -53,14 +55,14 @@ export function soundMenuItems(isActive) {
 export function playlistMenuItems({ state, resume }) {
 	const active = state !== 'idle';
 	return [
-		{ id: 'play', label: 'Play', enabled: !active, group: 0 },
-		{ id: 'playInstant', label: 'Play (Instant)', enabled: !active, group: 0 },
-		{ id: 'next', label: 'Next', enabled: active, group: 1 },
-		{ id: 'nextInstant', label: 'Next (Instant)', enabled: active, group: 1 },
-		{ id: 'stop', label: 'Stop', enabled: active, group: 2 },
-		{ id: 'stopInstant', label: 'Stop (Instant)', enabled: active, group: 2 },
-		{ id: 'reset', label: 'Reset', enabled: !active && resume !== null, group: 2 },
-		{ id: 'customize', label: 'Customize', enabled: true, group: 3 },
-		{ id: 'metadata', label: 'Metadata', enabled: true, group: 3 },
+		{ id: 'play', label: t('menu.play'), enabled: !active, group: 0 },
+		{ id: 'playInstant', label: t('menu.playInstant'), enabled: !active, group: 0 },
+		{ id: 'next', label: t('menu.next'), enabled: active, group: 1 },
+		{ id: 'nextInstant', label: t('menu.nextInstant'), enabled: active, group: 1 },
+		{ id: 'stop', label: t('menu.stop'), enabled: active, group: 2 },
+		{ id: 'stopInstant', label: t('menu.stopInstant'), enabled: active, group: 2 },
+		{ id: 'reset', label: t('menu.reset'), enabled: !active && resume !== null, group: 2 },
+		{ id: 'customize', label: t('menu.customize'), enabled: true, group: 3 },
+		{ id: 'metadata', label: t('menu.metadata'), enabled: true, group: 3 },
 	];
 }

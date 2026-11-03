@@ -28,6 +28,7 @@ import { SoundEditor } from './sound-editor.js';
 import { SoundTile } from './sound-tile.js';
 import { Splash } from './splash.js';
 import { tileGrid } from './tile-grid.js';
+import { t } from './text.js';
 import { TrashButton } from './trash-button.js';
 import { TrashDialog } from './trash-dialog.js';
 import { VolumeControls } from './volume-controls.js';
@@ -116,13 +117,13 @@ export class App extends Component {
 		}));
 		this.own(soundboard.on('app.startFailed', ({ message }) => {
 			this.#phase = 'failed';
-			splash.show('Could not start the soundboard. Click to retry.', message);
+			splash.show(t('splash.startFailed'), message);
 		}));
 		this.own(soundboard.on('audio.suspended', () => {
 			if (this.#phase === 'ready') {
 				this.#phase = 'suspended';
 				this.#overlay.close();
-				splash.show('Audio paused by the system. Click to resume.');
+				splash.show(t('splash.suspended'));
 			}
 		}));
 		this.own(soundboard.on('audio.resumed', () => {
@@ -151,7 +152,7 @@ export class App extends Component {
 			if (restartNeeded) {
 				this.#phase = 'stopped';
 				this.#overlay.close();
-				splash.show('The audio folder needs a restart. Restart the app, then reload this page.', message);
+				splash.show(t('splash.restartNeeded'), message);
 			}
 		}));
 		this.own(() => this.#board?.destroy());
@@ -179,14 +180,14 @@ export class App extends Component {
 		}
 		this.#startAsHost = mode === 'host';
 		this.#phase = 'loading';
-		this.#splash?.show('Loading…');
+		this.#splash?.show(t('common.loading'));
 		this.#soundboard.start();
 	}
 
 	#onSplashClick() {
 		if (this.#phase === 'failed') {
 			this.#phase = 'loading';
-			this.#splash?.show('Loading…');
+			this.#splash?.show(t('common.loading'));
 			this.#soundboard.start();
 		} else if (this.#phase === 'suspended') {
 			this.#soundboard.unlockAudio();
@@ -206,8 +207,8 @@ function appMenuButton(overlay, items, onSelect) {
 	const button = h('button', {
 		'type': 'button',
 		'class': 'grid size-8 cursor-pointer place-items-center rounded-md text-muted hover:bg-raised-hover hover:text-text focus-visible:outline-2 focus-visible:outline-music',
-		'title': 'Menu',
-		'aria-label': 'Menu',
+		'title': t('header.menu'),
+		'aria-label': t('header.menu'),
 		'aria-haspopup': 'menu',
 		'data-app-menu': true,
 		'onClick': () => {
@@ -239,7 +240,7 @@ function openInfo(dialog, soundboard) {
 	const info = new InfoDialog(soundboard);
 	const body = h('div');
 	info.mount(body);
-	dialog.open({ title: 'Info', body, onClose: () => info.destroy() });
+	dialog.open({ title: t('info.title'), body, onClose: () => info.destroy() });
 }
 
 /**
@@ -344,9 +345,9 @@ class Board extends Component {
 		// The header's color and label tell which of the roles this page has (DESIGN.md §9.15).
 		const roleLabel = h('span', {
 			'class': 'hidden rounded bg-host px-2 py-0.5 text-xs font-bold tracking-widest text-surface uppercase group-data-[role=host]/header:inline-block',
-			'title': 'A remote control can control this page',
+			'title': t('header.hostTooltip'),
 			'data-role-label': true,
-		}, 'Host');
+		}, t('header.host'));
 		const menuButton = appMenuButton(overlay, () => appMenuItems({ hosting: soundboard.isHosting() }), (item) => {
 			if (item === 'becomeHost') {
 				this.becomeHost();
@@ -383,11 +384,11 @@ class Board extends Component {
 
 		const main = h('main', { class: 'min-h-0 flex-1 space-y-8 overflow-y-auto px-5 py-5' });
 		const { playlists, sounds } = this.#library;
-		const empty = h('p', { class: 'text-muted' }, 'No playlists or sounds were found in this folder.');
+		const empty = h('p', { class: 'text-muted' }, t('board.empty'));
 		empty.hidden = playlists.length > 0 || sounds.length > 0;
 
 		// Both sections are always there, even empty, so their add buttons can be reached.
-		const playlistSection = tileGrid('Playlists', { label: 'Add playlist', accent: 'music', onClick: () => this.#add({ kind: 'newPlaylist' }) });
+		const playlistSection = tileGrid(t('board.playlists'), { label: t('board.addPlaylist'), accent: 'music', onClick: () => this.#add({ kind: 'newPlaylist' }) });
 		const playlistGrid = playlistSection.grid;
 		/** @param {import('../logic/ports.js').PlaylistJson} playlist */
 		const addPlaylistTile = (playlist) => {
@@ -405,7 +406,7 @@ class Board extends Component {
 		playlists.forEach(addPlaylistTile);
 		this.#playlistGrid = playlistGrid;
 
-		const soundSection = tileGrid('Sound Effects', { label: 'Add sound', accent: 'sfx', onClick: () => this.#add({ kind: 'sound' }) });
+		const soundSection = tileGrid(t('board.sounds'), { label: t('board.addSound'), accent: 'sfx', onClick: () => this.#add({ kind: 'sound' }) });
 		const soundGrid = soundSection.grid;
 		/** @param {AudioFileJson} sound */
 		const addSoundTile = (sound) => {
@@ -470,7 +471,7 @@ class Board extends Component {
 		const dialog = new ConnectPhoneDialog(this.#soundboard);
 		const body = h('div');
 		dialog.mount(body);
-		this.#connectPhoneDialog.open({ title: 'Connect a phone', body, onClose: () => dialog.destroy() });
+		this.#connectPhoneDialog.open({ title: t('connectPhone.title'), body, onClose: () => dialog.destroy() });
 	}
 
 	#openInfo() {
@@ -482,14 +483,14 @@ class Board extends Component {
 		const debug = new DebugDialog(this.#soundboard, debugView);
 		const body = h('div');
 		debug.mount(body);
-		this.#debugDialog.open({ title: 'Debug', body, onClose: () => debug.destroy() });
+		this.#debugDialog.open({ title: t('debug.title'), body, onClose: () => debug.destroy() });
 	}
 
 	#openOptions() {
 		const options = new OptionsDialog(this.#soundboard);
 		const body = h('div');
 		options.mount(body);
-		this.#optionsDialog.open({ title: 'Options', body, onClose: () => options.destroy() });
+		this.#optionsDialog.open({ title: t('options.title'), body, onClose: () => options.destroy() });
 		body.querySelector('input')?.focus();
 	}
 
@@ -512,7 +513,7 @@ class Board extends Component {
 		});
 		const body = h('div');
 		dialog.mount(body);
-		this.#replaceHostDialog.open({ title: 'Replace the host?', body, footer: dialog.footer, onClose: () => dialog.destroy() });
+		this.#replaceHostDialog.open({ title: t('replaceHost.title'), body, footer: dialog.footer, onClose: () => dialog.destroy() });
 	}
 
 	/**
@@ -530,7 +531,7 @@ class Board extends Component {
 		const dialog = new MetadataDialog({ soundboard: this.#soundboard, target });
 		const body = h('div');
 		dialog.mount(body);
-		this.#metadataDialog.open({ title: `Metadata: "${item.title}"`, body, onClose: () => dialog.destroy() });
+		this.#metadataDialog.open({ title: t('metadata.title', { title: item.title }), body, onClose: () => dialog.destroy() });
 	}
 
 	/** Opens the problems dialog, which closes itself once nothing is left. */
@@ -538,7 +539,7 @@ class Board extends Component {
 		const dialog = new ProblemsDialog({ soundboard: this.#soundboard, onEmpty: () => this.#problemsDialog.close() });
 		const body = h('div');
 		dialog.mount(body);
-		this.#problemsDialog.open({ title: 'Problems', body, footer: dialog.footer, onClose: () => dialog.destroy() });
+		this.#problemsDialog.open({ title: t('problems.title'), body, footer: dialog.footer, onClose: () => dialog.destroy() });
 	}
 
 	/** Opens the trash dialog, which closes itself once the trash is empty. */
@@ -546,7 +547,7 @@ class Board extends Component {
 		const dialog = new TrashDialog({ soundboard: this.#soundboard, onEmpty: () => this.#trashDialog.close() });
 		const body = h('div');
 		dialog.mount(body);
-		this.#trashDialog.open({ title: 'Trash', body, footer: dialog.footer, onClose: () => dialog.destroy() });
+		this.#trashDialog.open({ title: t('trash.title'), body, footer: dialog.footer, onClose: () => dialog.destroy() });
 	}
 
 	/**
@@ -572,7 +573,7 @@ class Board extends Component {
 		const dialog = new MoveDialog({ soundboard: this.#soundboard, item, onMoved: () => this.#moveDialog.close() });
 		const body = h('div');
 		dialog.mount(body);
-		this.#moveDialog.open({ title: `Move "${title}"`, body, onClose: () => dialog.destroy() });
+		this.#moveDialog.open({ title: t('move.title', { title }), body, onClose: () => dialog.destroy() });
 		dialog.focus();
 	}
 
@@ -589,17 +590,17 @@ class Board extends Component {
 		const missing = [tools.ytDlp === null && 'yt-dlp', tools.ffmpeg === null && 'ffmpeg'].filter(Boolean);
 		if (missing.length > 0) {
 			const body = h('div', { class: 'space-y-3 text-sm' },
-				h('p', {}, 'Downloads need yt-dlp and ffmpeg.'),
-				h('p', {}, `${missing.join(' and ')} ${missing.length === 1 ? 'was' : 'were'} not found when the app started. Install ${missing.length === 1 ? 'it' : 'them'}, then restart the app.`));
-			this.#dialog.open({ title: 'Downloads are not available', body, onClose: returnTo });
+				h('p', {}, t('add.toolsNeeded')),
+				h('p', {}, missing.length === 1 ? t('add.toolMissing', { tool: String(missing[0]) }) : t('add.toolsMissing')));
+			this.#dialog.open({ title: t('add.unavailableTitle'), body, onClose: returnTo });
 			return;
 		}
 		/** @type {Record<typeof target.kind, string>} */
-		const titles = { sound: 'Add sounds', newPlaylist: 'Add a playlist', playlist: 'Add tracks' };
+		const titles = { sound: t('add.titleSounds'), newPlaylist: t('add.titlePlaylist'), playlist: '' };
 		let title = titles[target.kind];
 		if (target.kind === 'playlist') {
 			const playlist = soundboard.getLibrary()?.playlists.find((entry) => entry.id === target.playlistId);
-			title = `Add tracks to ${playlist?.title ?? target.playlistId}`;
+			title = t('add.titleTracks', { playlist: playlist?.title ?? target.playlistId });
 		}
 		let started = false;
 		const dialog = new AddDialog({
@@ -640,7 +641,7 @@ class Board extends Component {
 		const sound = soundboard.getLibrary()?.sounds.find((entry) => entry.id === soundId);
 		if (sound) {
 			const editor = new SoundEditor({ soundboard, sound, onMove: () => this.#move({ kind: 'sound', id: soundId }, sound.title) });
-			this.#openEditor('Customize sound', editor, () => {
+			this.#openEditor(t('customize.soundTitle'), editor, () => {
 				soundboard.flushSoundOptions(soundId);
 				sortTiles(soundboard.getLibrary()?.sounds ?? [], this.#soundTiles, this.#soundGrid);
 			}, { kind: 'sound', id: soundId });
@@ -663,7 +664,7 @@ class Board extends Component {
 				onAddTracks: () => this.#add({ kind: 'playlist', playlistId }, () => this.#customizePlaylist(playlistId, 'tracks')),
 				onMoveTrack: (track) => this.#move({ kind: 'track', id: track.id, playlistId }, track.title),
 			});
-			this.#openEditor('Customize playlist', editor, () => {
+			this.#openEditor(t('customize.playlistTitle'), editor, () => {
 				editor.flushEdits();
 				sortTiles(soundboard.getLibrary()?.playlists ?? [], this.#playlistTiles, this.#playlistGrid);
 			}, { kind: 'playlist', id: playlistId });
@@ -677,9 +678,9 @@ class Board extends Component {
 			path !== '' && h('span', { class: 'font-medium text-text' }, `${path}: `),
 			h('span', { class: 'text-muted' }, message))));
 		const body = h('div', { class: 'space-y-4' },
-			h('p', {}, 'Nothing was loaded. Fix or delete these files, then refresh again:'),
+			h('p', {}, t('refresh.failedIntro')),
 			list);
-		this.#dialog.open({ title: 'Could not load the changes', body });
+		this.#dialog.open({ title: t('refresh.failedTitle'), body });
 	}
 
 	/**

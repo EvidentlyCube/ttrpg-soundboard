@@ -1,6 +1,7 @@
 import { Component } from './component.js';
 import { h, on } from './dom.js';
 import { icon } from './icons.js';
+import { t } from './text.js';
 
 /** @typedef {import('../logic/soundboard.js').Soundboard} Soundboard */
 
@@ -28,14 +29,14 @@ export class ProblemsButton extends Component {
 		const button = h('button', {
 			'type': 'button',
 			'class': 'flex cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm font-semibold whitespace-nowrap hover:brightness-125 data-[severity=error]:border-danger data-[severity=error]:text-danger data-[severity=warning]:border-notice data-[severity=warning]:text-notice',
-			'title': 'Some things need your attention',
+			'title': t('problems.buttonTooltip'),
 			'data-problems-button': true,
 		}, icon('alert', 'size-4'), label);
 		const show = () => {
 			const problems = this.#soundboard.getProblems();
 			button.hidden = problems.length === 0;
 			button.dataset.severity = problems.some((problem) => problem.severity === 'error') ? 'error' : 'warning';
-			label.textContent = problems.length === 1 ? '1 problem' : `${problems.length} problems`;
+			label.textContent = t('problems.count', { count: problems.length });
 		};
 		show();
 		this.own(this.#soundboard.on('problems.changed', show));

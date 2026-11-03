@@ -6,6 +6,7 @@ import { RangeControl } from './range-control.js';
 import { GainControl } from './gain-control.js';
 import { formatDb } from './gain-scale.js';
 import { fromStored, toStoredEnd } from './range-scale.js';
+import { t } from './text.js';
 import { trackAction, trackPlayback } from './track-playback.js';
 
 /** @typedef {import('../logic/ports.js').AudioFileJson} AudioFileJson */
@@ -49,7 +50,7 @@ export class TrackAccordion extends Component {
 		// Tracks can leave while the dialog is open, so a row looks its index up instead of keeping it.
 		const indexOf = (/** @type {string} */ trackId) => this.#playlist.tracks.findIndex((track) => track.id === trackId);
 		const lastTrackNote = () => (this.#playlist.tracks.length === 1
-			? 'This is the only track: deleting or moving it deletes the playlist too.'
+			? t('customize.lastTrackNote')
 			: null);
 		const playlistId = this.#playlist.id;
 		const list = h('ol', { 'class': 'divide-y divide-line', 'data-track-accordion': true });
@@ -98,13 +99,13 @@ export class TrackAccordion extends Component {
 			});
 			const cropped = h('span', {
 				'class': 'shrink-0 rounded-full bg-music/20 px-2 py-0.5 text-[0.65rem] font-semibold uppercase text-music',
-				'title': 'Only part of the file plays',
+				'title': t('customize.croppedTooltip'),
 				'data-track-cropped': track.id,
 				'hidden': !isCropped(track),
-			}, 'Cropped');
+			}, t('customize.cropped'));
 			const volume = h('span', {
 				'class': 'shrink-0 rounded-full px-2 py-0.5 text-[0.65rem] font-semibold tabular-nums data-[change=louder]:bg-boost/20 data-[change=louder]:text-boost data-[change=quieter]:bg-cyan-400/20 data-[change=quieter]:text-cyan-300',
-				'title': "This track's volume differs from the file",
+				'title': t('customize.trackVolumeTooltip'),
 				'data-track-volume': track.id,
 			});
 			showVolume(volume, track);
@@ -144,11 +145,11 @@ export class TrackAccordion extends Component {
 			if (range) {
 				const slot = h('div');
 				range.mount(slot);
-				body.append(card('Start and end', 'music', slot));
+				body.append(card(t('customize.startAndEnd'), 'music', slot));
 			}
 			const gain = new GainControl({
 				value: track.gain,
-				label: 'Track volume',
+				label: t('customize.trackVolume'),
 				onChange: (value) => {
 					this.#onEdit(track.id);
 					this.#soundboard.customizeTrack(track.id, { gain: value });
@@ -157,10 +158,10 @@ export class TrackAccordion extends Component {
 			this.own(() => gain.destroy());
 			const gainSlot = h('div');
 			gain.mount(gainSlot);
-			body.append(card('Volume', 'music', gainSlot));
-			body.append(card('Track', 'music', this.#settings(track)));
+			body.append(card(t('customize.volume'), 'music', gainSlot));
+			body.append(card(t('customize.trackCard'), 'music', this.#settings(track)));
 			const removal = moveOrDeleteCard({
-				title: 'Move or delete',
+				title: t('customize.moveOrDelete'),
 				accent: 'music',
 				onMove: () => this.#onMove(track),
 				onDelete: () => this.#soundboard.deleteTrack(track.id),
@@ -180,7 +181,7 @@ export class TrackAccordion extends Component {
 					return;
 				}
 				const playback = trackPlayback(state, currentIndex, index);
-				const label = trackAction(playback) === 'stop' ? 'Stop' : 'Play';
+				const label = trackAction(playback) === 'stop' ? t('customize.stop') : t('customize.play');
 				row.play.dataset.playback = playback;
 				row.play.title = label;
 				row.play.setAttribute('aria-label', label);
@@ -271,7 +272,7 @@ export class TrackAccordion extends Component {
 	#settings(track) {
 		return titleField({
 			value: track.title,
-			hint: `File: ${track.id}`,
+			hint: t('customize.file', { file: track.id }),
 			onTitle: (value) => {
 				this.#onEdit(track.id);
 				this.#soundboard.customizeTrack(track.id, { title: value });
@@ -288,7 +289,7 @@ export class TrackAccordion extends Component {
  */
 function showVolume(bubble, track) {
 	const text = formatDb(track.gain);
-	const same = text === '0.0 dB';
+	const same = text === formatDb(1);
 	bubble.hidden = same;
 	bubble.dataset.change = same ? 'none' : (track.gain > 1 ? 'louder' : 'quieter');
 	bubble.textContent = text;

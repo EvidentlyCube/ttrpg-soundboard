@@ -1,6 +1,7 @@
 import { encodeQr } from '../logic/qr-code.js';
 import { Component } from './component.js';
 import { h } from './dom.js';
+import { t } from './text.js';
 
 /** @typedef {import('../logic/soundboard.js').Soundboard} Soundboard */
 
@@ -36,10 +37,10 @@ export class ConnectPhoneDialog extends Component {
 	 */
 	#content(links) {
 		if (links.length === 0) {
-			return [h('p', {}, 'Start the app with --lan to connect a phone.')];
+			return [h('p', {}, t('connectPhone.noLan'))];
 		}
 		return [
-			h('p', { class: 'text-muted' }, 'Scan this with the phone, on the same network. Then allow it here.'),
+			h('p', { class: 'text-muted' }, t('connectPhone.scan')),
 			qrCanvas(links[0]),
 			...links.map((link) => h('p', { 'class': 'text-xs break-all text-muted select-all', 'data-connect-link': true }, link)),
 		];
@@ -58,7 +59,7 @@ function qrCanvas(text) {
 		'width': size,
 		'height': size,
 		'role': 'img',
-		'aria-label': 'QR code with the link to this soundboard',
+		'aria-label': t('connectPhone.qrLabel'),
 		'data-qr-code': true,
 	});
 	const context = canvas.getContext('2d');

@@ -2,6 +2,7 @@ import { Component } from './component.js';
 import { h, on } from './dom.js';
 import { filledField } from './filled-field.js';
 import { BARS_SHARE, formatDb, ITEM_SCALE, parseDb, stepGain } from './gain-scale.js';
+import { t } from './text.js';
 
 /** @typedef {import('./gain-scale.js').GainScale} GainScale */
 
@@ -72,7 +73,7 @@ export class GainControl extends Component {
 			'aria-label': this.#label,
 			'aria-valuemin': '0',
 			'aria-valuemax': String(scale.max),
-			'title': 'Click or drag to set the volume; double-click for 0 dB',
+			'title': t('controls.gainTooltip'),
 			'data-gain-track': true,
 			'class': `relative ${this.#mini ? 'h-4 w-20' : `h-8 ${this.#compact ? 'w-32' : 'w-60'}`} shrink-0 cursor-pointer touch-none select-none rounded-sm outline-none `
 				+ 'focus-visible:ring-2 focus-visible:ring-music focus-visible:ring-offset-4 focus-visible:ring-offset-panel',
@@ -82,14 +83,14 @@ export class GainControl extends Component {
 		const readout = h('button', {
 			'type': 'button',
 			'class': `${width} shrink-0 cursor-text rounded-md px-2 py-1 text-right font-medium tabular-nums hover:bg-raised-hover data-[boost=true]:text-boost`,
-			'title': 'Click to type a level in dB',
+			'title': t('controls.gainReadout'),
 			'data-gain-readout': true,
 		});
 		const { element: fieldBox, input: field } = filledField({
 			unit: 'dB',
 			accent: this.#accent,
 			width: this.#compact ? 'w-20 text-sm' : 'w-24',
-			attributes: { 'inputmode': 'decimal', 'aria-label': `${this.#label} in dB` },
+			attributes: { 'inputmode': 'decimal', 'aria-label': t('controls.inDb', { label: this.#label }) },
 		});
 		fieldBox.hidden = true;
 
@@ -101,7 +102,7 @@ export class GainControl extends Component {
 			track.setAttribute('aria-valuenow', String(value));
 			track.setAttribute('aria-valuetext', formatDb(gain));
 			if (this.#mini) {
-				track.title = `${this.#label}: ${Math.round(value * 100)}%. Double-click for full`;
+				track.title = t('controls.miniGain', { label: this.#label, percent: Math.round(value * 100) });
 			}
 		};
 		const change = (/** @type {number} */ value) => {

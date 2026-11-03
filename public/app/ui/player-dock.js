@@ -2,6 +2,7 @@ import { Component } from './component.js';
 import { h } from './dom.js';
 import { PanicButton } from './panic-button.js';
 import { PlayerBar } from './player-bar.js';
+import { t } from './text.js';
 
 /** @typedef {import('../logic/ports.js').AudioFileJson} AudioFileJson */
 /** @typedef {import('../logic/ports.js').PlaylistJson} PlaylistJson */
@@ -17,7 +18,7 @@ export function dockLayout() {
 	const placeholder = h('div', {
 		'class': 'col-span-3 flex h-28 items-center justify-center rounded-lg border border-dashed border-line text-sm text-muted',
 		'data-dock-placeholder': true,
-	}, 'No playlist playing');
+	}, t('dock.nothingPlaying'));
 	// Bars are h-28 (7rem): two rows plus the gap and padding is 16.25rem.
 	const grid = h('div', { class: 'grid max-h-[16.25rem] grid-cols-3 gap-3 overflow-y-auto p-3' }, placeholder);
 	// The button's slot is as tall as one bar and stays at the top right, so it never moves.

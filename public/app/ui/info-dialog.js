@@ -1,5 +1,6 @@
 import { Component } from './component.js';
 import { h } from './dom.js';
+import { t } from './text.js';
 
 /** @typedef {import('../logic/soundboard.js').Soundboard} Soundboard */
 /** @typedef {import('../logic/ports.js').AppInfo} AppInfo */
@@ -17,10 +18,10 @@ export class InfoDialog extends Component {
 
 	/** @override */
 	render() {
-		const body = h('div', { 'class': 'min-w-80 text-sm', 'data-info': true }, h('p', { class: 'text-muted' }, 'Loading…'));
+		const body = h('div', { 'class': 'min-w-80 text-sm', 'data-info': true }, h('p', { class: 'text-muted' }, t('common.loading')));
 		this.#soundboard.fetchInfo().then(
 			(info) => body.replaceChildren(content(info)),
-			() => body.replaceChildren(h('p', { class: 'text-danger' }, 'Could not get the versions from the server.')),
+			() => body.replaceChildren(h('p', { class: 'text-danger' }, t('info.failed'))),
 		);
 		return body;
 	}
@@ -32,7 +33,7 @@ export class InfoDialog extends Component {
  */
 function content(info) {
 	return h('dl', { class: 'grid grid-cols-[auto_1fr] gap-x-6 gap-y-2' },
-		...row('app', 'Soundboard', info.app),
+		...row('app', t('app.name'), info.app),
 		...row('yt-dlp', 'yt-dlp', info.ytDlp.version, info.ytDlp.update && updateStatus(info.ytDlp.update)),
 		...row('ffmpeg', 'ffmpeg', info.ffmpeg));
 }
@@ -49,7 +50,7 @@ function row(id, name, version, status = null) {
 		h('dt', { class: 'text-muted' }, name),
 		h('dd', { 'class': 'space-y-0.5', 'data-info-row': id },
 			version === null
-				? h('div', { class: 'text-muted' }, 'Not installed')
+				? h('div', { class: 'text-muted' }, t('info.notInstalled'))
 				: h('div', { class: 'font-medium tabular-nums' }, version),
 			status),
 	];
@@ -63,12 +64,12 @@ function updateStatus(update) {
 	const attributes = { 'class': 'text-xs text-muted data-[state=outdated]:text-notice', 'data-update-state': update.state };
 	switch (update.state) {
 		case 'current':
-			return h('div', attributes, 'Up to date');
+			return h('div', attributes, t('info.upToDate'));
 		case 'updated':
-			return h('div', attributes, `Updated at startup${update.current ? ` from ${update.current}` : ''}`);
+			return h('div', attributes, update.current ? t('info.updatedFrom', { version: update.current }) : t('info.updated'));
 		case 'outdated':
-			return h('div', { ...attributes, title: update.error ?? '' }, `${update.latest} available, but the update failed`);
+			return h('div', { ...attributes, title: update.error ?? '' }, t('info.outdated', { version: update.latest ?? '' }));
 		case 'failed':
-			return h('div', { ...attributes, title: update.error ?? '' }, 'Could not check for updates');
+			return h('div', { ...attributes, title: update.error ?? '' }, t('info.checkFailed'));
 	}
 }

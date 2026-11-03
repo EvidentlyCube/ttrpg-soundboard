@@ -1,4 +1,5 @@
 import { h, on } from './dom.js';
+import { t } from './text.js';
 
 /** How long the button must be held down, unless it says otherwise. */
 export const HOLD_MS = 500;
@@ -34,7 +35,7 @@ export function holdButton({ label, busyLabel, onHold, holdMs = HOLD_MS, tone = 
 	const element = h('button', {
 		'type': 'button',
 		'class': `group/hold relative cursor-pointer touch-none overflow-hidden rounded-md border px-3 py-1.5 text-sm font-medium whitespace-nowrap select-none disabled:cursor-default disabled:opacity-60 ${colors.button}`,
-		'title': `Hold for ${seconds} second${seconds === 1 ? '' : 's'} to confirm`,
+		'title': t('common.holdToConfirm', { count: seconds }),
 		'data-holding': 'false',
 		'data-hold-button': true,
 	}, fill, text);

@@ -2,6 +2,7 @@ import { h } from './dom.js';
 import { filledField } from './filled-field.js';
 import { holdButton } from './hold-button.js';
 import { icon } from './icons.js';
+import { t } from './text.js';
 
 /** @typedef {import('./dom.js').Child} Child */
 
@@ -137,7 +138,7 @@ export function titleField({ value, hint, accent = 'music', onTitle }) {
 	// File names can be long, so the hint stays on one line and shows in full as a tooltip.
 	const hintText = h('p', { class: 'truncate text-xs text-muted', title: hint }, hint);
 	const { element: field, input } = filledField({
-		label: 'Title',
+		label: t('customize.title'),
 		accent,
 		align: 'left',
 		width: 'w-full',
@@ -147,7 +148,7 @@ export function titleField({ value, hint, accent = 'music', onTitle }) {
 		const empty = input.value.trim() === '';
 		input.setAttribute('aria-invalid', String(empty));
 		input.dataset.invalid = String(empty);
-		hintText.textContent = empty ? 'A title cannot be empty; the last one is kept.' : hint;
+		hintText.textContent = empty ? t('customize.emptyTitle') : hint;
 		hintText.title = hintText.textContent;
 		if (!empty) {
 			onTitle(input.value);
@@ -189,7 +190,7 @@ export function playToggle(onClick, accent) {
 	/** @param {boolean} active */
 	const show = (active) => {
 		iconSlot.replaceChildren(icon(active ? 'stop' : 'play', 'size-4'));
-		label.textContent = active ? 'Stop' : 'Play';
+		label.textContent = active ? t('customize.stop') : t('customize.play');
 	};
 	return { element, show };
 }
@@ -255,14 +256,14 @@ export function moveOrDeleteCard({ title, accent, onMove, onDelete, note }) {
 	const error = h('p', { 'class': 'text-sm text-danger', 'hidden': true, 'data-delete-error': true });
 	const noteText = h('p', { class: 'text-xs text-muted' });
 	const remove = holdButton({
-		label: 'Hold to delete',
-		busyLabel: 'Deleting…',
+		label: t('customize.holdToDelete'),
+		busyLabel: t('customize.deleting'),
 		onHold: () => {
 			error.hidden = true;
 			remove.setBusy(true);
 			onDelete().catch((/** @type {unknown} */ reason) => {
 				remove.setBusy(false);
-				error.textContent = `Could not delete: ${reason instanceof Error ? reason.message : String(reason)}`;
+				error.textContent = t('customize.deleteFailed', { reason: reason instanceof Error ? reason.message : String(reason) });
 				error.hidden = false;
 			});
 		},
@@ -272,7 +273,7 @@ export function moveOrDeleteCard({ title, accent, onMove, onDelete, note }) {
 		'class': 'cursor-pointer rounded-md border border-line px-3 py-1.5 text-sm hover:bg-raised-hover',
 		'data-move-item': true,
 		'onClick': onMove,
-	}, 'Move…');
+	}, t('customize.move'));
 	/** @param {string | null} text */
 	const showNote = (text) => {
 		noteText.textContent = text ?? '';
@@ -299,14 +300,14 @@ export function saveStatus() {
 	const show = (state, message = '') => {
 		element.dataset.state = state;
 		if (state === 'failed') {
-			element.replaceChildren(`Could not save: ${message}`);
+			element.replaceChildren(t('customize.saveFailed', { reason: message }));
 			element.removeAttribute('aria-label');
 			return;
 		}
 		element.replaceChildren(state === 'saving'
 			? icon('spinner', 'size-5 animate-spin text-muted')
 			: icon('check', 'size-5 text-emerald-400'));
-		element.setAttribute('aria-label', state === 'saving' ? 'Saving' : 'Saved');
+		element.setAttribute('aria-label', state === 'saving' ? t('customize.saving') : t('customize.saved'));
 	};
 	return { element, show };
 }

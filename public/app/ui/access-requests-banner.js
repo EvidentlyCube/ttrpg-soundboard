@@ -1,5 +1,6 @@
 import { Component } from './component.js';
 import { h, on } from './dom.js';
+import { t, tParts } from './text.js';
 
 /** @typedef {import('../logic/soundboard.js').Soundboard} Soundboard */
 /** @typedef {import('../logic/ports.js').AccessRequest} AccessRequest */
@@ -46,11 +47,11 @@ export class AccessRequestsBanner extends Component {
 			return element;
 		};
 		return h('div', { 'class': 'flex flex-wrap items-center gap-x-4 gap-y-2', 'data-access-request': address },
-			h('span', { class: 'text-sm' }, 'A device asks to connect: ', h('span', { class: 'font-semibold' }, address)),
+			h('span', { class: 'text-sm' }, ...tParts('access.asks', { address: h('span', { class: 'font-semibold' }, address) })),
 			h('span', { 'class': 'rounded bg-surface px-2 py-0.5 text-lg font-bold tracking-widest tabular-nums', 'data-access-code': true }, code),
 			h('span', { class: 'flex gap-2' },
-				button('Allow', 'bg-host text-surface hover:brightness-110', 'allow'),
-				button('Deny', 'bg-raised hover:bg-raised-hover', 'deny'),
+				button(t('access.allow'), 'bg-host text-surface hover:brightness-110', 'allow'),
+				button(t('access.deny'), 'bg-raised hover:bg-raised-hover', 'deny'),
 			),
 		);
 	}

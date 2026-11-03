@@ -1,3 +1,5 @@
+import { formatFixed } from './text.js';
+
 /**
  * A file size in decimal units, as operating systems show them: `840 KB`, `1.4 GB`.
  * @param {number} bytes
@@ -10,7 +12,7 @@ export function formatBytes(bytes) {
 		value /= 1000;
 		unit++;
 	}
-	return unit === 0 ? `${value} B` : `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`;
+	return unit === 0 ? `${value} B` : `${formatFixed(value, value < 10 ? 1 : 0)} ${units[unit]}`;
 }
 
 /**
@@ -21,7 +23,7 @@ export function formatBytes(bytes) {
 export function formatMegabytes(bytes) {
 	const isGigabytes = bytes >= 1e9;
 	const value = Math.max(bytes / (isGigabytes ? 1e9 : 1e6), 0.1);
-	return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${isGigabytes ? 'GB' : 'MB'}`;
+	return `${formatFixed(value, value < 10 ? 1 : 0)} ${isGigabytes ? 'GB' : 'MB'}`;
 }
 
 /**

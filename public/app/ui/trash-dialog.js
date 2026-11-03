@@ -2,6 +2,7 @@ import { Component } from './component.js';
 import { h } from './dom.js';
 import { formatBytes, formatMegabytes } from './format.js';
 import { holdButton } from './hold-button.js';
+import { t } from './text.js';
 
 /** @typedef {import('../logic/soundboard.js').Soundboard} Soundboard */
 /** @typedef {import('../logic/ports.js').TrashTarget} TrashTarget */
@@ -53,20 +54,20 @@ export class TrashDialog extends Component {
 
 	/** @override */
 	render() {
-		const list = h('div', { 'class': 'space-y-5', 'data-trash-list': true }, h('p', { class: 'text-sm text-muted' }, 'Loading…'));
+		const list = h('div', { 'class': 'space-y-5', 'data-trash-list': true }, h('p', { class: 'text-sm text-muted' }, t('common.loading')));
 		const error = h('p', { 'class': 'mb-2 text-sm text-danger', 'hidden': true, 'data-trash-error': true });
 		const total = h('span', { class: 'flex-1 text-sm text-muted' });
 
 		const restoreAll = holdButton({
-			label: 'Restore all',
-			busyLabel: 'Restoring…',
+			label: t('trash.restoreAll'),
+			busyLabel: t('trash.restoring'),
 			holdMs: HOLD_ALL_MS,
 			tone: 'neutral',
 			onHold: () => this.#act(() => this.#soundboard.restoreFromTrash('all'), restoreAll, 'restore', error, list, total),
 		});
 		const deleteAll = holdButton({
-			label: 'Delete all',
-			busyLabel: 'Deleting…',
+			label: t('trash.deleteAll'),
+			busyLabel: t('trash.deleting'),
 			holdMs: HOLD_ALL_MS,
 			onHold: () => this.#act(() => this.#soundboard.deleteFromTrash('all'), deleteAll, 'delete', error, list, total),
 		});
@@ -101,7 +102,7 @@ export class TrashDialog extends Component {
 			listing = await this.#soundboard.loadTrash();
 		} catch (reason) {
 			if (generation === this.#generation) {
-				showError(error, 'Could not read the trash', reason);
+				showError(error, 'trash.readFailed', reason);
 			}
 			return;
 		}
@@ -112,7 +113,7 @@ export class TrashDialog extends Component {
 			this.#onEmpty();
 			return;
 		}
-		total.textContent = `${formatMegabytes(listing.size)} in total`;
+		total.textContent = t('trash.total', { size: formatMegabytes(listing.size) });
 		this.#showListing(listing, list, error, total);
 	}
 
@@ -139,14 +140,14 @@ export class TrashDialog extends Component {
 			/** @type {TrashTarget} */
 			const target = { kind, id };
 			const restore = holdButton({
-				label: 'Restore',
-				busyLabel: 'Restoring…',
+				label: t('trash.restore'),
+				busyLabel: t('trash.restoring'),
 				tone: 'neutral',
 				onHold: () => this.#act(() => this.#soundboard.restoreFromTrash(target), restore, 'restore', error, list, total),
 			});
 			const remove = holdButton({
-				label: 'Delete',
-				busyLabel: 'Deleting…',
+				label: t('trash.delete'),
+				busyLabel: t('trash.deleting'),
 				onHold: () => this.#act(() => this.#soundboard.deleteFromTrash(target), remove, 'delete', error, list, total),
 			});
 			this.#rowButtons.push(restore, remove);
@@ -161,7 +162,6 @@ export class TrashDialog extends Component {
 				h('span', { class: 'block truncate text-xs text-muted', title: detail }, detail)),
 			h('span', { class: 'flex shrink-0 items-center gap-2 pr-2' }, restore.element, remove.element));
 		};
-		const count = (/** @type {number} */ n) => `${n} track${n === 1 ? '' : 's'}`;
 		/** @param {import('../logic/ports.js').TrashedFileJson} file */
 		const fileDetail = (file, /** @type {string} */ path) => [file.title === path ? null : path, formatBytes(file.size)].filter(Boolean).join(' · ');
 		/**
@@ -178,8 +178,8 @@ export class TrashDialog extends Component {
 		};
 
 		list.replaceChildren(...[
-			section('Playlists', playlists.flatMap((playlist) => [
-				row({ kind: 'playlist', id: playlist.id, title: playlist.title, detail: `${count(playlist.tracks.length)} · ${formatBytes(playlist.size)}` }),
+			section(t('board.playlists'), playlists.flatMap((playlist) => [
+				row({ kind: 'playlist', id: playlist.id, title: playlist.title, detail: `${t('playlist.trackCount', { count: playlist.tracks.length })} · ${formatBytes(playlist.size)}` }),
 				...playlist.tracks.map((track) => row({
 					kind: 'track',
 					id: track.id,
@@ -187,7 +187,7 @@ export class TrashDialog extends Component {
 					detail: fileDetail(track, track.id.slice(playlist.id.length + 1)),
 				})),
 			])),
-			section('Sound effects', sounds.map((sound) => row({ kind: 'sound', id: sound.id, title: sound.title, detail: fileDetail(sound, sound.id) }))),
+			section(t('move.sounds'), sounds.map((sound) => row({ kind: 'sound', id: sound.id, title: sound.title, detail: fileDetail(sound, sound.id) }))),
 		].filter((child) => child !== null));
 		this.#setDisabled(this.#busy);
 	}
@@ -212,7 +212,7 @@ export class TrashDialog extends Component {
 		try {
 			await action();
 		} catch (reason) {
-			showError(error, `Could not ${verb}`, reason);
+			showError(error, verb === 'restore' ? 'trash.restoreFailed' : 'trash.deleteFailed', reason);
 		}
 		this.#busy = false;
 		button.setBusy(false);
@@ -230,10 +230,10 @@ export class TrashDialog extends Component {
 
 /**
  * @param {HTMLElement} error
- * @param {string} what
+ * @param {'trash.readFailed' | 'trash.restoreFailed' | 'trash.deleteFailed'} what
  * @param {unknown} reason
  */
 function showError(error, what, reason) {
-	error.textContent = `${what}: ${reason instanceof Error ? reason.message : String(reason)}`;
+	error.textContent = t(what, { reason: reason instanceof Error ? reason.message : String(reason) });
 	error.hidden = false;
 }

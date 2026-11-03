@@ -2,6 +2,7 @@ import { Component } from './component.js';
 import { card } from './customize-parts.js';
 import { h } from './dom.js';
 import { sourceRows } from './source-fields.js';
+import { t } from './text.js';
 
 /** @typedef {import('../logic/soundboard.js').Soundboard} Soundboard */
 /** @typedef {import('../logic/ports.js').AudioFileJson} AudioFileJson */
@@ -31,7 +32,7 @@ export class MetadataDialog extends Component {
 		const { kind, id } = this.#target;
 		if (kind === 'sound') {
 			const sound = library?.sounds.find((entry) => entry.id === id);
-			return h('div', { 'data-metadata': 'sound' }, sound ? fileCard('Source', 'sfx', sound) : null);
+			return h('div', { 'data-metadata': 'sound' }, sound ? fileCard(t('metadata.source'), 'sfx', sound) : null);
 		}
 		const tracks = library?.playlists.find((entry) => entry.id === id)?.tracks ?? [];
 		return h('div', { 'class': 'space-y-8 pt-3', 'data-metadata': 'playlist' },
@@ -46,7 +47,7 @@ export class MetadataDialog extends Component {
  */
 function fileCard(title, accent, file) {
 	const rows = [
-		{ label: 'File', value: file.id, href: null, extra: null },
+		{ label: t('metadata.field.file'), value: file.id, href: null, extra: null },
 		...sourceRows(file.source),
 	];
 	return card(title, accent, h('dl', { 'class': 'grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm', 'data-metadata-file': file.id },
@@ -63,7 +64,7 @@ function fileCard(title, accent, file) {
  */
 function valueOf(value, href) {
 	if (value === null) {
-		return h('span', { class: 'italic text-muted/70' }, 'n/a');
+		return h('span', { class: 'italic text-muted/70' }, t('metadata.none'));
 	}
 	return href === null
 		? h('span', { class: 'truncate select-text', title: value }, value)

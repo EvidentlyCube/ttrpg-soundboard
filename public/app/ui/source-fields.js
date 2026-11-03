@@ -1,3 +1,5 @@
+import { t } from './text.js';
+
 /** @typedef {import('../logic/ports.js').SourceJson} SourceJson */
 
 /**
@@ -9,14 +11,10 @@
  * @property {{ label: string, href: string } | null} extra a second link after the value
  */
 
-/** @type {Record<SourceJson['origin'], string>} */
-const ORIGIN_LABELS = {
-	download: 'Downloaded',
-	fileName: 'Found in the file name',
-	tags: "Found in the file's tags",
-	unknown: 'Unknown',
-	edited: 'Entered by hand',
-};
+const ORIGINS = ['download', 'fileName', 'tags', 'unknown', 'edited'];
+
+/** @param {string} origin */
+const originLabel = (origin) => (ORIGINS.includes(origin) ? t(`metadata.origin.${/** @type {SourceJson['origin']} */ (origin)}`) : origin);
 
 /**
  * The rows the metadata dialog shows for a file's source, in order, each with its link when one can be built. YouTube
@@ -32,29 +30,26 @@ export function sourceRows(source) {
 	const chapterStart = source?.chapterStart ?? null;
 	const url = source?.url ?? null;
 	/**
-	 * @param {string} key
-	 * @param {string} label
+	 * @param {'origin' | 'url' | 'extractor' | 'videoId' | 'playlistId' | 'chapter'} key
 	 * @param {string | null} value
 	 * @param {string | null} [href]
 	 * @param {SourceRow['extra']} [extra]
 	 * @returns {SourceRow}
 	 */
-	const row = (key, label, value, href = null, extra = null) => ({ key, label, value, href: value === null ? null : href, extra });
+	const row = (key, value, href = null, extra = null) => ({ key, label: t(`metadata.field.${key}`), value, href: value === null ? null : href, extra });
 	return [
-		row('origin', 'Origin', source ? ORIGIN_LABELS[source.origin] ?? source.origin : null),
-		row('url', 'Link', url, url !== null && /^https?:\/\//i.test(url) ? url : null),
-		row('extractor', 'Site', source?.extractor ?? null),
-		row('videoId', 'Video', videoId, youtube && videoId !== null ? youtubeWatchUrl(videoId) : null),
+		row('origin', source ? originLabel(source.origin) : null),
+		row('url', url, url !== null && /^https?:\/\//i.test(url) ? url : null),
+		row('extractor', source?.extractor ?? null),
+		row('videoId', videoId, youtube && videoId !== null ? youtubeWatchUrl(videoId) : null),
 		row(
 			'playlistId',
-			'Playlist',
 			playlistId,
 			youtube && playlistId !== null ? youtubePlaylistUrl(playlistId) : null,
-			youtube && playlistId !== null && videoId !== null ? { label: 'in playlist', href: youtubeWatchUrl(videoId, { playlistId }) } : null,
+			youtube && playlistId !== null && videoId !== null ? { label: t('metadata.inPlaylist'), href: youtubeWatchUrl(videoId, { playlistId }) } : null,
 		),
 		row(
 			'chapter',
-			'Chapter',
 			chapter === null ? null : String(chapter),
 			youtube && videoId !== null && chapterStart !== null ? youtubeWatchUrl(videoId, { start: chapterStart }) : null,
 		),

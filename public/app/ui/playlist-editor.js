@@ -6,6 +6,7 @@ import { h } from './dom.js';
 import { GainControl } from './gain-control.js';
 import { SecondsControl } from './seconds-control.js';
 import { crossfadeLimits, formatSeconds, SECONDS_LIMITS } from './seconds-scale.js';
+import { t } from './text.js';
 import { TrackAccordion } from './track-accordion.js';
 
 /** @typedef {import('../logic/ports.js').PlaylistJson} PlaylistJson */
@@ -15,19 +16,11 @@ import { TrackAccordion } from './track-accordion.js';
 /** @typedef {import('../logic/order-strategies.js').PlaybackOrder} PlaybackOrder */
 /** @typedef {import('../logic/playback-rules.js').StopMode} StopMode */
 
-/** @type {Record<PlaybackOrder, { label: string, description: string }>} */
-const ORDER_CHOICES = {
-	ordered: { label: 'Ordered', description: 'First to last, as listed.' },
-	random: { label: 'Random', description: 'Any track next, never the same one twice in a row.' },
-	shuffle: { label: 'Shuffle', description: 'Every track once in a shuffled order, then shuffled again.' },
-};
+/** @param {PlaybackOrder} value */
+const orderChoice = (value) => ({ value, label: t(`customize.order.${value}.label`), description: t(`customize.order.${value}.description`) });
 
-/** @type {Record<StopMode, { label: string, description: string }>} */
-const STOP_CHOICES = {
-	pause: { label: 'Pause', description: 'Playing again continues where it stopped.' },
-	resetTrack: { label: 'Reset track', description: 'Playing again starts the same track from its beginning.' },
-	resetPlaylist: { label: 'Reset playlist', description: 'Playing again starts afresh, as if for the first time.' },
-};
+/** @param {StopMode} value */
+const stopChoice = (value) => ({ value, label: t(`customize.stopMode.${value}.label`), description: t(`customize.stopMode.${value}.description`) });
 
 /**
  * The body of a playlist's Customize dialog (DESIGN.md §9.7). It works like the sound dialog; later playlist settings
@@ -78,7 +71,7 @@ export class PlaylistEditor extends Component {
 		const status = saveStatus();
 		const title = titleField({
 			value: this.#playlist.title,
-			hint: `Folder: ${id}`,
+			hint: t('customize.folder', { folder: id }),
 			onTitle: (value) => {
 				status.show('saving');
 				soundboard.customizePlaylist(id, { title: value });
@@ -86,7 +79,7 @@ export class PlaylistEditor extends Component {
 		});
 		const gain = new GainControl({
 			value: this.#playlist.gain,
-			label: 'Volume',
+			label: t('customize.volume'),
 			onChange: (value) => {
 				status.show('saving');
 				soundboard.customizePlaylist(id, { gain: value });
@@ -100,9 +93,9 @@ export class PlaylistEditor extends Component {
 		/** @param {number} value */
 		const describeCrossfade = (value) => {
 			if (value > limits.field) {
-				return 'Some tracks are shorter than twice this; they use at most half their length.';
+				return t('customize.crossfadeTooLong');
 			}
-			return limits.field < MAX_CROSSFADE ? `Up to ${formatSeconds(limits.field)}, half the shortest track.` : null;
+			return limits.field < MAX_CROSSFADE ? t('customize.crossfadeLimit', { limit: formatSeconds(limits.field) }) : null;
 		};
 		/**
 		 * @param {TimingKey} key
@@ -128,14 +121,14 @@ export class PlaylistEditor extends Component {
 			return { control, element: labeledRow(label, slot) };
 		};
 		const timings = {
-			fadeIn: timing('fadeIn', 'Fade in', SECONDS_LIMITS),
-			crossfade: timing('crossfade', 'Crossfade', limits, describeCrossfade),
-			fadeOut: timing('fadeOut', 'Fade out', SECONDS_LIMITS),
+			fadeIn: timing('fadeIn', t('customize.fadeIn'), SECONDS_LIMITS),
+			crossfade: timing('crossfade', t('customize.crossfade'), limits, describeCrossfade),
+			fadeOut: timing('fadeOut', t('customize.fadeOut'), SECONDS_LIMITS),
 		};
 
 		const order = radioGroup({
 			name: 'playback-order',
-			choices: PLAYBACK_ORDERS.map((value) => ({ value, ...ORDER_CHOICES[value] })),
+			choices: PLAYBACK_ORDERS.map(orderChoice),
 			value: this.#playlist.order,
 			accent: 'music',
 			onChange: (value) => {
@@ -146,8 +139,8 @@ export class PlaylistEditor extends Component {
 
 		const playlistLooping = checkbox({
 			name: 'playlist-looping',
-			label: 'Repeat the playlist',
-			description: 'When off, it stops after the last track.',
+			label: t('customize.repeatPlaylist'),
+			description: t('customize.repeatPlaylistHint'),
 			checked: this.#playlist.playlistLooping,
 			accent: 'music',
 			onChange: (checked) => {
@@ -158,8 +151,8 @@ export class PlaylistEditor extends Component {
 
 		const looping = checkbox({
 			name: 'track-looping',
-			label: 'Repeat the current track',
-			description: 'It plays again until you move to another track.',
+			label: t('customize.repeatTrack'),
+			description: t('customize.repeatTrackHint'),
 			checked: this.#playlist.trackLooping,
 			accent: 'music',
 			onChange: (checked) => {
@@ -170,7 +163,7 @@ export class PlaylistEditor extends Component {
 
 		const stopMode = radioGroup({
 			name: 'stop-mode',
-			choices: STOP_MODES.map((value) => ({ value, ...STOP_CHOICES[value] })),
+			choices: STOP_MODES.map(stopChoice),
 			value: this.#playlist.stopMode,
 			accent: 'music',
 			onChange: (value) => {
@@ -228,7 +221,7 @@ export class PlaylistEditor extends Component {
 			'class': 'cursor-pointer rounded-md px-2 py-1 text-sm font-medium text-music hover:bg-music/15',
 			'data-add-tracks': true,
 			'onClick': () => this.#onAddTracks(),
-		}, '+ Add tracks')));
+		}, t('customize.addTracks'))));
 		this.own(() => tracks.destroy());
 		this.own(soundboard.on('track.saved', (event) => {
 			if (trackIds.has(event.trackId)) {
@@ -242,24 +235,24 @@ export class PlaylistEditor extends Component {
 		}));
 
 		const removal = moveOrDeleteCard({
-			title: 'Delete',
+			title: t('customize.delete'),
 			accent: 'music',
 			onDelete: () => soundboard.deletePlaylist(id),
-			note: 'The folder and everything in it go to the trash.',
+			note: t('customize.deletePlaylistNote'),
 		});
 		this.own(removal.destroy);
 
 		// The cards' title pills stick out above them, so they need the extra space.
 		const settingsPanel = h('div', { class: 'space-y-8 pt-3' },
-			card('Playlist', 'music', title.element),
-			card('Volume', 'music', gainSlot),
-			card('Playback order', 'music', order.element, h('div', { class: 'mt-4 flex flex-col gap-3 border-t border-line pt-4' }, playlistLooping.element, looping.element)),
-			card('When stopped', 'music', stopMode.element),
-			card('Fades', 'music', h('div', { class: 'space-y-3' }, timings.fadeIn.element, timings.crossfade.element, timings.fadeOut.element)),
+			card(t('customize.playlistCard'), 'music', title.element),
+			card(t('customize.volume'), 'music', gainSlot),
+			card(t('customize.playbackOrder'), 'music', order.element, h('div', { class: 'mt-4 flex flex-col gap-3 border-t border-line pt-4' }, playlistLooping.element, looping.element)),
+			card(t('customize.whenStopped'), 'music', stopMode.element),
+			card(t('customize.fades'), 'music', h('div', { class: 'space-y-3' }, timings.fadeIn.element, timings.crossfade.element, timings.fadeOut.element)),
 			removal.element);
-		const tracksLabel = (/** @type {number} */ count) => `Tracks (${count})`;
+		const tracksLabel = (/** @type {number} */ count) => t('customize.tracksTab', { count });
 		const { bar, panels } = tabs([
-			{ id: 'playlist', label: 'Playlist', panel: settingsPanel },
+			{ id: 'playlist', label: t('customize.playlistTab'), panel: settingsPanel },
 			{ id: 'tracks', label: tracksLabel(this.#playlist.tracks.length), panel: tracksPanel },
 		], this.#initialTab);
 		// Tracks moved or deleted from the open dialog leave it.

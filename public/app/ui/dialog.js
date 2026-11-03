@@ -1,4 +1,5 @@
 import { h, on } from './dom.js';
+import { t } from './text.js';
 
 /**
  * A centered modal shared by the Customize dialogs. Every change in them applies at once, so closing never loses
@@ -27,8 +28,8 @@ export class Dialog {
 		const close = h('button', {
 			'type': 'button',
 			'class': 'grid size-8 cursor-pointer place-items-center rounded-md text-xl leading-none text-muted hover:bg-raised-hover hover:text-text',
-			'aria-label': 'Close',
-			'title': 'Close',
+			'aria-label': t('common.close'),
+			'title': t('common.close'),
 			'data-dialog-close': true,
 		}, '×');
 		const panel = h('div', {

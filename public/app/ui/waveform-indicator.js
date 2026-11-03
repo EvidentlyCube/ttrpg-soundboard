@@ -1,6 +1,7 @@
 import { Component } from './component.js';
 import { h, on } from './dom.js';
 import { icon } from './icons.js';
+import { t } from './text.js';
 
 /** @typedef {import('../logic/soundboard.js').Soundboard} Soundboard */
 /** @typedef {import('../logic/waveform-service.js').WaveformStatus} WaveformStatus */
@@ -37,11 +38,15 @@ export class WaveformIndicator extends Component {
 			const { running, done, total, failed } = status;
 			// Until the server has said what is missing, there is nothing to show: often nothing is.
 			root.hidden = total === 0 || (!running && done >= total && failed === 0);
-			label.textContent = `Waveforms ${done} / ${total}${failed > 0 ? `, ${failed} failed` : ''}${!running && done < total ? ', stopped' : ''}`;
+			label.textContent = [
+				t('waveforms.progress', { done, total }),
+				failed > 0 && t('waveforms.failed', { count: failed }),
+				!running && done < total && t('waveforms.stopped'),
+			].filter(Boolean).join(', ');
 			fill.style.width = `${total === 0 ? 0 : (done / total) * 100}%`;
 			bar.hidden = !running && failed > 0 && done >= total;
 			button.replaceChildren(icon(running ? 'stop' : 'play', 'size-4'));
-			button.title = running ? 'Stop making waveforms' : 'Make the missing waveforms';
+			button.title = running ? t('waveforms.stop') : t('waveforms.start');
 			button.setAttribute('aria-label', button.title);
 			button.dataset.running = String(running);
 		};

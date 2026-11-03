@@ -2,6 +2,7 @@ import { Component } from './component.js';
 import { h, on } from './dom.js';
 import { filledField } from './filled-field.js';
 import { formatSeconds, parseSeconds, SLIDER_STEP } from './seconds-scale.js';
+import { t } from './text.js';
 
 /** @typedef {import('./seconds-scale.js').SecondsLimits} SecondsLimits */
 
@@ -70,14 +71,14 @@ export class SecondsControl extends Component {
 		const readout = h('button', {
 			'type': 'button',
 			'class': 'w-24 shrink-0 cursor-text rounded-md px-2 py-1 text-right font-medium tabular-nums hover:bg-raised-hover',
-			'title': 'Click to type a value in seconds',
+			'title': t('controls.secondsReadout'),
 			'data-seconds-readout': true,
 		});
 		const { element: fieldBox, input: field } = filledField({
 			unit: 's',
 			accent: this.#accent,
 			width: 'w-24',
-			attributes: { 'inputmode': 'decimal', 'aria-label': `${this.#label} in seconds` },
+			attributes: { 'inputmode': 'decimal', 'aria-label': t('controls.inSeconds', { label: this.#label }) },
 		});
 		fieldBox.hidden = true;
 		const note = h('p', { class: 'text-xs text-muted' });

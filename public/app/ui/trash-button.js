@@ -2,6 +2,7 @@ import { Component } from './component.js';
 import { h, on } from './dom.js';
 import { formatMegabytes } from './format.js';
 import { icon } from './icons.js';
+import { t } from './text.js';
 
 /** @typedef {import('../logic/soundboard.js').Soundboard} Soundboard */
 
@@ -26,13 +27,13 @@ export class TrashButton extends Component {
 		const button = h('button', {
 			'type': 'button',
 			'class': 'flex cursor-pointer items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5 text-sm whitespace-nowrap text-muted hover:bg-raised-hover hover:text-text',
-			'title': 'Restore or delete what is in the trash',
+			'title': t('trash.buttonTooltip'),
 			'data-trash-button': true,
 		}, icon('trash', 'size-4'), label);
 		/** @param {import('../logic/ports.js').TrashSummary} summary */
 		const show = ({ size, count }) => {
 			button.hidden = count === 0;
-			label.textContent = `Trash · ${formatMegabytes(size)}`;
+			label.textContent = t('trash.button', { size: formatMegabytes(size) });
 		};
 		show(this.#soundboard.trashSummary());
 		this.own(this.#soundboard.on('trash.changed', show));

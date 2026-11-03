@@ -1,5 +1,6 @@
 import { Component } from './component.js';
 import { h } from './dom.js';
+import { t } from './text.js';
 
 /** @typedef {import('../logic/ports.js').DownloadJob} DownloadJob */
 /** @typedef {import('../logic/soundboard.js').Soundboard} Soundboard */
@@ -7,16 +8,7 @@ import { h } from './dom.js';
 /** As many lines as the server keeps (DESIGN.md §5.4). */
 const MAX_LINES = 1000;
 
-/** @type {Record<string, string>} */
-const STEPS = { waiting: 'Waiting', downloading: 'Downloading', converting: 'Converting', done: 'Added', failed: 'Failed', cancelled: 'Cancelled' };
-
-/** @type {Record<DownloadJob['state'], string>} */
-const HEADINGS = {
-	running: 'Downloading {title}',
-	done: 'Download finished',
-	failed: 'Download finished with errors',
-	cancelled: 'Download cancelled',
-};
+const STEPS = ['waiting', 'downloading', 'converting', 'done', 'failed', 'cancelled'];
 
 /**
  * Shows the server's download with the output of the tool running (DESIGN.md §9.10). While a download exists it
@@ -48,22 +40,22 @@ export class DownloadDialog extends Component {
 			'class': 'cursor-pointer rounded-md border border-line px-4 py-2 text-sm hover:bg-raised-hover',
 			'data-download-cancel': true,
 			'onClick': () => {
-				if (window.confirm('Cancel the download? Files already added stay.')) {
+				if (window.confirm(t('download.confirmCancel'))) {
 					soundboard.cancelDownload();
 				}
 			},
-		}, 'Cancel');
+		}, t('download.cancel'));
 		const close = h('button', {
 			'type': 'button',
 			'class': 'cursor-pointer rounded-md bg-music px-4 py-2 text-sm font-medium text-surface hover:bg-music/85',
 			'hidden': true,
 			'data-download-close': true,
 			'onClick': () => soundboard.dismissDownload(),
-		}, 'Close');
+		}, t('common.close'));
 		const panel = h('div', {
 			'role': 'dialog',
 			'aria-modal': 'true',
-			'aria-label': 'Download',
+			'aria-label': t('download.label'),
 			'class': 'flex max-h-full w-full max-w-2xl flex-col gap-4 rounded-xl border border-line bg-panel p-5 shadow-2xl',
 		},
 		h('div', { class: 'space-y-1' }, heading, target),
@@ -118,19 +110,24 @@ export class DownloadDialog extends Component {
 				return;
 			}
 			const running = job.state === 'running';
-			heading.textContent = HEADINGS[job.state].replace('{title}', job.title);
-			target.textContent = job.target.kind === 'sound' ? 'Adding sound effects' : `Adding to ${job.targetTitle}`;
+			heading.textContent = t(`download.heading.${job.state}`, { title: job.title });
+			target.textContent = job.target.kind === 'sound' ? t('download.addingSounds') : t('download.addingTo', { playlist: job.targetTitle });
 			const item = job.current === null ? null : job.items[job.current];
 			current.hidden = !running || item === null;
 			if (item) {
-				current.textContent = `${STEPS[item.state] ?? ''} · Item ${/** @type {number} */ (job.current) + 1} of ${job.items.length}: ${item.title}`;
+				const step = STEPS.includes(item.state) ? t(`download.step.${/** @type {'waiting'} */ (item.state)}`) : '';
+				current.textContent = t('download.current', { step, item: /** @type {number} */ (job.current) + 1, count: job.items.length, title: item.title });
 			}
 			summary.hidden = running;
 			if (!running) {
 				const failed = job.items.filter((entry) => entry.state === 'failed');
 				summary.replaceChildren(
-					h('p', { class: 'font-medium' }, `${job.added} added${job.failed > 0 ? `, ${job.failed} failed` : ''}${job.state === 'cancelled' ? ', the rest cancelled' : ''}.`),
-					...failed.map((entry) => h('p', { class: 'text-danger' }, `${entry.title}: ${entry.error ?? 'failed'}`)));
+					h('p', { class: 'font-medium' }, [
+						t('download.added', { count: job.added }),
+						job.failed > 0 && t('download.failed', { count: job.failed }),
+						job.state === 'cancelled' && t('download.restCancelled'),
+					].filter(Boolean).join(', ') + t('download.summaryEnd')),
+					...failed.map((entry) => h('p', { class: 'text-danger' }, t('download.itemFailed', { title: entry.title, reason: entry.error ?? t('download.step.failed') }))));
 			}
 			cancel.hidden = !running;
 			close.hidden = running;

@@ -6,6 +6,7 @@ import { RangeControl } from './range-control.js';
 import { fromStored, toStoredEnd } from './range-scale.js';
 import { SecondsControl } from './seconds-control.js';
 import { SECONDS_LIMITS } from './seconds-scale.js';
+import { t } from './text.js';
 
 /** @typedef {import('../logic/ports.js').AudioFileJson} AudioFileJson */
 /** @typedef {import('../logic/soundboard.js').Soundboard} Soundboard */
@@ -50,7 +51,7 @@ export class SoundEditor extends Component {
 		const status = saveStatus();
 		const title = titleField({
 			value: this.#sound.title,
-			hint: `File: ${id}`,
+			hint: t('customize.file', { file: id }),
 			accent: 'sfx',
 			onTitle: (value) => {
 				status.show('saving');
@@ -59,7 +60,7 @@ export class SoundEditor extends Component {
 		});
 		const gain = new GainControl({
 			value: this.#sound.gain,
-			label: 'Volume',
+			label: t('customize.volume'),
 			accent: 'sfx',
 			onChange: (value) => {
 				status.show('saving');
@@ -125,7 +126,7 @@ export class SoundEditor extends Component {
 			this.own(() => control.destroy());
 			return { control, element: labeledRow(label, slot) };
 		};
-		const fades = { fadeIn: fade('fadeIn', 'Fade in'), fadeOut: fade('fadeOut', 'Fade out') };
+		const fades = { fadeIn: fade('fadeIn', t('customize.fadeIn')), fadeOut: fade('fadeOut', t('customize.fadeOut')) };
 
 		const play = playToggle(() => (soundboard.isSoundActive(id) ? soundboard.stopSound(id) : soundboard.playSound(id)), 'sfx');
 		play.show(soundboard.isSoundActive(id));
@@ -158,7 +159,7 @@ export class SoundEditor extends Component {
 		}));
 
 		const removal = moveOrDeleteCard({
-			title: 'Move or delete',
+			title: t('customize.moveOrDelete'),
 			accent: 'sfx',
 			onMove: this.#onMove,
 			onDelete: () => soundboard.deleteSound(id),
@@ -168,10 +169,10 @@ export class SoundEditor extends Component {
 		this.#footer = playFooter(play.element, status.element);
 		// The cards' title pills stick out above them, so they need the extra space.
 		return h('div', { class: 'space-y-8 pt-3' },
-			card('Sound', 'sfx', title.element),
-			card('Volume', 'sfx', gainSlot),
-			range && card('Start and end', 'sfx', rangeSlot),
-			card('Fades', 'sfx', h('div', { class: 'space-y-3' }, fades.fadeIn.element, fades.fadeOut.element)),
+			card(t('customize.soundCard'), 'sfx', title.element),
+			card(t('customize.volume'), 'sfx', gainSlot),
+			range && card(t('customize.startAndEnd'), 'sfx', rangeSlot),
+			card(t('customize.fades'), 'sfx', h('div', { class: 'space-y-3' }, fades.fadeIn.element, fades.fadeOut.element)),
 			removal.element);
 	}
 

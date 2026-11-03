@@ -1,5 +1,6 @@
 import { Component } from './component.js';
 import { h } from './dom.js';
+import { t } from './text.js';
 
 /** @typedef {import('../logic/soundboard.js').Soundboard} Soundboard */
 
@@ -59,14 +60,13 @@ export class MoveDialog extends Component {
 			h('span', { class: `w-1.5 shrink-0 rounded-l-md ${colors.stripe}` }),
 			h('span', { class: 'min-w-0 flex-1 py-2 pr-3' },
 				h('span', { class: `block truncate text-sm font-medium ${here ? '' : colors.text}` }, name),
-				h('span', { class: 'block text-xs text-muted' }, here ? `${detail} · Here now` : detail)));
+				h('span', { class: 'block text-xs text-muted' }, here ? t('move.hereNow', { detail }) : detail)));
 			buttons.push(button);
 			return h('li', {}, button);
 		};
-		const count = (/** @type {number} */ n, /** @type {string} */ noun) => `${n} ${noun}${n === 1 ? '' : 's'}`;
 		const list = h('ul', { 'class': 'space-y-2', 'data-move-targets': true },
-			destination(null, 'Sound effects', count(library?.sounds.length ?? 0, 'sound'), 'sfx'),
-			...(library?.playlists ?? []).map((playlist) => destination(playlist.id, playlist.title, count(playlist.tracks.length, 'track'), 'music')));
+			destination(null, t('move.sounds'), t('move.soundCount', { count: library?.sounds.length ?? 0 }), 'sfx'),
+			...(library?.playlists ?? []).map((playlist) => destination(playlist.id, playlist.title, t('playlist.trackCount', { count: playlist.tracks.length }), 'music')));
 		return h('div', { class: 'space-y-4' }, list, error);
 	}
 
@@ -94,7 +94,7 @@ export class MoveDialog extends Component {
 			enabled.forEach((button) => {
 				button.disabled = false;
 			});
-			error.textContent = `Could not move: ${reason instanceof Error ? reason.message : String(reason)}`;
+			error.textContent = t('move.failed', { reason: reason instanceof Error ? reason.message : String(reason) });
 			error.hidden = false;
 		}
 	}

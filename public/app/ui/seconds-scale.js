@@ -1,4 +1,5 @@
 import { MAX_CROSSFADE } from '../logic/playback-rules.js';
+import { formatFixed, t } from './text.js';
 
 /** The slider covers the fades and crossfades nearly everyone uses; longer ones are typed. */
 const SLIDER_MAX = 10;
@@ -31,7 +32,7 @@ export function crossfadeLimits(tracks) {
  * @param {number} seconds
  */
 export function formatSeconds(seconds) {
-	return seconds <= 0 ? 'Off' : `${seconds.toFixed(3)} s`;
+	return seconds <= 0 ? t('common.off') : `${formatFixed(seconds, 3)} s`;
 }
 
 /**
@@ -40,7 +41,8 @@ export function formatSeconds(seconds) {
  * @returns {number | null} null when the text is not a duration
  */
 export function parseSeconds(text) {
-	if (text.trim().toLowerCase() === 'off') {
+	const typed = text.trim().toLowerCase();
+	if (typed === 'off' || typed === t('common.off').toLowerCase()) {
 		return 0;
 	}
 	const match = SECONDS_PATTERN.exec(text);

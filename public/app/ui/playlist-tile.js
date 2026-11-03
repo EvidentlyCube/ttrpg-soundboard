@@ -4,6 +4,7 @@ import { h } from './dom.js';
 import { formatTime } from './format.js';
 import { icon } from './icons.js';
 import { playlistMenuItems } from './menus.js';
+import { t } from './text.js';
 import { flashError, TILE_CLASS } from './tile-grid.js';
 
 /** @typedef {import('../logic/ports.js').PlaylistJson} PlaylistJson */
@@ -11,9 +12,6 @@ import { flashError, TILE_CLASS } from './tile-grid.js';
 /** @typedef {import('../logic/playlist-player.js').ResumePoint} ResumePoint */
 /** @typedef {import('../logic/soundboard.js').Soundboard} Soundboard */
 /** @typedef {import('./overlay.js').Overlay} Overlay */
-
-/** @type {Record<PlaylistState, string>} */
-const STATUS = { idle: '', loading: 'Loading…', playing: 'Playing', paused: 'Paused' };
 
 /** A playlist button: click toggles it, right-click opens its menu (DESIGN.md §9.1, §9.3). */
 export class PlaylistTile extends Component {
@@ -46,7 +44,7 @@ export class PlaylistTile extends Component {
 	/** @override */
 	render() {
 		const { id, title, tracks } = this.#playlist;
-		const trackCount = (/** @type {number} */ count) => `${count} ${count === 1 ? 'track' : 'tracks'}`;
+		const trackCount = (/** @type {number} */ count) => t('playlist.trackCount', { count });
 		let idleStatus = trackCount(tracks.length);
 		let state = this.#soundboard.getPlaylistSnapshot(id).state;
 		const status = h('span', { class: 'max-w-full truncate pr-7 text-xs text-muted group-data-[resume=true]:text-music' }, idleStatus);
@@ -54,8 +52,8 @@ export class PlaylistTile extends Component {
 		/** @type {ResumePoint | null} */
 		let resume = this.#soundboard.getPlaylistSnapshot(id).resume;
 		const tooltip = () => {
-			const text = resume ? `${currentTitle}: resumes ${describeResume(resume, true)}` : currentTitle;
-			return this.#playable ? text : `${text}: this browser cannot play any of its tracks`;
+			const text = resume ? resumeTooltip(currentTitle, resume) : currentTitle;
+			return this.#playable ? text : t('playlist.unplayable', { text });
 		};
 		const label = h('span', { class: 'line-clamp-3 font-medium wrap-anywhere' }, title);
 		const button = h('button', {
@@ -82,7 +80,7 @@ export class PlaylistTile extends Component {
 			button.dataset.active = String(state !== 'idle');
 			button.dataset.resume = String(resume !== null);
 			button.title = tooltip();
-			status.textContent = STATUS[state] || (resume ? `Resumes ${describeResume(resume, false)}` : idleStatus);
+			status.textContent = state !== 'idle' ? t(`playlist.state.${state}`) : resume ? resumeStatus(resume) : idleStatus;
 		};
 		show();
 
@@ -116,7 +114,7 @@ export class PlaylistTile extends Component {
 		}, icon('volume', 'size-4'));
 		const showLevel = (/** @type {number} */ value) => {
 			levelIcon.hidden = value >= 1;
-			levelIcon.title = `Volume turned down to ${Math.round(value * 100)}%. Double-click to reset`;
+			levelIcon.title = t('playlist.levelDown', { percent: Math.round(value * 100) });
 		};
 		showLevel(this.#soundboard.getPlaylistLevel(id));
 		this.own(this.#soundboard.on('playlist.levelChanged', (event) => {
@@ -148,14 +146,22 @@ export class PlaylistTile extends Component {
 }
 
 /**
- * "at 1:23" or "track 3"; the tooltip also names the track.
+ * "Resumes at 1:23" or "Resumes track 3".
  * @param {ResumePoint} resume
- * @param {boolean} withTitle
  */
-function describeResume({ trackIndex, track, position }, withTitle) {
-	const where = position === null ? `track ${trackIndex + 1}` : `at ${formatTime(position)}`;
-	if (!withTitle) {
-		return where;
-	}
-	return `"${track.title}" ${position === null ? 'from its start' : where}`;
+function resumeStatus({ trackIndex, position }) {
+	return position === null
+		? t('playlist.resumesTrack', { track: trackIndex + 1 })
+		: t('playlist.resumesAt', { time: formatTime(position) });
+}
+
+/**
+ * The tooltip, which also names the track.
+ * @param {string} title
+ * @param {ResumePoint} resume
+ */
+function resumeTooltip(title, { track, position }) {
+	return position === null
+		? t('playlist.resumesTrackTooltip', { title, track: track.title })
+		: t('playlist.resumesAtTooltip', { title, track: track.title, time: formatTime(position) });
 }

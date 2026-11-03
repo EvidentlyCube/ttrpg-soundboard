@@ -3,6 +3,7 @@ import { openContextMenu } from './context-menu.js';
 import { h } from './dom.js';
 import { icon } from './icons.js';
 import { soundMenuItems } from './menus.js';
+import { t } from './text.js';
 import { flashError, TILE_CLASS } from './tile-grid.js';
 
 /** @typedef {import('../logic/ports.js').AudioFileJson} AudioFileJson */
@@ -43,7 +44,7 @@ export class SoundTile extends Component {
 	/** @override */
 	render() {
 		const { id, title, format } = this.#sound;
-		const tooltip = (/** @type {string} */ text) => (this.#playable ? text : `${text}: this browser cannot play ${format.toUpperCase()} files`);
+		const tooltip = (/** @type {string} */ text) => (this.#playable ? text : t('sound.unplayable', { text, format: format.toUpperCase() }));
 		const label = h('span', { class: 'line-clamp-3 font-medium wrap-anywhere' }, title);
 		const tile = h('button', {
 			'type': 'button',
@@ -72,8 +73,8 @@ export class SoundTile extends Component {
 		const stop = h('button', {
 			'type': 'button',
 			'class': 'absolute top-2 right-2 grid size-7 cursor-pointer place-items-center rounded-md bg-danger/90 text-white hover:bg-danger',
-			'title': 'Stop all',
-			'aria-label': `Stop all ${title}`,
+			'title': t('sound.stopAll'),
+			'aria-label': t('sound.stopAllOf', { title }),
 			'hidden': true,
 			'data-stop-sound': id,
 			'onClick': () => this.#soundboard.stopSound(id),
@@ -89,7 +90,7 @@ export class SoundTile extends Component {
 			if (sound.id === id) {
 				label.textContent = sound.title;
 				tile.title = tooltip(sound.title);
-				stop.setAttribute('aria-label', `Stop all ${sound.title}`);
+				stop.setAttribute('aria-label', t('sound.stopAllOf', { title: sound.title }));
 			}
 		}));
 		this.own(this.#soundboard.on('sound.error', (event) => {

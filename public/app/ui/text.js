@@ -40,12 +40,38 @@ export function t(key, params) {
 }
 
 /**
+ * The text under `key` as parts to append, with elements in place of some placeholders, for a sentence that holds a
+ * bold name or a link: `tParts('banner.asks', { address: h('b', {}, address) })`.
+ * @template {object} N an element; generic, since the Node tests type-check this file without the DOM
+ * @param {MessageKey<EnglishMessages>} key
+ * @param {Record<string, N>} nodes
+ * @param {Params} [params]
+ * @returns {(string | N)[]}
+ */
+export function tParts(key, nodes, params) {
+	return translator.t(key, params)
+		.split(/(\{\w+\})/)
+		.filter((part) => part !== '')
+		.map((part) => (/^\{\w+\}$/.test(part) ? nodes[part.slice(1, -1)] : undefined) ?? part);
+}
+
+/**
  * A number written the language's way: `6,123.5` in English, `6 123,5` in Polish.
  * @param {number} value
  * @param {Intl.NumberFormatOptions} [options]
  */
 export function formatNumber(value, options) {
 	return translator.number(value, options);
+}
+
+/**
+ * A number with exactly `digits` decimals and the language's decimal sign, without thousands separators, since it is
+ * also what fields show for editing: `1.500` in English, `1,500` in Polish.
+ * @param {number} value
+ * @param {number} digits
+ */
+export function formatFixed(value, digits) {
+	return translator.number(value, { minimumFractionDigits: digits, maximumFractionDigits: digits, useGrouping: false });
 }
 
 /** The language's BCP 47 tag, for `Intl` and the page's `lang`. */

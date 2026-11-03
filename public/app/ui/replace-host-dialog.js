@@ -1,6 +1,7 @@
 import { Component } from './component.js';
 import { h, on } from './dom.js';
 import { holdButton } from './hold-button.js';
+import { t } from './text.js';
 
 /** How long taking over must be held, so a slip never silences the host. */
 const REPLACE_HOLD_MS = 1000;
@@ -29,15 +30,15 @@ export class ReplaceHostDialog extends Component {
 	/** @override */
 	render() {
 		return h('div', { class: 'space-y-3 text-sm' },
-			h('p', {}, 'Another page is the host. The remote controls control that one.'),
-			h('p', { class: 'text-muted' }, 'If you take over, that page keeps playing what it plays, but a remote control can no longer reach it. This page becomes the host.'));
+			h('p', {}, t('replaceHost.intro')),
+			h('p', { class: 'text-muted' }, t('replaceHost.explanation')));
 	}
 
 	/** The buttons, to show below the body. */
 	get footer() {
 		const hold = holdButton({
-			label: 'Hold to take over',
-			busyLabel: 'Taking over…',
+			label: t('replaceHost.hold'),
+			busyLabel: t('replaceHost.takingOver'),
 			holdMs: REPLACE_HOLD_MS,
 			tone: 'neutral',
 			onHold: () => {
@@ -50,7 +51,7 @@ export class ReplaceHostDialog extends Component {
 			'type': 'button',
 			'class': 'cursor-pointer rounded-md border border-line px-3 py-1.5 text-sm text-muted hover:bg-raised-hover hover:text-text',
 			'data-cancel': true,
-		}, 'Cancel');
+		}, t('common.cancel'));
 		this.own(on(cancel, 'click', () => this.#onCancel()));
 		hold.element.dataset.replaceHost = 'true';
 		return h('div', { class: 'flex justify-end gap-3' }, cancel, hold.element);

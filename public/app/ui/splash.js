@@ -1,13 +1,14 @@
 import { Component } from './component.js';
 import { h } from './dom.js';
+import { t } from './text.js';
 
 /** @typedef {'standalone' | 'host' | 'remote'} StartMode */
 
 /** What each choice says, and the colors that tell it apart, written out in full so Tailwind generates them (DESIGN.md §9.6). */
 const CHOICES = /** @type {const} */ ([
-	{ mode: 'standalone', title: 'Standalone', text: 'Plays here. Nothing can control it.', color: 'border-line hover:border-text/50 hover:bg-raised-hover' },
-	{ mode: 'host', title: 'Host', text: 'Plays here, and a remote control can control it.', color: 'border-host/60 hover:border-host hover:bg-host/10' },
-	{ mode: 'remote', title: 'Remote control', text: 'Controls the host on another device. Plays no sound.', color: 'border-remote/60 hover:border-remote hover:bg-remote/10' },
+	{ mode: 'standalone', color: 'border-line hover:border-text/50 hover:bg-raised-hover' },
+	{ mode: 'host', color: 'border-host/60 hover:border-host hover:bg-host/10' },
+	{ mode: 'remote', color: 'border-remote/60 hover:border-remote hover:bg-remote/10' },
 ]);
 
 /**
@@ -38,7 +39,9 @@ export class Splash extends Component {
 	/** @override */
 	render() {
 		const notes = { host: this.#hostNote, remote: this.#remoteNote };
-		for (const { mode, title, text, color } of CHOICES) {
+		for (const { mode, color } of CHOICES) {
+			const title = t(`splash.${mode}.title`);
+			const text = t(`splash.${mode}.text`);
 			const button = h('button', {
 				'type': 'button',
 				'class': `w-64 cursor-pointer rounded-xl border-2 bg-raised p-4 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-text ${color}`,
@@ -58,7 +61,7 @@ export class Splash extends Component {
 					this.#onClick();
 				}
 			},
-		}, h('h1', { class: 'text-4xl font-semibold tracking-tight text-text group-data-[mode=choices]:hidden' }, 'Soundboard'), this.#message, this.#detail, this.#choices);
+		}, h('h1', { class: 'text-4xl font-semibold tracking-tight text-text group-data-[mode=choices]:hidden' }, t('app.name')), this.#message, this.#detail, this.#choices);
 	}
 
 	/**
@@ -75,7 +78,7 @@ export class Splash extends Component {
 
 	/** Shows the three ways to start. */
 	showChoices() {
-		this.#message.textContent = 'Choose a mode';
+		this.#message.textContent = t('splash.chooseMode');
 		this.#detail.textContent = '';
 		this.#choices.hidden = false;
 		this.element.dataset.mode = 'choices';
@@ -88,8 +91,8 @@ export class Splash extends Component {
 	 * @param {boolean | null} hostExists null when the server could not say
 	 */
 	setHostStatus(hostExists) {
-		this.#hostNote.textContent = hostExists === true ? 'Another page is the host. You will be asked before it is replaced.' : '';
-		this.#remoteNote.textContent = hostExists === false ? 'No host is running yet. It will work once one starts.' : '';
+		this.#hostNote.textContent = hostExists === true ? t('splash.hostExists') : '';
+		this.#remoteNote.textContent = hostExists === false ? t('splash.noHost') : '';
 	}
 
 	hide() {

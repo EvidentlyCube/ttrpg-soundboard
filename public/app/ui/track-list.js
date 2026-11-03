@@ -1,5 +1,6 @@
 import { h } from './dom.js';
 import { icon } from './icons.js';
+import { t } from './text.js';
 
 /** @typedef {import('../logic/ports.js').AudioFileJson} AudioFileJson */
 /** @typedef {import('./overlay.js').Overlay} Overlay */
@@ -21,7 +22,7 @@ export function openTrackList(overlay, { tracks, currentIndex, isPlayable, point
 			'type': 'button',
 			'role': 'menuitem',
 			'disabled': !isPlayable(track),
-			'title': isPlayable(track) ? track.title : `This browser cannot play ${track.format.toUpperCase()} files`,
+			'title': isPlayable(track) ? track.title : t('track.unplayable', { format: track.format.toUpperCase() }),
 			'data-current': String(current),
 			'data-track-index': index,
 			'class': 'flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-text outline-none enabled:cursor-pointer enabled:hover:bg-raised-hover enabled:focus-visible:bg-raised-hover disabled:text-muted/50 data-[current=true]:text-music',

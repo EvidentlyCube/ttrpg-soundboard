@@ -1,4 +1,5 @@
 import { dbToGain, gainToDb, MAX_GAIN, sliderToGain } from '../logic/volume.js';
+import { formatFixed } from './text.js';
 
 /** The part of the gain widget's width taken by the bars for gain 0 to 1; the boost from 1 to MAX_GAIN gets the rest. */
 export const BARS_SHARE = 0.75;
@@ -77,9 +78,9 @@ export function formatDb(gain) {
 	}
 	const db = Math.round(gainToDb(gain) * 10) / 10;
 	if (db === 0) {
-		return '0.0 dB';
+		return `${formatFixed(0, 1)} dB`;
 	}
-	return `${db > 0 ? '+' : '−'}${Math.abs(db).toFixed(1)} dB`;
+	return `${db > 0 ? '+' : '−'}${formatFixed(Math.abs(db), 1)} dB`;
 }
 
 /**
