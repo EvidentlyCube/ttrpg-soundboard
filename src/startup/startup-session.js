@@ -137,11 +137,11 @@ export class StartupSession {
 
 	/** @returns {Promise<StartupState>} */
 	async state() {
-		const paths = this.#paths && await Promise.all(this.#paths.map(async (path) => ({
-			path,
-			name: basename(path) || path,
-			...(await checkFolder(path, this.#platform)),
-		})));
+		const paths = this.#paths && await Promise.all(this.#paths.map(async (path) => {
+			const { allowed, reason } = await checkFolder(path, this.#platform);
+			// The path as given, which is what `select` accepts.
+			return { path, name: basename(path) || path, allowed, reason };
+		}));
 		const recent = this.#paths ? [] : await this.#recent.list();
 		return {
 			phase: this.#phase,
@@ -177,7 +177,8 @@ export class StartupSession {
 		}
 		// Checked again: another page may have chosen a folder while this one was checked.
 		this.#expectPhase('selecting');
-		this.#load(root);
+		// The resolved path, which is the one the rules allowed (DESIGN.md §5.7).
+		this.#load(check.path);
 	}
 
 	/**

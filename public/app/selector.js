@@ -64,7 +64,7 @@ root.replaceChildren(
 );
 
 /** Each part is drawn again only when what it shows changed, so polling never resets a hover or a typed path. */
-const drawn = { given: '', recent: '', places: '', listing: '' };
+const drawn = { given: '', recent: '', places: '', listing: '', browseFailures: 0 };
 /** The folder browser loads its first folder once the server said no folders were given on the command line. */
 let browsing = false;
 
@@ -129,6 +129,11 @@ function render(view) {
 			pathInput.value = view.listing.path;
 		}
 		drawListing(view.listing, busy);
+	}
+	// A refused folder leaves the browser where it was, so the typed path goes back to the one shown.
+	if (view.browseFailures !== drawn.browseFailures) {
+		drawn.browseFailures = view.browseFailures;
+		pathInput.value = view.listing?.path ?? '';
 	}
 }
 

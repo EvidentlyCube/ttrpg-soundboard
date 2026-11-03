@@ -1,7 +1,8 @@
 import { isIP } from 'node:net';
 import { parseArgs } from 'node:util';
 
-export const USAGE = 'Usage: node index.js [<audio-directory>…] [--port <number>] [--lan [<address>]] [--no-open] [--verbose]';
+export const USAGE = 'Usage: node index.js [<audio-directory>…] [--port <number>] [--lan [<address>]] [--UNSAFE-lan-manager]'
+	+ ' [--whitelisted-root <path>]… [--allow-hidden] [--no-open] [--verbose]';
 /** High enough not to clash with the usual development servers. */
 export const DEFAULT_PORT = 13872;
 
@@ -16,9 +17,11 @@ export class UsageError extends Error {
 
 /**
  * @param {string[]} argv arguments after the script name
- * @returns {{ directories: string[], port: number, verbose: boolean, open: boolean, lan: { address: string | null } | null }}
- * 	`directories` are the only folders the Selector offers when there are any; `lan` is set with `--lan`: the address
- * 	to listen on, or null for every interface
+ * @returns {{ directories: string[], port: number, verbose: boolean, open: boolean, lan: { address: string | null } | null,
+ * 	lanManager: boolean, roots: string[], allowHidden: boolean }}
+ * 	`directories` are the only folders the Selector offers when there are any; `lan` is set with `--lan` or
+ * 	`--UNSAFE-lan-manager`: the address to listen on, or null for every interface; `roots` are the `--whitelisted-root`
+ * 	paths as typed, `%home%` included (DESIGN.md §5.7)
  */
 export function parseArguments(argv) {
 	let parsed;
@@ -31,6 +34,9 @@ export function parseArguments(argv) {
 				'verbose': { type: 'boolean', default: false },
 				'no-open': { type: 'boolean', default: false },
 				'lan': { type: 'string' },
+				'UNSAFE-lan-manager': { type: 'boolean', default: false },
+				'whitelisted-root': { type: 'string', multiple: true, default: [] },
+				'allow-hidden': { type: 'boolean', default: false },
 			},
 		});
 	} catch (error) {
@@ -38,12 +44,21 @@ export function parseArguments(argv) {
 	}
 
 	const { positionals, values } = parsed;
+	const lanManager = values['UNSAFE-lan-manager'];
+	const roots = values['whitelisted-root'];
+	if (roots.some((root) => root.trim() === '')) {
+		throw new UsageError('--whitelisted-root needs a path.');
+	}
 	return {
 		directories: positionals,
 		port: parsePort(values.port),
 		verbose: values.verbose,
 		open: !values['no-open'],
-		lan: parseLan(values.lan),
+		// The manager is reached over the network, so it opens the server to it as `--lan` does.
+		lan: parseLan(values.lan) ?? (lanManager ? { address: null } : null),
+		lanManager,
+		roots,
+		allowHidden: values['allow-hidden'],
 	};
 }
 

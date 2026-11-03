@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { FolderRefusedError, StartupStateError } from '../startup/errors.js';
-import { FolderUnreadableError, listFolder, startingPlaces } from '../startup/folders.js';
+import { FolderNotAllowedError, FolderUnreadableError, listFolder, startingPlaces } from '../startup/folders.js';
 import { isPlainObject } from '../library/validate.js';
 import { isLoopbackAddress } from './lan-access.js';
 import { LOOPBACK_HOSTS, checkRequest } from './request-guard.js';
@@ -30,6 +30,8 @@ const STARTUP_PREFIX = '/api/startup/';
  * @property {import('../startup/folder-rules.js').Platform} platform
  * @property {import('./router.js').AppInfo} info filled in by the caller once the tools are known
  * @property {import('./server.js').LanOptions} [lan]
+ * @property {boolean} [lanManager] `--UNSAFE-lan-manager`: other devices may use the Selector and the Initializer
+ * 	without pairing (DESIGN.md §1.1)
  * @property {string} [publicDir]
  * @property {(error: unknown) => void} logError
  * @property {(line: string) => void} [logRequest]
@@ -38,13 +40,14 @@ const STARTUP_PREFIX = '/api/startup/';
 /**
  * Starts the app's HTTP server (DESIGN.md §3, §5.2). What it answers follows the session's phase: the Selector and
  * the Initializer with their routes, then the soundboard's own handler. Other devices get only the waiting page until
- * a soundboard is open. When the port is taken, the next ones are tried. Rejects with the last listen error.
+ * a soundboard is open, unless `lanManager` is set. When the port is taken, the next ones are tried. Rejects with the
+ * last listen error.
  * @param {AppServerOptions} options
  * @returns {Promise<{ port: number, url: string, close: () => Promise<void> }>}
  */
-export async function startApp({ session, port, platform, info, lan, publicDir = PUBLIC_DIR, logError, logRequest }) {
+export async function startApp({ session, port, platform, info, lan, lanManager = false, publicDir = PUBLIC_DIR, logError, logRequest }) {
 	const guard = { hosts: [...LOOPBACK_HOSTS, ...(lan?.names ?? [])], port };
-	const context = { session, platform, info, lan, publicDir, guard };
+	const context = { session, platform, info, lan, lanManager, publicDir, guard };
 	const server = createServer(async (request, response) => {
 		if (logRequest) {
 			logWhenDone(request, response, logRequest);
@@ -110,6 +113,7 @@ async function listenOnFreePort(server, port, host) {
  * @property {import('../startup/folder-rules.js').Platform} platform
  * @property {import('./router.js').AppInfo} info
  * @property {import('./server.js').LanOptions} [lan]
+ * @property {boolean} lanManager
  * @property {string} publicDir
  * @property {{ hosts: string[], port: number }} guard
  */
@@ -131,7 +135,7 @@ async function route(request, response, context) {
 		sendJson(response, 200, { ready: board !== null });
 		return;
 	}
-	if (context.lan && !isLoopbackAddress(request.socket.remoteAddress)) {
+	if (context.lan && !isLoopbackAddress(request.socket.remoteAddress) && (board || !context.lanManager)) {
 		if (board) {
 			await board.handle(request, response);
 			return;
@@ -252,6 +256,9 @@ async function serveStartup(request, response, pathname, { session, platform, in
 		}
 		if (error instanceof FolderUnreadableError) {
 			throw new HttpError(404, error.message);
+		}
+		if (error instanceof FolderNotAllowedError) {
+			throw new HttpError(403, error.message);
 		}
 		throw error;
 	}

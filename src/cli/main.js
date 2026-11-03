@@ -10,6 +10,7 @@ import { PORT_ATTEMPTS, startApp } from '../http/app-server.js';
 import { appVersion, createBoard } from '../http/server.js';
 import { BootstrapService } from '../library/bootstrap-service.js';
 import { ChangeWatcher } from '../library/change-watcher.js';
+import { resolvedPath } from '../startup/folder-rules.js';
 import { configFolder, RecentFolders } from '../startup/recent-folders.js';
 import { StartupSession } from '../startup/startup-session.js';
 import { parseArguments, USAGE, UsageError } from './args.js';
@@ -26,7 +27,7 @@ import { openInBrowser } from './open-browser.js';
  * @property {import('../downloads/process-runner.js').ProcessRunner} [run] starts yt-dlp and ffmpeg; tests pass a fake
  * @property {() => string[]} [networkAddresses] this machine's addresses on the local network, for `--lan`; tests pass a fixed list
  * @property {(url: string) => void} [openBrowser] tests pass one that opens nothing
- * @property {import('../startup/folder-rules.js').Platform} [platform] tests pass a home folder of their own
+ * @property {{ name: NodeJS.Platform, home: string, systemDrive?: string }} [system] tests pass a home folder of their own
  * @property {string} [configDirectory] where `recent.json` goes; tests pass a temporary folder
  */
 
@@ -46,8 +47,8 @@ export async function main(argv, {
 	run = runProcess,
 	networkAddresses = lanAddresses,
 	openBrowser = openInBrowser,
-	platform = { name: process.platform, home: homedir(), systemDrive: env.SystemDrive },
-	configDirectory = configFolder(platform, env),
+	system = { name: process.platform, home: homedir(), systemDrive: env.SystemDrive },
+	configDirectory = configFolder(system, env),
 }) {
 	let args;
 	try {
@@ -65,6 +66,25 @@ export async function main(argv, {
 	const say = (text, warning = false) => output.write(`${warning ? colors.yellow(text) : text}\n`);
 	/** @param {unknown} error */
 	const logError = (error) => errorOutput.write(`${error instanceof Error ? error.stack : String(error)}\n`);
+
+	// Links are resolved, as every folder checked against them is (DESIGN.md §5.7).
+	const home = (await resolvedPath(system.home)) ?? system.home;
+	/** @type {string[]} */
+	const roots = [];
+	for (const typed of args.roots.length > 0 ? args.roots : ['%home%']) {
+		const root = await resolvedPath(resolve(typed.replace(/%home%/gi, () => home)));
+		if (root === null) {
+			say(`--whitelisted-root: ${typed} doesn’t exist, so it is left out.`, true);
+		} else if (!roots.includes(root)) {
+			roots.push(root);
+		}
+	}
+	/** @type {import('../startup/folder-rules.js').Platform} */
+	const platform = { ...system, home, roots, allowHidden: args.allowHidden };
+	say(roots.length > 0 ? `Folders the app may open: ${roots.join(', ')}` : 'No folder may be opened: none of the --whitelisted-root folders exist.', roots.length === 0);
+	if (args.lanManager) {
+		say('--UNSAFE-lan-manager: until a soundboard is open, any device on the network can browse these folders and open a soundboard, without being allowed first.', true);
+	}
 
 	/** @type {import('../http/router.js').AppInfo} */
 	const info = { app: await appVersion(), checking: true, tools: { ytDlp: null, ffmpeg: null }, update: null };
@@ -157,6 +177,7 @@ export async function main(argv, {
 			platform,
 			info,
 			lan: lan?.options,
+			lanManager: args.lanManager,
 			logError,
 			logRequest: args.verbose ? (line) => say(line) : undefined,
 		});
