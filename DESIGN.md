@@ -11,16 +11,20 @@ It is a living document: every change to it is reviewed by hand by the project o
 A local soundboard for running RPG sessions. A Node.js server scans a directory of audio files and serves a vanilla-JS web app. The browser does all audio playback: overlapping sound effects plus several music playlists at once.
 
 ```
-node index.js <path-to-audio-directory> [--port <number>] [--lan [<address>]] [--verbose]
+node index.js [<audio-directory>…] [--port <number>] [--lan [<address>]] [--UNSAFE-lan-manager]
+              [--whitelisted-root <path>]… [--allow-hidden] [--no-open] [--verbose] [--help]
 ```
 
-- The server listens on `127.0.0.1` only. The default port is `3000`; `--port` accepts 1–65535.
-- With **`--lan`** it listens on all interfaces instead, or only on `<address>` when one is given (the next argument counts as the address only if it is an IP address). It prints one address per network address of this machine (`http://192.168.1.20:3000/`; Docker, bridge and virtual machine interfaces are left out) for opening the app on a phone as a remote control (§5.5, §9.15). A device that opens it must be allowed from this machine first (§5.6), and can then reach only the pages and the remote routes (§5.2). The terminal prints `Connection request from <address>, code <code>` for every new request.
-- Output is quiet by default: the startup summary, warnings and errors. `--verbose` also logs every HTTP request (§5.2).
-- After startup it prints `Soundboard running at http://127.0.0.1:3000` and `Press Ctrl+C or type exit and press Enter to stop.` The user opens that URL themselves.
+- The server listens on `127.0.0.1` only. The default port is `13872`, high enough not to clash with development servers; `--port` accepts 1–65535. When the port is taken, the next nine are tried in turn, and a yellow line says which one is used (`Port 13872 is in use, so the app uses port 13873.`).
+- It prints `Soundboard running at http://localhost:13872` and opens that address in the default browser (`open` on macOS, `cmd /c start "" <url>` on Windows, `xdg-open` elsewhere, in `src/cli/open-browser.js`; a failure is ignored, since the address is printed). `--no-open` leaves the browser alone. `*.localhost` names were tried for a nicer address and don't resolve in Safari.
+- Everything about choosing and loading a soundboard happens in the browser, in three phases: the **Selector** chooses the folder, the **Initializer** loads it and asks the startup questions, then the **soundboard** itself (§3). Folders given on the command line are the only ones the Selector offers. The terminal asks nothing.
+- Only folders inside the **allowed roots** can be browsed and opened: the home folder, or the folders given with `--whitelisted-root` (§5.7). `--allow-hidden` also allows hidden folders.
+- With **`--lan`** it listens on all interfaces instead, or only on `<address>` when one is given (the next argument counts as the address only if it is an IP address). It prints one address per network address of this machine (`http://192.168.1.20:13872/`; Docker, bridge and virtual machine interfaces are left out) for opening the app on a phone as a remote control (§5.5, §9.15). Other devices can do nothing until a soundboard is open (§1.1). A device that opens it must then be allowed from this machine first (§5.6), and can reach only the pages and the remote routes (§5.2). The terminal prints `Connection request from <address>, code <code>` for every new request.
+- **`--UNSAFE-lan-manager`** implies `--lan` and also lets any device on the network use the Selector and the Initializer, without pairing (§1.1). The terminal warns about it in yellow.
+- Output is quiet by default: the allowed folders, the tools and the address at startup, `Opened <folder>: 4 playlists and 4 sounds.` and `Closed <folder>.`, then `Press Ctrl+C or type exit and press Enter to stop.`, warnings and errors. `--verbose` also logs every HTTP request (§5.2). `--help` prints every option with what it does and exits; a usage error prints the reason, the usage line and a pointer to `--help`, and exits `1`.
 - While it runs, it watches the directory. Files added, removed or changed from outside the app are not loaded by themselves: the page offers a refresh, which rebuilds the library as a restart would (§3.6, §5.3).
 - It can add sounds, playlists and tracks from a pasted link. The server downloads it with `yt-dlp`, or fetches a direct link to a file itself, keeps its Opus audio as `.opus` or converts it to `.ogg` with `ffmpeg`, and the page shows each new file at once (§5.4, §9.9).
-- It is always started by hand from a terminal. There is no unattended mode.
+- It runs in a terminal window, which a launcher may open by itself; closing it, Ctrl+C or typing `exit` stops the app. There is no unattended mode.
 
 ### 1.1 Constraints
 
@@ -37,7 +41,7 @@ node index.js <path-to-audio-directory> [--port <number>] [--lan [<address>]] [-
 | Module system | ES modules everywhere (`"type": "module"`) |
 | Tests | `node --test` with `node:assert/strict`, and Playwright for the UI ([`TESTING.md`](TESTING.md)) |
 | Browsers | Current desktop Chrome, Firefox and **Safari** |
-| Trust | The server listens on the loopback address only and trusts whoever can reach it: it has no login. It protects against other web pages open in the same browser (the request guard, §5.2), not against other programs or users on the same machine. With `--lan` it also answers other machines, but only those that were allowed from this machine (§5.6), and only for the pages and the remote routes (§5.2). A remote can therefore start and stop sounds and playlists on the host, and nothing else. |
+| Trust | The server listens on the loopback address only and trusts whoever can reach it: it has no login. It protects against other web pages open in the same browser (the request guard, §5.2), not against other programs or users on the same machine. The Selector can list folders and the Initializer can delete broken options files, so both are limited to the allowed roots (§5.7) and answered only to this machine. With `--lan` the server also answers other machines, but until a soundboard is open they get only a waiting page, and afterwards only those that were allowed from this machine (§5.6), and only for the pages and the remote routes (§5.2). A remote can therefore start and stop sounds and playlists on the host, and nothing else. Closing the soundboard (Change soundboard, §3) disconnects every device and forgets its approval. `--UNSAFE-lan-manager` gives every device on the network the Selector and the Initializer without pairing, so any of them can browse the allowed roots, open a soundboard and delete broken options files. |
 | Touch | The player has no special handling: touch users may not be able to open the context menus. The remote page (§9.15) is built for a phone. |
 | Memory/CPU | Files stream over HTTP Range requests. The server never holds audio in memory. The browser holds decoded audio only for small sound effects, within a fixed memory budget. |
 | Target machine | MacBook Neo, 8 GB RAM, macOS, Safari as the likely browser, used at the table during RPG sessions (§12) |
@@ -198,43 +202,48 @@ Deleting from the board never removes a file. Everything deleted goes into `.tra
 
 ---
 
-## 3. Bootstrap (CLI)
+## 3. Startup
 
-Bootstrap runs before the HTTP server starts. The decision logic is the domain service `BootstrapService` (`src/library/`). Terminal input and output go through two ports, `Prompter.confirm(question) → Promise<boolean>` and `Reporter`, so the whole flow is tested with fakes. `src/cli/main.js` wires the real terminal in and turns the outcome into an exit code.
+The server starts at once and serves the startup in the browser. It is in one of three **phases**, held by `StartupSession` (`src/startup/startup-session.js`):
 
-- **Prompts** (`TerminalPrompter`) print `Question? [y/N] `. Only `y` or `yes` (any case) means yes; anything else, including just Enter or closed input, means no. Lines typed ahead are queued for the following questions rather than lost.
-- **Output** (`ConsoleReporter`) shows paths relative to the root. Colors use ANSI codes: red for nested directories and errors, yellow for warnings, bold for headings. Colors are off when `NO_COLOR` is set to a non-empty value or stdout is not a TTY.
-- **Ctrl+C** during the questions ends the process immediately. That is safe because every write is atomic and `.soundboard` is written last.
-- **Typing `exit`** only works once the server runs: `main` then reads stdin line by line, and a line that is `exit` (any case, spaces around it ignored) shuts down like SIGINT. Other lines are ignored, and closed input does not stop the app.
+1. **`selecting`**: the Selector (§9.18) chooses a folder. `select(path)` checks it with the folder rules (§5.7) and moves on with the path the rules allowed, symbolic links resolved. When folders were given on the command line, only those may be chosen (`Only the folders given when the app was started can be opened.`).
+2. **`initializing`**: the bootstrap below runs on the folder, and the Initializer (§9.19) shows its questions, its progress and what failed.
+3. **`ready`**: the soundboard is open. The session holds it as a `Board`, `{ handle, close }`: the soundboard's own request handler and services (`createBoard`, §5.2), built once the bootstrap and the download tools are done. The folder is added to the recent folders (§5.8) before the phase changes, so a Selector opened right after already lists it.
+
+**Change soundboard** (☰ menu, §9.3) calls `POST /api/startup/close`: `close()` goes back to `selecting` and closes the board, which ends every event stream with `startup.closed`, cancels a running download, forgets every allowed device (§5.6) and stops the change watcher. `shutdown()` closes whatever is open when the app stops; it is safe in any phase and twice.
+
+The decision logic of loading a folder is the domain service `BootstrapService` (`src/library/`). It asks and reports through two ports, `Prompter.confirm(question) → Promise<boolean>` and `Reporter`, so the whole flow is tested with fakes. The session is both while it loads a folder: it keeps what is reported as structured state for the Initializer, and turns each question into one the page shows, with an id and the details reported just before it (the nested folders, the titles, the file count). Only what needs a decision, and the progress, reaches the page; the warnings become problems in the board's Problems dialog (§5.1, §9.14) as before. Every load has its own generation, so the answers and reports of a load that was abandoned are ignored, and a board that finished opening for nobody is closed at once. `src/cli/main.js` wires it all together; the terminal asks nothing.
+
+- **Ctrl+C** or **typing `exit`** stops the app in any phase: `main` reads stdin line by line, and a line that is `exit` (any case, spaces around it ignored) shuts down like SIGINT. Other lines are ignored, and closed input does not stop the app. Stopping during the questions is safe because every write is atomic and `.soundboard` is written last.
+- **Colors** in the terminal use ANSI codes, yellow for warnings. They are off when `NO_COLOR` is set to a non-empty value or stdout is not a TTY.
 
 ### 3.1 Steps common to both modes
 
-1. Parse arguments. On a usage error (missing directory, extra arguments, unknown option, invalid port) or a path that is not a directory, print the reason and the usage line to stderr and exit `1`.
+1. Parse arguments. On a usage error (unknown option, invalid port, an empty `--whitelisted-root`), print the reason, the usage line and a pointer to `--help` to stderr and exit `1`. Folders given on the command line are only checked in the Selector, where a refused one shows why (§9.18).
 2. **Scan** the tree (§2.1). Scanning reads directory listings and file sizes and modification times only, never file contents.
-3. **Validate** every existing options file and `.soundboard` (§2.3). Any error is fatal.
-4. **Report warnings**: unsupported audio files, orphan options files, symlinks, empty playlists. These never stop the app.
+3. **Validate** every existing options file and `.soundboard` (§2.3). Any error stops the load: the Initializer shows each file and its problems (§3.7).
+4. **Report warnings**: unsupported audio files, orphan options files, symlinks, empty playlists. These never stop the app; they become problems (§5.1).
 
 Playlists without tracks take no further part: no question is asked about their nested directories and no options file is created for them.
 
 ### 3.2 First run (no `.soundboard`)
 
-5. **Nested subdirectories.** If any exist, print the first 10 in red as `Combat/Boss`, followed by `…and N more` when there are more. Then ask:
-   `Nested directories will be merged into their playlists. Continue? [y/N]`
-   - **No:** exit `0` without writing anything.
-   - **Yes:** each one is recorded in its playlist's `includedSubdirectories` (written in step 7).
-6. **Metadata titles.** For every audio file **without** an options file, try to read a title (§4). If any were found, list them as `path → "Title"`, then ask:
-   `Use these titles in the generated options files? [y/N]`
-   - No means filenames are used for all of them.
-7. **Write**:
-   - An options file for every sound and track that lacks one. The title comes from step 6, or the filename.
+5. **Large folder.** When the folder holds more than 5,000 audio files (`LARGE_FOLDER_FILES`), report the count and ask `LARGE_FOLDER_QUESTION`, since a first run writes an options file next to each and a whole music collection is easy to choose by mistake. **No** goes back to the Selector without writing anything.
+6. **Nested subdirectories.** If any exist, report them as `Combat/Boss` and ask `NESTED_DIRECTORIES_QUESTION`:
+   - **No:** back to the Selector without writing anything.
+   - **Yes:** each one is recorded in its playlist's `includedSubdirectories` (written in step 8).
+7. **Metadata titles.** For every audio file **without** an options file, try to read a title (§4). If any were found, report them as `path → "Title"` and ask `METADATA_TITLES_QUESTION`.
+   - No means filenames are used for all of them; the load goes on.
+8. **Write**:
+   - An options file for every sound and track that lacks one. The title comes from step 7, or the filename.
    - An options file for every playlist that lacks one. The title is the directory name, plus the accepted subdirectories.
    - Playlist options files that already exist get the accepted subdirectories merged in.
    - **`.soundboard` last**, as `{ "version": 1, "volumes": { "master": 1, "music": 1, "sfx": 1 } }`. If anything fails before this point, the next run is still treated as a first run.
 
 ### 3.3 Later runs (`.soundboard` exists)
 
-5. **New nested subdirectories.** These are subdirectories not listed in the playlist's `includedSubdirectories`. A brand-new playlist has none listed, so all of its subdirectories count as new. If there are any, print and ask exactly as in §3.2 step 5. No exits `0`; Yes appends them to the list and writes the file.
-6. **Missing options files.** For every audio file without one, generate it **without asking**: the metadata title if found, otherwise the filename. Missing playlist options files are created as in §3.2 step 7. `.soundboard` is not rewritten.
+5. **New nested subdirectories.** These are subdirectories not listed in the playlist's `includedSubdirectories`. A brand-new playlist has none listed, so all of its subdirectories count as new. If there are any, report and ask exactly as in §3.2 step 6. No goes back to the Selector; Yes appends them to the list and writes the file.
+6. **Missing options files.** For every audio file without one, generate it **without asking**: the metadata title if found, otherwise the filename. Missing playlist options files are created as in §3.2 step 8. `.soundboard` is not rewritten.
 
 **Sources, in both modes.** Every sound and track whose options file has no `source` gets one (§2.3), so each file is examined once (`src/library/sources.js`). A new options file gets it in the same write; an existing one has it merged in, and these writes are counted with the generated options.
 1. **The file name.** The last `[…]` right before the extension, holding exactly 11 characters of `A–Z a–z 0–9 _ -`, is a YouTube video id, as `yt-dlp` names files (`Title - 003 Intro [id].ogg` included). The source is `{ origin: "fileName", url: "https://www.youtube.com/watch?v=<id>", extractor: "Youtube", videoId }`, and the title loses the id (§2.4). False positives, such as `[Instrumentl]`, are accepted, and nothing is checked online.
@@ -245,10 +254,11 @@ Playlists without tracks take no further part: no question is asked about their 
 
 Bootstrap reports how many options files it created or updated and how many playlists and sounds were loaded. It returns an in-memory `Library` (§5.1), a `SettingsStore` loaded from `.soundboard`, and the scan it built them from, which the change watcher compares against (§5.3). The server keeps only these, never file contents. A refresh builds them again (§3.6).
 
-Then `src/cli/main.js` empties `.soundboard-downloads/`, since jobs never outlive the server (§5.4), and starts the server, which prints `Soundboard running at …` but stays **initializing** until the download tools are ready (§5.2):
+**The download tools** are prepared as soon as the app starts, while the Selector is open, not after a bootstrap. `src/cli/main.js` keeps what it finds in the shared `AppInfo`, whose `checking` is set until it is done (`GET /api/info`, §5.2):
 1. It looks for the tools (`findTools`: `yt-dlp --version`, `ffmpeg -version`) and prints `Downloads: yt-dlp 2026.08.19, ffmpeg 7.1.1`, or in yellow `Downloads are off: ffmpeg was not found.` A missing tool never stops the app.
 2. When yt-dlp was found, it prints `Checking for a yt-dlp update…` and runs `yt-dlp -U` (`updateYtDlp`, §5.4), which installs a newer version when it is allowed to write its own file. It prints `yt-dlp is up to date (2026.10.26).` or `yt-dlp updated to 2026.10.26.`, and after an update looks the versions up again. In yellow, it prints `yt-dlp 2026.10.26 is available (installed: 2026.10.21), but the update failed: Insufficient permissions to write to /usr/bin`, which also becomes a problem (§5.1), or `Could not check for a yt-dlp update: …`, which does not.
-3. The server leaves the initializing state, and the LAN links and the stop hint follow.
+
+**Opening the board.** When the bootstrap succeeds and the tools are not done yet, the Initializer waits on `waitingForTools`, so no download can start during the update. Then `main` empties `.soundboard-downloads/`, since jobs never outlive the soundboard (§5.4), starts the change watcher on the scan, builds the board (`createBoard`, §5.2) and prints `Opened <folder>: N playlists and M sounds.`. Closing it stops the watcher and prints `Closed <folder>.`. A failure while opening (the watcher, the workspace) stops the watcher and shows the error in the Initializer.
 
 ### 3.5 Durations
 
@@ -258,18 +268,27 @@ In both modes, after the questions and without asking anything, bootstrap makes 
 - **Same size and modification time as `measuredFrom`:** nothing is read.
 - **Otherwise:** hash the whole file. If the hash is the same, only `size` and `modified` in `measuredFrom` are refreshed, because the file was merely copied or touched. If it differs, the file was replaced, so the duration is read again.
 
-A file whose duration can't be read is stored as `"duration": null` with its `measuredFrom`, so it isn't read again on every start. New options files get their duration in the same write as their title; existing ones are merged as usual (§2.3), and each counts as updated in the report. Before any file is read, bootstrap prints `Measuring the duration of N audio files…`. The first run therefore reads every file once; later runs only read files that look changed.
+A file whose duration can't be read is stored as `"duration": null` with its `measuredFrom`, so it isn't read again on every start. New options files get their duration in the same write as their title; existing ones are merged as usual (§2.3), and each counts as updated in the report. Before any file is read, bootstrap reports how many will be (`measuringDurations`), then `measured(done, total)` after each one, which the Initializer shows as a progress bar. The first run therefore reads every file once; later runs only read files that look changed.
 
 ### 3.6 Refresh
 
-While the server runs, `BootstrapService.refresh(root)` builds the library again from the files, as a later run would (§3.3), when the page asks for it after external changes (§5.3). It uses the same `Reporter`, so its output goes to the terminal as at startup, after the line `Refreshing after external changes…`. It never asks anything. Differences from a start:
+While the server runs, `BootstrapService.refresh(root)` builds the library again from the files, as a later run would (§3.3), when the page asks for it after external changes (§5.3). The terminal prints `Refreshing after external changes…`; the reports go to the session, which ignores them once the soundboard is open. It never asks anything. Differences from opening the folder:
 
-- **No `.soundboard`** would make it a first run, which has questions to ask. The refresh stops at once with `noSettings`, writing nothing, and the page asks for a restart.
+- **No `.soundboard`** would make it a first run, which has questions to ask. The refresh stops at once with `noSettings`, writing nothing, and the page asks for a restart (§9.0).
 - **Validation errors** (§2.3) don't end the process. The refresh returns them (`invalid`), writes nothing, and the server keeps the library it has.
-- **New nested subdirectories** are merged into their playlists without asking, but **not recorded** in `includedSubdirectories`. A playlist options file the refresh creates lists none either. The next start from the terminal therefore still asks about them and records the answer (§3.3 step 5).
+- **New nested subdirectories** are merged into their playlists without asking, but **not recorded** in `includedSubdirectories`. A playlist options file the refresh creates lists none either. The next time the folder is opened, the Initializer therefore still asks about them and records the answer (§3.3 step 5).
 - **Orphaned files** only get the usual warnings (§3.1 step 4).
 
 On success the server replaces its library and settings store with the new ones (§5.2), and the change watcher takes a new baseline (§5.3).
+
+### 3.7 Failures, Back and Try again
+
+- **Validation errors** (§2.3) put the Initializer on `failed`, listing each file relative to the folder with its problems (`failures`). `canDelete` is set when every one of them is the app's own file inside the folder: an options file (`.json`) or `.soundboard`, never an audio file.
+- **Anything else that goes wrong**, such as a folder that can't be read, is logged to stderr and also puts it on `failed`, with the message as `error` and nothing to delete.
+- **Back** (`back()`) answers No to a waiting question, which returns to the Selector as a No does, or leaves a failure for the Selector. While the folder loads it is refused.
+- **Try again** (`retry()`) loads the same folder again after a failure, for instance once the files were fixed by hand.
+- **Delete and retry** (`deleteAndRetry()`) deletes exactly the listed files and loads the folder again. Without `.soundboard` that is a first run, with its questions. A file that can't be deleted shows `Could not delete a file: …` and stays on `failed`.
+- A question is answered by its id (`answer(id, yes)`), so an answer to a question that is no longer asked, from another tab for example, is refused.
 
 ---
 
@@ -351,10 +370,26 @@ Settings  { volumes: { master, music, sfx } }   // held by SettingsStore, saved 
 
 The server knows nothing about playback state.
 
+**The app server** (`app-server.js`, `startApp`) owns the port and answers by the startup phase (§3). It runs the request guard (below) first, then:
+- `GET /api/startup/ready` answers `{ ready }` to anyone, in any phase: what the waiting page polls.
+- **Another device** (with `--lan`, a request not from a loopback address) goes to the board once the phase is `ready`. Before that it gets the waiting page, unless `--UNSAFE-lan-manager` is set, in which case it is treated like this machine. The waiting page is `public/waiting.html` for every page path (`/`, a path ending in `.html`, or one without an extension), plus `/favicon.svg` and the Tailwind file; every `/api/…` path answers `503 { "error": "No soundboard is open." }` with `Retry-After: 2`, and anything else `403`. The page reads "No soundboard is open", polls the ready route every 2 s and reloads once one is, which brings the connect page (§9.16).
+- On this machine, `GET /api/info` and the startup routes below are answered by the app server in every phase.
+- Once `ready`, everything else goes to the board's handler. Before that, every other `/api/…` path answers `503 { "error": "No soundboard is loaded." }`, and every page path gets `public/selector.html` in `selecting` or `public/initializer.html` in `initializing`; other static files are served as usual.
+- When the port is taken, the next ones are tried, up to `PORT_ATTEMPTS` (10) in all; it rejects with the last error. Its `url` is `http://localhost:<port>`.
+
+**The board** (`server.js`, `createBoard`) is everything that serves one open soundboard: its services and the router below, with no listening socket of its own. It takes the app's `AccessControl`, so bans outlive it, and the shared `AppInfo`. `close()` ends every event stream with `startup.closed` (each stream registers itself in the board's `streams`, and writes nothing once it has ended), cancels a running download and calls `revokeAll()` (§5.6). It is safe to call twice. `startServer` wraps a board in a server of its own, on `127.0.0.1`, for the tests.
+
 | Method | Path | Response |
 |---|---|---|
-| GET, HEAD | `/` and other paths | Files from `public/` (`/` serves `index.html`), with a MIME map and `Cache-Control: no-cache`. 404 for anything missing or outside `public/`. |
-| GET | `/api/info` | `{ app, ytDlp: { version, update }, ffmpeg }`: `package.json`'s version, and each tool's version, `null` when it is missing. `update` is what `yt-dlp -U` did at startup (§5.4), `null` when it didn't run. |
+| GET, HEAD | `/` and other paths | Files from `public/` (`/` serves `index.html`, or the page of the startup phase, above), with a MIME map and `Cache-Control: no-cache`. 404 for anything missing or outside `public/`. |
+| GET | `/api/info` | `{ app, checking, ytDlp: { version, update }, ffmpeg }`: `package.json`'s version, whether the tools are still being looked for and updated (§3.4), and each tool's version, `null` when it is missing or not known yet. `update` is what `yt-dlp -U` did at startup (§5.4), `null` when it didn't run. |
+| GET | `/api/startup` | `{ phase, paths, recent, initializer, tools }`. `paths` is `null`, or the folders given on the command line, each `{ path, name, allowed, reason }` (§5.7). `recent` is `[{ path, name, exists }]` (§5.8), empty when paths were given. `initializer` is `null` outside `initializing`, else `{ root, step, question, progress, failures, error, canDelete }` (§3, §3.7): `step` is `scanning`, `question`, `measuring`, `waitingForTools`, `starting` or `failed`; `question` is `{ id, kind: 'largeFolder', count }`, `{ id, kind: 'nestedDirectories', paths }` or `{ id, kind: 'metadataTitles', titles: [{ path, title }] }`; `progress` is `{ done, total }`; `failures` is `[{ path, problems }]`. `tools` is the `/api/info` answer. |
+| GET | `/api/startup/folders` | Without `path`, `{ places: [{ name, path }] }` (§5.7). With `?path=<absolute path>`, the folder's listing: `{ path, parent, folders: [{ name, path, soundboard, refused }], audioFiles, soundboard, allowed, reason }`, with `path` resolved and `refused` judged by each subfolder's path alone. `403` with the reason for a folder outside the roots or hidden, and for any listing when paths were given on the command line; `404` for a folder that can't be read. |
+| POST | `/api/startup/select` | Body `{ path }`: starts loading it (§3). `204`; `400` with the reason for a refused folder or a missing `path`; `409` unless `selecting`. |
+| POST | `/api/startup/answer` | Body `{ id, yes }`. `204`; `400` for another body; `409` when that question isn't asked. |
+| POST | `/api/startup/back`, `/api/startup/retry`, `/api/startup/delete-and-retry` | §3.7. `204`; `409` when not possible in this phase or step. |
+| DELETE | `/api/startup/recent` | Body `{ path }`: forgets a recent folder. `204`. |
+| POST | `/api/startup/close` | Closes the soundboard (§3). `204`; `409` unless `ready`. |
 | GET | `/api/library` | JSON (below) |
 | GET | `/api/settings` | `{ "volumes": { "master": 1, "music": 0.8, "sfx": 1 } }` |
 | PUT | `/api/settings/volumes` | Body `{ master?, music?, sfx? }` (numbers in `0..1`). Merged into the settings and saved; returns the full settings. `400` for invalid JSON, a non-object, an out-of-range value or an unknown key. `413` for bodies over 16 KB. |
@@ -386,11 +421,10 @@ The server knows nothing about playback state.
 | POST | `/api/access/requests` | With `--lan` only (`404` without). Starts pairing for the caller's address, or finds the request it already has, and answers `{ status: 'pending', code }`, or `{ status: 'banned' }` when this request was one too many (§5.6). The only route that counts toward the limit. |
 | GET | `/api/access/requests/mine` | With `--lan` only. Polled by the connect page: `{ status: 'none' \| 'pending' \| 'allowed' \| 'denied' \| 'banned', code? }`. The first answer that reports `allowed` also sets the device cookie. Not counted. |
 | POST | `/api/access/requests/answer` | With `--lan` only, and for this machine only. Body `{ address, decision: 'allow' \| 'deny' }`; `200 {}`. `400` for anything else, `404` when that address has no pending request. |
-| GET | `/api/access/links` | With `--lan` only, and for this machine only. `{ links: ['http://192.168.1.20:3000/'] }`: the addresses that open the app from another device, for the QR code (§9.16). |
+| GET | `/api/access/links` | With `--lan` only, and for this machine only. `{ links: ['http://192.168.1.20:13872/'] }`: the addresses that open the app from another device, for the QR code (§9.16). |
 
 - API responses are JSON with `Cache-Control: no-store`. Errors are `{ "error": "message" }`.
 - A known path with the wrong method gets `405` with an `Allow` header. Unknown `/api/…` paths get a JSON `404`.
-- **While initializing** (§3.4), right after the request guard: every `/api/…` request gets `503 { "error": "The app is starting." }` with `Retry-After: 1`, and every page path (`/`, a path ending in `.html`, or one without an extension) gets `public/initializing.html`. Other files, such as the Tailwind build and the icon, are served as usual. That dark page reads "Initializing…" and polls `GET /api/info` every 500 ms; the first answer that isn't `503` reloads it into the app (or the connect page). `startServer` takes `downloads` as a function for this: it is called once the server listens, and the server initializes until it resolves. Its result is `{ tools, update, run }`, and the server's `ready` promise resolves once it has been applied.
 - Every route that reads a JSON body (`PUT`, `PATCH` and `POST` above) answers `415 { "error": "Send application/json" }` for any other `Content-Type` (parameters and case are ignored). The waveform `PUT` needs `application/octet-stream` the same way.
 
 **Request guard** (`request-guard.js`). Any web page open in the same browser can send requests to `127.0.0.1`, and a page that rebinds its DNS name to it can even read the answers. `checkRequest` runs first for every request, whatever its path (API, media and static files alike), and answers `403 { "error": "Request not allowed" }` when:
@@ -441,6 +475,7 @@ Each path segment of a media URL is percent-encoded separately. `source` is the 
 | `command` | `{ command }` | to the host's stream: a command a remote sent (§5.5) |
 | `remote.host` | `{ connected }` | to a remote's stream on connect and whenever a host appears or goes |
 | `remote.state` | `{ state }` | to a remote's stream: the host's last `RemoteState`, on connect and whenever the host sends a new one |
+| `startup.closed` | `{}` | to every stream, page or remote, as its last message when the soundboard closes (§3); the stream ends right after |
 
 **Static files.** The path guard works on the raw request path, before any URL normalization: the path is percent-decoded, resolved against `public/`, and rejected unless it is still inside. Null bytes and malformed encoding are rejected too.
 
@@ -456,8 +491,8 @@ Each path segment of a media URL is percent-encoded separately. `source` is the 
 **Other server behavior:**
 - Unexpected errors (500s, failed streams) are always printed to stderr with their stack trace.
 - With `--verbose`, each request is logged to stdout when its response finishes or the client disconnects: `GET /media/Combat/01%20Battle.mp3 206 bytes=0-1023 12ms`. That is the method, the raw path, the status, the `Range` header if there was one, and the duration. A request whose client disconnected first ends with `(aborted)`.
-- If the port is in use, or not allowed, print a clear message and exit `1`.
-- On SIGINT, SIGTERM or a typed `exit` (§3), stop the change watcher, close the server, including open media streams and event streams, print `Stopped.` and exit `0`.
+- If the port and the nine after it are in use (`Ports 13872 to 13881 are all in use. Choose another port with --port.`), or the port is not allowed, print a clear message and exit `1`.
+- On SIGINT, SIGTERM or a typed `exit` (§3), close the soundboard if one is open (which stops the change watcher), close the server, including open media streams and event streams, print `Stopped.` and exit `0`.
 
 ### 5.3 Change watcher (`ChangeWatcher`)
 
@@ -546,6 +581,28 @@ With `--lan`, a device on the network must be allowed from this machine before i
 - **The limit.** `request(address)` and `strike(address)` count one request for the address. More than 5 within 60 s (`MAX_REQUESTS`, `RATE_WINDOW_MS`) bans it at once, with no prompt, and drops its request. A banned address stays banned until the server restarts. Polling the answer (`status`) does not count. The address is the only identity there is, so a ban also hits other devices behind the same address, which on a home IPv4 network is the same device.
 - **Events.** `onChange` fires whenever the list of pending requests changes, and the event streams send it to the pages (`access.requests`, §5.2). `onRequest` fires for every request that is new, not for a repeat, and the CLI prints it (§1).
 - **Who answers.** Requests from this machine are never checked (§5.2), so only the pages here can reach the answer route. A device cannot allow itself or another.
+- **Closing the soundboard.** `revokeAll()` forgets every allowed device and every request, and announces the change when requests were waiting. The bans and the rate counts stay. The board calls it when it closes (§3), so each device pairs again for the next soundboard.
+
+### 5.7 Folder rules (`src/startup/folder-rules.js`, `src/startup/folders.js`)
+
+The server checks every folder the Selector browses or chooses, whether it was browsed, recent or given on the command line. The rules take a `Platform`: the system, the home folder, the system drive on Windows, the allowed roots and `allowHidden`, so every system's rules are tested anywhere. Each path is checked **after resolving symbolic links** (`resolvedPath`), so a link can't lead out of the roots, and a folder that passes is opened by that resolved path. `main` resolves the home folder and the roots the same way at startup.
+
+- **Allowed roots.** Only a root and what is inside it may be browsed or opened. By default the only root is the home folder. Each `--whitelisted-root <path>` adds one, and giving any replaces the home folder; `%home%` (any case) in the path stands for the home folder, so `--whitelisted-root %home% --whitelisted-root /mnt/sfx` keeps it. A root that doesn't exist is left out with a yellow line, and the terminal prints the roots (`Folders the app may open: …`). Otherwise: "This folder is outside the folders the app may open."
+- **Hidden folders.** A path with any part below its root starting with a dot can't be browsed or opened, unless `--allow-hidden` is given: "Hidden folders can't be used." A root that is hidden itself is allowed, since it was named on purpose. These two rules are `browseRefusalOf`.
+- **System folders**, refused with everything inside them, even within a root (`refusalOf`): `/bin`, `/boot`, `/dev`, `/etc`, `/lib`, `/lib32`, `/lib64`, `/opt`, `/proc`, `/root`, `/run`, `/sbin`, `/snap`, `/srv`, `/sys`, `/usr`, `/var`, and on macOS `/System`, `/Library`, `/Applications`, `/private`, `/cores`; on Windows `Windows`, `Program Files`, `Program Files (x86)`, `ProgramData`, `$Recycle.Bin` and `System Volume Information` on any drive, and `AppData` in the home folder: "System folders can't be used." Drives under `/run/media` are not system folders, and neither is anything inside the home folder, since some systems keep it in one (`/var/home` on Fedora Silverblue).
+- **Folders that only hold other places**, refused as themselves only: `/`, `/home`, `/Users`, `/Volumes`, `/media`, `/mnt`, `/run/media`, the system drive's root and its `Users` on Windows, and the home folder: "Choose a folder inside this one." Another drive's root, such as `D:\`, is allowed.
+- **Not a soundboard** (`checkFolder` only): a folder without `.soundboard` and without a supported audio file in it or in a direct subfolder (hidden ones skipped): "No audio files found here." Also "This folder doesn't exist.", "This is not a folder." and "This folder can't be read."
+- Paths are compared without regard to case on Windows and macOS, whose disks usually ignore it.
+
+**Listing** (`listFolder`) refuses with `FolderNotAllowedError` what `browseRefusalOf` refuses, and with `FolderUnreadableError` what doesn't exist or can't be read. It lists the subfolders (and symbolic links to folders) by name, numbers in order, without hidden ones unless they are allowed. Each gets `soundboard` (it holds `.soundboard`, one `stat` each) and `refused` (`refusalOf` on its path alone). The listing also counts the supported audio files directly inside, says whether the folder itself is a soundboard, and has `checkFolder`'s answer. `parent` is `null` only at the top of a disk; it may be outside the roots, and listing it is then refused, which the Selector shows as a notice (§9.18).
+
+**Starting places** (`startingPlaces`): each root (the home folder named "Home", another by its name), then the home folder's `Music`, `Desktop`, `Documents` and `Downloads` when they exist, are allowed and aren't roots already. Drives and mounts show only when they are roots.
+
+The soundboard itself ignores every file and folder whose name starts with a dot (§2.1), apart from its own `.trash` and `.soundboard-downloads`.
+
+### 5.8 Recent folders (`src/startup/recent-folders.js`)
+
+`RecentFolders` keeps the last 5 folders (`MAX_RECENT`) that reached `ready`, newest first, without repeats, as `{ "recent": [paths] }` in `recent.json` in the app's config folder (`configFolder`): `%APPDATA%\Soundboard` on Windows, `~/Library/Application Support/Soundboard` on macOS, `$XDG_CONFIG_HOME/soundboard` or `~/.config/soundboard` elsewhere. It is the only file the app writes outside a soundboard; the folder is created on the first write, which is atomic (§2.3). `list()` says for each whether it still exists. A missing or broken file, or entries that aren't strings, count as nothing. `forget(path)` removes one.
 
 ---
 
@@ -571,6 +628,7 @@ UI layer (DOM)  ──commands──▶  Soundboard (logic facade)  ──▶  A
   - for the trash (§6.8), `fetchTrash()`, `restoreFromTrash(target)`, which resolves with the `changes` like the two above, and `deleteFromTrash(target)`, where `target` is `{ kind, id }` or `'all'`;
   - for problems (§6.9), `dismissProblem(id)` and `dismissAllProblems()`;
   - for the Info dialog (§9.17), `fetchInfo()`, the answer of `GET /api/info`, which the facade passes on as `fetchInfo()`;
+  - for Change soundboard (§9.3), `closeSoundboard()`, `POST /api/startup/close`, rejecting with the server's message;
   - for the host role (§6.10), the `BackendApi` methods `fetchHostStatus()`, `claimHost(pageId, { replace })` ("ok" or "taken"), `releaseHost(pageId, { keepalive })`, `sendRemoteState(pageId, state)` and `sendRemoteCommand(command)`;
   - for pairing devices (§5.6, §9.16), the `BackendApi` methods `answerAccessRequest(address, decision)` and `fetchConnectLinks()` (empty without `--lan`). The facade gives the pages `accessRequests()`, the list of the last `access.requests` message, announced as `access.requestsChanged { requests }`; `answerAccessRequest(address, decision)`, which only sends the answer, since the new list comes from the server; and `fetchConnectLinks()`. A failed answer is logged as a warning;
   - `ServerEvents.connect(onMessage, params)` takes the query of the stream (`page` or `role`);
@@ -590,6 +648,8 @@ start() → Promise<void>                   // from the splash click (§9.0): un
                                           // library + settings once, apply volumes, emit 'app.ready' or 'app.startFailed'
 unlockAudio()                             // resume audio if the browser suspended it; must run inside a user gesture
 flushSettings()                           // save pending volume, sound and playlist changes now, with keepalive (on 'pagehide')
+closeSoundboard() → Promise<void>         // Change soundboard (§9.3): flushSettings, then POST /api/startup/close; emits
+                                          // 'app.closed' once done, and rejects with the server's message
 
 // sounds (no transitions; sounds have no rules)
 playSound(soundId)
@@ -699,6 +759,7 @@ on(type, handler) → unsubscribe, off(type, handler)
 |---|---|
 | `app.ready` | `{ library, volumes, unplayable: string[] }`, where `unplayable` lists ids whose format this browser cannot play |
 | `app.startFailed` | `{ message }`, e.g. the server isn't reachable |
+| `app.closed` | `{}`, once: the soundboard was closed, by `closeSoundboard` or from another page (the `startup.closed` message, §5.2). The page then loads `/`, which is the Selector. |
 | `audio.suspended` | `{}`, sent when the audio context stops running without being asked (Safari interruption, Mac wake from sleep) |
 | `audio.resumed` | `{}`, sent when it runs again after a suspension |
 | `panic.changed` | `{ state }`, `'fade'` or `'now'`: what the next press of Panic Stop does (§6.1) |
@@ -889,7 +950,7 @@ A page runs in one of three modes, chosen on the splash (§9.0): **standalone** 
 - A `command` message from the server (§5.5) goes to `dispatch` like any command from the UI. It is never run when the page is not the host.
 - `remote.role { host: false }` while hosting ends the role: the page is standalone, `host.changed { hosting: false }` is announced and `host-lost` is recorded if the reason was `replaced`. `stopHosting` does the same by request and tells the server; on `pagehide` the page calls it with `keepalive`, so a reload does not leave the next load facing a host that is already gone.
 
-**Remote mode** is not a `Soundboard`. `RemoteController` (`logic/remote-controller.js`) has the same kind of interface: `checkHost()` (`GET /api/remote`, used by the splash), `start()`, `stop()`, `state()`, `hostConnected()`, `panicState()`, command methods (`panicStop`, `playSound`, `stopSound`, `togglePlaylist`, `stopPlaylist`, `pausePlaylist`, `resumePlaylist`, `nextTrack`, `previousTrack`) and `on`. `start()` opens `?role=remote`. It emits `remote.hostChanged { connected }`, `remote.stateChanged { state }` and `panic.changed { state }`. A command is sent with `POST /api/remote/commands`; a failure is only logged, since the next state shows what happened. It creates no `AudioEngine` and never calls `unlockAudio`.
+**Remote mode** is not a `Soundboard`. `RemoteController` (`logic/remote-controller.js`) has the same kind of interface: `checkHost()` (`GET /api/remote`, used by the splash), `start()`, `stop()`, `state()`, `hostConnected()`, `panicState()`, command methods (`panicStop`, `playSound`, `stopSound`, `togglePlaylist`, `stopPlaylist`, `pausePlaylist`, `resumePlaylist`, `nextTrack`, `previousTrack`) and `on`. `start()` opens `?role=remote`. It emits `remote.hostChanged { connected }`, `remote.stateChanged { state }` and `panic.changed { state }`, and `remote.closed` when the stream brings `startup.closed`: it stops following, and the remote page loads `/`, which is the waiting page until a soundboard is open again (§5.2). A command is sent with `POST /api/remote/commands`; a failure is only logged, since the next state shows what happened. It creates no `AudioEngine` and never calls `unlockAudio`.
 
 ---
 
@@ -1128,6 +1189,7 @@ One shared `Overlay` shows the context menus and the track list popover; opening
 - A popup opens at the cursor (the track list at its chevron button). Where it would overflow the window, it flips to the other side of that point, and as a last resort it is clamped inside an 8 px margin. It is placed again whenever its size changes, because Tailwind may only style a newly used class after the popup has been measured.
 - Right-clicking a tile suppresses the browser's own context menu. Choosing a menu item closes the menu first, then runs the action. Disabled items are greyed out.
 - The ☰ app menu has **Become host** while the page is standalone and **Stop hosting** while it hosts. Become host calls `becomeHost`; on `'taken'` the replace dialog opens (§9.15).
+- The ☰ app menu ends with **Change soundboard**, in a group of its own. It calls `closeSoundboard` (§6.1), and on `app.closed` the page loads `/`, which is now the Selector (§9.18); leaving the page stops its audio. Every other page of the soundboard follows through `startup.closed`. A failure is only logged to the console.
 
 **Sound menu**
 
@@ -1417,6 +1479,39 @@ With `--lan` (§5.6) a phone pairs with the server by approval. Nothing here is 
 
 Under yt-dlp's version, a small line (`data-update-state`) says what `yt-dlp -U` did at startup (§5.4): "Up to date", "Updated at startup from 2026.10.21", "2026.10.26 available, but the update failed" in yellow, or "Could not check for updates"; the last two have the error as a tooltip. There is no such line when yt-dlp is missing.
 
+### 9.18 Selector
+
+`public/selector.html` with `public/app/selector.js`, what `/` shows in the `selecting` phase (§5.2). Its logic is `StartupFlow` (`logic/startup-flow.js`, tested with a fake `StartupApi` and the fake clock, like `AccessRequester`, §9.16), over `HttpStartupApi` (`api/startup-api.js`), whose actions reject with the server's message.
+
+- **`StartupFlow`** polls `GET /api/startup` at once and every 500 ms (`STARTUP_POLL_MS`). A page belongs to one phase: once the server is in another, it stops polling and calls `onLeave`, and the page loads `/`. It keeps a `StartupView`: the state, `connected` (false while the server doesn't answer), the starting places, the folder shown, `error` (the last action's failure, until the next action), `browseError` with a `browseFailures` count, and `busy` while an action runs; a second action meanwhile is ignored. Each action is followed by a poll. A folder that can't be shown leaves the one shown in place; the answer to an older browse is dropped when a newer one was asked.
+- **Layout**, centered, at most `max-w-3xl`: "Soundboard" and "Choose a soundboard", a notice while the app doesn't answer ("The app doesn't answer. If it was stopped, start it again; this page carries on by itself."), the error line in red, then the sections, and a footer.
+- **With folders from the command line**: a "Soundboards" section with one card per folder (`data-folder-card`, the name over the full path); a refused one is greyed out with its reason under the path and as the card's `title` (`data-refused`). The browser and the recent folders are hidden.
+- **Otherwise**: "Recent" cards, each with a × (`data-forget`) that forgets it, and one that no longer exists greyed out as "This folder doesn't exist any more."; then "Browse", loaded once the first state says no folders were given:
+  - the starting places as buttons (`data-place`, `data-current` on the one shown);
+  - a path field (`data-path-input`) you can paste into, with Go (or Enter);
+  - a row with **↑ Up** (`data-folder-up`, disabled at the top of a disk), a summary (`data-folder-summary`: "Soundboard folder", "No soundboard here yet: 3 folders, 12 audio files", or the reason it can't be opened, in yellow), and the action button (`data-folder-open`): **Open** for a soundboard, **Create soundboard here** otherwise, disabled when refused, with the reason as a tooltip;
+  - the subfolders (`data-folder-list`, at most half the window high, scrolling): each name opens it in the browser; a refused one is muted with its reason as the `title`; a soundboard has a "Soundboard" badge and its own **Open** button.
+- **A folder that can't be shown**, typed in or reached with Up, shows its reason in a small red notice in the bottom-right corner (`data-toast`, `role="status"`). It fades in, stays a second, and fades out (`data-visible`, an opacity transition); the path field goes back to the folder shown, even when the same path is refused twice.
+- **Footer** (`ui/startup-parts.js`): yt-dlp and ffmpeg (`data-tool`), each "checking…", its version, or "not installed, so downloads are off" in yellow; yt-dlp's adds "up to date", "updated", "update failed" or "could not check for updates", with the error as its tooltip.
+- Parts are drawn again only when what they show changed, so polling never resets a hover or a typed path.
+- **Extension point**: startup settings, such as LAN access, would go into a section of their own here.
+
+### 9.19 Initializer
+
+`public/initializer.html` with `public/app/initializer.js`, what `/` shows in the `initializing` phase, over the same `StartupFlow`. It shows "Opening a soundboard", the folder's name over its path, then one panel (`data-initializer-step` = the step):
+
+- **`scanning`**, **`starting`**, **`waitingForTools`**: a line, "Reading the folder…", "Opening the soundboard…", "Waiting for the yt-dlp update to finish…".
+- **`measuring`**: "Measuring the duration of each audio file: 120 of 450" over a progress bar (`data-progress`), both updated in place (§9.6), and a note that this happens once per file.
+- **`question`**, with the two answers as buttons (`data-answer` = `no` / `yes`):
+  - large folder: "This folder holds 6,123 audio files and isn't a soundboard yet.", what opening it writes, **Back** / **Create the options files**;
+  - nested folders: the paths in red in a list, **Back** / **Merge them**;
+  - metadata titles: `path → "Title"` rows, **Use the file names** / **Use these titles**.
+  Lists show the first 200 and count the rest.
+- **`failed`**: in red, "Some of the soundboard's own files can't be read, so it can't open." or "The soundboard could not be opened.", then the error, the failing files (`data-startup-failure`) with their problems, and **Back**, **Try again** (`data-startup-action`) and, when they may be deleted, a `holdButton` (§9.7) held for 1 s, **Hold to delete these files and start**, with a line saying the settings in them are lost.
+- When the session reaches `ready` the page loads `/`, which is the board's splash (§9.0); after a No or Back it is the Selector.
+
+**Remote devices** get `public/waiting.html` instead before a soundboard is open (§5.2).
+
 ---
 
 ## 10. Project structure
@@ -1427,7 +1522,8 @@ package.json  package-lock.json  type: module, engines, scripts (§10.2), dev de
 eslint.config.js  .editorconfig  tsconfig.json  tsconfig.*.json (§10.1)
 scripts/        mutate.js                checks that tests fail when code is broken (TESTING.md)
 src/
-	cli/        main.js  args.js  prompter.js  reporter.js  colors.js
+	cli/        main.js  args.js  open-browser.js  colors.js
+	startup/    startup-session.js  folder-rules.js  folders.js  recent-folders.js  errors.js
 	library/    bootstrap-service.js  scanner.js  classify.js  sort.js  validate.js  errors.js
 	            options-store.js  settings-store.js  library.js  library-editor.js  durations.js  waveform-store.js
 	            change-watcher.js  tree-snapshot.js  file-moves.js  trash.js  sources.js  problems.js
@@ -1435,22 +1531,23 @@ src/
 	            tools.js  yt-dlp-update.js  file-names.js  workspace.js  errors.js
 	metadata/   index.js  id3.js  ogg.js  mpeg.js  binary-reader.js
 	remote/     remote-relay.js
-	http/       server.js  router.js  responses.js  static-files.js  media.js  range.js  mime.js  request-log.js  events.js
+	http/       app-server.js  server.js  router.js  responses.js  static-files.js  media.js  range.js  mime.js  request-log.js  events.js
 	            library-json.js  library-changes.js  lan-access.js  remote-routes.js  access-control.js  access-routes.js
 public/
-	index.html  connect.html  initializing.html  favicon.svg
+	index.html  selector.html  initializer.html  waiting.html  connect.html  favicon.svg
 	vendor/     tailwindcss-browser-<version>.js  tailwindcss-browser.LICENSE   (excluded from lint and type-checking)
 	app/
 		main.js  browser-clock.js       composition root and the browser Clock
 		connect.js                      the connect page's script (§9.16)
+		selector.js  initializer.js     the startup pages' scripts (§9.18, §9.19)
 		logic/                          no DOM, audio or Node APIs
 			ports.js  soundboard.js  commands.js  errors.js  event-emitter.js  library-model.js
 			playlist-player.js  playback-rules.js  transitions.js  order-strategies.js  play-history.js  problem-list.js
 			sound-player.js  buffer-cache.js  clip.js  volume.js  settings-sync.js  options-sync.js  sort.js
 			voice-monitor.js  fade-ramp.js  peaks.js  waveform-service.js  remote-state.js  remote-controller.js
-			access-requester.js  qr-code.js
+			access-requester.js  qr-code.js  startup-flow.js
 		audio/      web-audio-engine.js  web-audio-waveform-decoder.js
-		api/        backend-api.js  server-events.js
+		api/        backend-api.js  server-events.js  startup-api.js
 		ui/         app.js  component.js  dom.js  icons.js  format.js  menus.js  position.js  external-changes-button.js
 		            splash.js  overlay.js  context-menu.js  track-list.js  tile-grid.js
 		            playlist-tile.js  sound-tile.js  player-dock.js  player-bar.js  level-bar.js  panic-button.js  volume-controls.js
@@ -1458,11 +1555,11 @@ public/
 		            gain-control.js  gain-scale.js  debug-view.js  waveform-indicator.js  waveform-draw.js  waveform-canvas.js
 		            seconds-control.js  seconds-scale.js  range-control.js  range-scale.js  add-dialog.js  download-dialog.js
 		            hold-button.js  replace-host-dialog.js  remote-view.js  move-dialog.js  trash-button.js  trash-dialog.js  metadata-dialog.js  source-fields.js  problems-button.js  problems-dialog.js
-		            access-requests-banner.js  connect-phone-dialog.js  info-dialog.js
+		            access-requests-banner.js  connect-phone-dialog.js  info-dialog.js  startup-parts.js
 test/
-	backend/    cli/  downloads/  http/  library/  metadata/
+	backend/    cli/  downloads/  http/  library/  metadata/  remote/  startup/
 	frontend/   logic tests, backend-api.test.js, ui/ (pure UI helpers)
-	browser/    Playwright suite (§11): playwright.config.js, support/ (fixtures, server, test-main, audio, disk), pages/, specs/
+	browser/    Playwright suite (§11): playwright.config.js, support/ (fixtures, server, test-main, audio, disk, app), pages/, specs/
 	helpers/    fake-audio-engine.js  fake-clock.js  fake-backend-api.js  fake-prompter.js  fake-reporter.js  fake-process-runner.js
 	            tmp-tree.js  tag-builders.js  http-client.js  seeded-random.js
 test_fixtures/
