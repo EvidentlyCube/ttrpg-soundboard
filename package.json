@@ -15,7 +15,8 @@
 		"typecheck": "tsc -p tsconfig.backend.json && tsc -p tsconfig.logic.json && tsc -p tsconfig.ui.json && tsc -p tsconfig.frontend-tests.json && tsc -p tsconfig.browser-tests.json",
 		"lint": "eslint .",
 		"lint:fix": "eslint . --fix",
-		"check": "npm run typecheck && npm run lint && npm test"
+		"check": "npm run typecheck && npm run lint && npm test",
+		"pack": "node scripts/pack.js"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
