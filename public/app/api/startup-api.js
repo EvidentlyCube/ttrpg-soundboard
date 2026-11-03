@@ -55,6 +55,11 @@ export class HttpStartupApi {
 		await this.#call('POST', '/api/startup/delete-and-retry');
 	}
 
+	/** @type {StartupApi['setLanguage']} */
+	async setLanguage(language) {
+		await this.#call('PUT', '/api/startup/language', { language });
+	}
+
 	/** @type {StartupApi['forgetRecent']} */
 	async forgetRecent(path) {
 		await this.#call('DELETE', '/api/startup/recent', { path });

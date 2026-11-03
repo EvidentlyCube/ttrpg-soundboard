@@ -63,6 +63,7 @@ export const STARTUP_POLL_MS = 500;
  * @property {() => Promise<void>} retry
  * @property {() => Promise<void>} deleteAndRetry
  * @property {(path: string) => Promise<void>} forgetRecent
+ * @property {(language: string | null) => Promise<void>} setLanguage null: the browser's (DESIGN.md §9.21)
  */
 
 /**
@@ -201,6 +202,16 @@ export class StartupFlow {
 	/** @param {string} path */
 	forgetRecent(path) {
 		return this.#act(() => this.#api.forgetRecent(path));
+	}
+
+	/**
+	 * Saves the app's language; the page then loads again in it.
+	 * @param {string | null} language
+	 * @returns {Promise<boolean>} whether it was saved
+	 */
+	async setLanguage(language) {
+		await this.#act(() => this.#api.setLanguage(language));
+		return this.#view.error === null;
 	}
 
 	/** @param {() => Promise<void>} action */

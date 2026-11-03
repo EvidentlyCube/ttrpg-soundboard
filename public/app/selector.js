@@ -1,6 +1,6 @@
 import { HttpStartupApi } from './api/startup-api.js';
 import { browserClock } from './browser-clock.js';
-import { loadLanguage } from './language.js';
+import { importLanguage, loadLanguage } from './language.js';
 import { StartupFlow } from './logic/startup-flow.js';
 import { card } from './ui/customize-parts.js';
 import { h } from './ui/dom.js';
@@ -17,7 +17,7 @@ const BUTTON = 'cursor-pointer rounded-md bg-raised px-3 py-1.5 text-sm font-med
 const BAR_BUTTON = 'flex cursor-pointer items-center border-line px-3 text-sm font-medium text-muted hover:bg-raised-hover hover:text-text disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-muted';
 const PRIMARY = 'cursor-pointer rounded-md bg-music px-4 py-1.5 text-sm font-semibold whitespace-nowrap text-surface hover:brightness-110 disabled:cursor-default disabled:opacity-50';
 
-await loadLanguage();
+const language = await loadLanguage();
 
 const root = document.getElementById('selector');
 if (!root) {
@@ -117,7 +117,7 @@ document.addEventListener('keydown', (event) => {
 	}
 });
 
-const header = toolsHeader(t('selector.title'));
+const header = toolsHeader(t('selector.title'), await languageMenu());
 root.replaceChildren(
 	header.element,
 	h('main', { class: 'mx-auto w-full max-w-3xl flex-1 space-y-6 px-5 py-8' },
@@ -351,6 +351,34 @@ function browseCard(onClick) {
 		'data-browse': true,
 		'onClick': onClick ?? undefined,
 	}, t('selector.browseFolders'));
+}
+
+/**
+ * The app's language (DESIGN.md §9.21): Automatic, then each language by its own name. A choice is saved, and the page
+ * loads again in it.
+ */
+async function languageMenu() {
+	const names = await Promise.all(language.available.map(async (code) => {
+		const name = await importLanguage(code).then((file) => file.name, () => code);
+		return /** @type {const} */ ([code, name]);
+	}));
+	const select = h('select', {
+		'class': 'cursor-pointer rounded-md border border-line bg-raised px-2 py-1 text-xs text-text hover:bg-raised-hover',
+		'aria-label': t('selector.language'),
+		'title': t('selector.language'),
+		'data-language': true,
+	},
+	h('option', { value: '' }, t('selector.automatic')),
+	...names.map(([code, name]) => h('option', { value: code, lang: code }, name)));
+	select.value = language.setting ?? '';
+	select.addEventListener('change', async () => {
+		if (await flow.setLanguage(select.value || null)) {
+			window.location.reload();
+		} else {
+			select.value = language.setting ?? '';
+		}
+	});
+	return select;
 }
 
 /** @param {string} emoji */

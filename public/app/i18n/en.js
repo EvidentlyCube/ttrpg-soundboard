@@ -407,6 +407,8 @@ export const translation = {
 			emptyFolder: 'No folders or audio files inside.',
 			holdsSoundboard: 'A soundboard is somewhere inside this folder',
 			soundboardBadge: 'Soundboard',
+			language: 'Language',
+			automatic: 'Automatic',
 		},
 		initializer: {
 			title: 'Opening a soundboard',

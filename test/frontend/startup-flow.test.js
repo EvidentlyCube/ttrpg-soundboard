@@ -79,6 +79,7 @@ function setup({ phase = 'selecting', browsed = null } = {}) {
 		retry: () => act('retry'),
 		deleteAndRetry: () => act('deleteAndRetry'),
 		forgetRecent: (path) => act(`forget ${path}`),
+		setLanguage: (language) => act(`language ${language}`),
 	};
 	let left = 0;
 	/** @type {import('../../public/app/logic/startup-flow.js').StartupView[]} */
