@@ -1,3 +1,5 @@
+import { ServerError } from '../logic/errors.js';
+
 /** @typedef {import('../logic/ports.js').BackendApi} BackendApi */
 /** @typedef {import('../logic/ports.js').LibraryJson} LibraryJson */
 /** @typedef {import('../logic/ports.js').Volumes} Volumes */
@@ -122,7 +124,7 @@ export class HttpBackendApi {
 			return { status: 'invalid', errors };
 		}
 		if (response.status === 503) {
-			return { status: 'restartNeeded', message: await errorMessageOf(response) };
+			return { status: 'restartNeeded', ...(await errorOf(response)) };
 		}
 		throw new Error(`POST /api/refresh failed: ${await errorMessageOf(response)}`);
 	}
@@ -146,7 +148,7 @@ export class HttpBackendApi {
 	async dismissDownload() {
 		const response = await fetch(`${this.#baseUrl}/api/download`, { method: 'DELETE' });
 		if (!response.ok) {
-			throw new Error(await errorMessageOf(response));
+			throw await serverErrorOf(response);
 		}
 	}
 
@@ -210,7 +212,7 @@ export class HttpBackendApi {
 			return 'taken';
 		}
 		if (!response.ok) {
-			throw new Error(await errorMessageOf(response));
+			throw await serverErrorOf(response);
 		}
 		return 'claimed';
 	}
@@ -237,7 +239,7 @@ export class HttpBackendApi {
 			return [];
 		}
 		if (!response.ok) {
-			throw new Error(await errorMessageOf(response));
+			throw await serverErrorOf(response);
 		}
 		const { links } = /** @type {{ links: string[] }} */ (await response.json());
 		return links;
@@ -252,7 +254,7 @@ export class HttpBackendApi {
 	async closeSoundboard() {
 		const response = await fetch(`${this.#baseUrl}/api/startup/close`, { method: 'POST' });
 		if (!response.ok) {
-			throw new Error(await errorMessageOf(response));
+			throw await serverErrorOf(response);
 		}
 	}
 
@@ -260,7 +262,7 @@ export class HttpBackendApi {
 	async #delete(path) {
 		const response = await fetch(this.#baseUrl + path, { method: 'DELETE' });
 		if (!response.ok) {
-			throw new Error(await errorMessageOf(response));
+			throw await serverErrorOf(response);
 		}
 	}
 
@@ -279,8 +281,8 @@ export class HttpBackendApi {
 			body: body === undefined ? undefined : JSON.stringify(body),
 		});
 		if (!response.ok) {
-			const message = await errorMessageOf(response);
-			throw new Error(plainErrors ? message : `${method} ${path} failed: ${message}`);
+			const { message, code, params } = await errorOf(response);
+			throw new ServerError(plainErrors ? message : `${method} ${path} failed: ${message}`, code, params);
 		}
 		return response.json();
 	}
@@ -293,13 +295,32 @@ function trashBody(target) {
 
 /** @param {Response} response */
 async function errorMessageOf(response) {
+	return (await errorOf(response)).message;
+}
+
+/** @param {Response} response */
+async function serverErrorOf(response) {
+	const { message, code, params } = await errorOf(response);
+	return new ServerError(message, code, params);
+}
+
+/**
+ * The server's message and its code (DESIGN.md §5.2).
+ * @param {Response} response
+ * @returns {Promise<import('../logic/errors.js').CodedText>}
+ */
+export async function errorOf(response) {
 	try {
-		const { error } = /** @type {{ error?: unknown }} */ (await response.json());
+		const { error, code, params } = /** @type {{ error?: unknown, code?: unknown, params?: unknown }} */ (await response.json());
 		if (typeof error === 'string') {
-			return error;
+			return {
+				message: error,
+				code: typeof code === 'string' ? code : null,
+				params: typeof params === 'object' && params !== null ? /** @type {Record<string, string | number>} */ (params) : null,
+			};
 		}
 	} catch {
 		// Not a JSON error body; fall back to the status line.
 	}
-	return `HTTP ${response.status}`;
+	return { message: `HTTP ${response.status}`, code: null, params: null };
 }

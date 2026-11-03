@@ -3,7 +3,7 @@ import { card, radioGroup } from './customize-parts.js';
 import { h } from './dom.js';
 import { filledField } from './filled-field.js';
 import { formatBytes, formatTime } from './format.js';
-import { t } from './text.js';
+import { describeError, t } from './text.js';
 
 /** @typedef {import('../logic/ports.js').LinkProbe} LinkProbe */
 /** @typedef {import('../logic/ports.js').DownloadTarget} DownloadTarget */
@@ -80,7 +80,7 @@ export class AddDialog extends Component {
 				const probe = await this.#soundboard.probeLink(url, { playlist });
 				result.replaceChildren(this.#choices(probe, accent, showError, () => run({ playlist: true })));
 			} catch (problem) {
-				showError(problem instanceof Error ? problem.message : String(problem));
+				showError(describeError(problem));
 			} finally {
 				lookUp.disabled = false;
 				lookUp.textContent = t('add.lookUp');
@@ -233,7 +233,7 @@ export class AddDialog extends Component {
 				await this.#soundboard.startDownload({ probeId: probe.probeId, target, ...chosen });
 				this.#onStarted();
 			} catch (problem) {
-				showError(problem instanceof Error ? problem.message : String(problem));
+				showError(describeError(problem));
 				refresh();
 			}
 		});

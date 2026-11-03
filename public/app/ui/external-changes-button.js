@@ -1,6 +1,6 @@
 import { Component } from './component.js';
 import { h, on } from './dom.js';
-import { t } from './text.js';
+import { describe, t } from './text.js';
 
 /** @typedef {import('../logic/soundboard.js').Soundboard} Soundboard */
 
@@ -44,11 +44,11 @@ export class ExternalChangesButton extends Component {
 			button.disabled = true;
 			button.textContent = t('refresh.refreshing');
 		}));
-		this.own(soundboard.on('library.refreshFailed', ({ message, errors, restartNeeded }) => {
+		this.own(soundboard.on('library.refreshFailed', (event) => {
 			idle();
 			// A missing settings file blocks the whole page instead (App).
-			if (!restartNeeded) {
-				this.#onFailed(errors.length > 0 ? errors : [{ path: '', message }]);
+			if (!event.restartNeeded) {
+				this.#onFailed(event.errors.length > 0 ? event.errors : [{ path: '', message: describe(event) }]);
 			}
 		}));
 		this.own(on(button, 'click', () => soundboard.refreshLibrary()));

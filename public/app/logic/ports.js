@@ -194,7 +194,7 @@
 /**
  * @typedef {{ status: 'refreshed' }
  * 	| { status: 'invalid', errors: { path: string, message: string }[] }
- * 	| { status: 'restartNeeded', message: string }} RefreshResult
+ * 	| { status: 'restartNeeded' } & import('./errors.js').CodedText} RefreshResult
  */
 
 /**

@@ -217,7 +217,7 @@ describe('main', () => {
 			whileRunning: async ({ url }) => {
 				const selecting = await waitForState(url(), (state) => state.phase === 'selecting');
 				// The home folder itself may not be opened, only what is inside it.
-				assert.deepEqual(selecting.paths, [{ path: music, name: music.split('/').pop(), allowed: false, reason: 'Choose a folder inside this one.' }]);
+				assert.deepEqual(selecting.paths, [{ path: music, name: music.split('/').pop(), allowed: false, reason: 'Choose a folder inside this one.', reasonCode: 'folder.container' }]);
 			},
 		});
 		assert.equal(result.code, 0);

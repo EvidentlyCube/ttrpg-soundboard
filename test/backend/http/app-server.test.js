@@ -6,6 +6,7 @@ import { networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 import { HttpBackendApi } from '../../../public/app/api/backend-api.js';
 import { HttpStartupApi } from '../../../public/app/api/startup-api.js';
+import { ServerError } from '../../../public/app/logic/errors.js';
 import { NESTED_DIRECTORIES_QUESTION } from '../../../src/library/bootstrap-service.js';
 import { PORT_ATTEMPTS, startApp } from '../../../src/http/app-server.js';
 import { AppSettings } from '../../../src/startup/app-settings.js';
@@ -178,8 +179,8 @@ describe('startApp', () => {
 		assert.equal((await call(`${base}/api/startup/folders`)).json.browsed, music);
 		assert.deepEqual(await call(`${base}/api/startup/folders?path=${encodeURIComponent(join(music, '..'))}`), {
 			status: 403,
-			text: JSON.stringify({ error: OUTSIDE_REASON }),
-			json: { error: OUTSIDE_REASON },
+			text: JSON.stringify({ error: OUTSIDE_REASON, code: 'folder.outside', params: {} }),
+			json: { error: OUTSIDE_REASON, code: 'folder.outside', params: {} },
 		});
 		assert.equal((await call(`${base}/api/startup/folders?path=${encodeURIComponent(join(music, '.hidden'))}`)).status, 403);
 		assert.equal((await call(`${base}/api/startup/folders?path=${encodeURIComponent(join(music, 'missing'))}`)).status, 404);
@@ -279,8 +280,8 @@ describe('HttpStartupApi and closing through HttpBackendApi, against the app ser
 		assert.deepEqual(await api.fetchPlaces(), { places: [{ name: 'music', path: music }], browsed: null });
 		assert.equal((await api.listFolder(music)).path, music);
 		assert.equal((await api.fetchPlaces()).browsed, music);
-		await assert.rejects(api.listFolder(join(music, '..')), new Error(OUTSIDE_REASON));
-		await assert.rejects(api.select(join(music, 'empty')), new Error('No audio files found here.'));
+		await assert.rejects(api.listFolder(join(music, '..')), new ServerError(OUTSIDE_REASON, 'folder.outside', {}));
+		await assert.rejects(api.select(join(music, 'empty')), new ServerError('No audio files found here.', 'folder.noAudio', {}));
 		await api.select(join(music, 'board'));
 		await question(session);
 		await api.answer(1, false);

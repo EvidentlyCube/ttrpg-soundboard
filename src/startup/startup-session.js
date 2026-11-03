@@ -6,7 +6,7 @@ import {
 	NESTED_DIRECTORIES_QUESTION,
 } from '../library/bootstrap-service.js';
 import { FolderRefusedError, StartupStateError } from './errors.js';
-import { checkFolder } from './folder-rules.js';
+import { checkFolder, reasonCodeOf } from './folder-rules.js';
 import { displayName } from './folders.js';
 
 /** @typedef {import('../library/bootstrap-service.js').Prompter} Prompter */
@@ -48,13 +48,15 @@ import { displayName } from './folders.js';
  * @property {{ done: number, total: number } | null} progress while measuring durations
  * @property {{ path: string, problems: string[] }[]} failures the files that failed validation, relative to the root
  * @property {string | null} error what went wrong otherwise, such as a folder that can't be read
+ * @property {string | null} errorCode what the Initializer translates `error` by (DESIGN.md §9.21)
+ * @property {Record<string, string | number> | null} errorParams
  * @property {boolean} canDelete whether every failure is a file that may be deleted
  */
 
 /**
  * @typedef {object} StartupState
  * @property {Phase} phase
- * @property {{ path: string, name: string, allowed: boolean, reason: string | null }[] | null} paths the folders given on
+ * @property {{ path: string, name: string, allowed: boolean, reason: string | null, reasonCode: string | null }[] | null} paths the folders given on
  * 	the command line, the only ones that may be opened; null when none were
  * @property {{ path: string, name: string, exists: boolean }[]} recent empty when paths were given
  * @property {InitializerState | null} initializer
@@ -141,7 +143,7 @@ export class StartupSession {
 		const paths = this.#paths && await Promise.all(this.#paths.map(async (path) => {
 			const { allowed, reason } = await checkFolder(path, this.#platform);
 			// The path as given, which is what `select` accepts.
-			return { path, name: await displayName(path), allowed, reason };
+			return { path, name: await displayName(path), allowed, reason, reasonCode: reasonCodeOf(reason) };
 		}));
 		const recent = this.#paths ? [] : await this.#recent.list();
 		return {
@@ -179,15 +181,15 @@ export class StartupSession {
 	async select(path) {
 		this.#expectPhase('selecting');
 		if (!isAbsolute(path)) {
-			throw new FolderRefusedError('Give the whole path of the folder.');
+			throw new FolderRefusedError('Give the whole path of the folder.', 'folder.relative');
 		}
 		const root = resolve(path);
 		if (this.#paths && !this.#paths.includes(root)) {
-			throw new FolderRefusedError(ONLY_GIVEN_PATHS);
+			throw new FolderRefusedError(ONLY_GIVEN_PATHS, 'folder.onlyGiven');
 		}
 		const check = await checkFolder(root, this.#platform);
 		if (!check.allowed) {
-			throw new FolderRefusedError(check.reason);
+			throw new FolderRefusedError(check.reason, reasonCodeOf(check.reason));
 		}
 		// Checked again: another page may have chosen a folder while this one was checked.
 		this.#expectPhase('selecting');
@@ -202,7 +204,7 @@ export class StartupSession {
 	answer(id, yes) {
 		const initializer = this.#initializer;
 		if (initializer?.step !== 'question' || initializer.question?.id !== id || !this.#answer) {
-			throw new StartupStateError('That question is no longer asked.');
+			throw new StartupStateError('That question is no longer asked.', 'startup.questionGone');
 		}
 		const resolveAnswer = this.#answer;
 		this.#answer = null;
@@ -219,7 +221,7 @@ export class StartupSession {
 			return;
 		}
 		if (step !== 'failed') {
-			throw new StartupStateError('The folder is still loading.');
+			throw new StartupStateError('The folder is still loading.', 'startup.stillLoading');
 		}
 		this.#generation++;
 		this.#toSelecting();
@@ -235,7 +237,7 @@ export class StartupSession {
 	async deleteAndRetry() {
 		const root = this.#failedRoot();
 		if (!this.#initializer?.canDelete) {
-			throw new StartupStateError('These files can’t be deleted from here.');
+			throw new StartupStateError('These files can’t be deleted from here.', 'startup.cantDelete');
 		}
 		const files = this.#errors.map((error) => /** @type {string} */ (error.filePath));
 		this.#update({ step: 'scanning' });
@@ -244,7 +246,8 @@ export class StartupSession {
 				await this.#deleteFile(file);
 			}
 		} catch (error) {
-			this.#update({ step: 'failed', error: `Could not delete a file: ${error instanceof Error ? error.message : String(error)}` });
+			const reason = error instanceof Error ? error.message : String(error);
+			this.#update({ step: 'failed', error: `Could not delete a file: ${reason}`, errorCode: 'startup.deleteFailed', errorParams: { reason } });
 			return;
 		}
 		this.#load(root);
@@ -278,13 +281,20 @@ export class StartupSession {
 		this.#phase = 'initializing';
 		this.#errors = [];
 		this.#details = null;
-		this.#initializer = { root, step: 'scanning', question: null, progress: null, failures: [], error: null, canDelete: false };
+		this.#initializer = { root, step: 'scanning', question: null, progress: null, failures: [], error: null, errorCode: null, errorParams: null, canDelete: false };
 		this.#run(root, generation).catch((error) => {
 			if (generation !== this.#generation) {
 				return;
 			}
 			this.#logError(error);
-			this.#update({ step: 'failed', error: error instanceof Error ? error.message : String(error), canDelete: false });
+			const { messageCode, messageParams } = /** @type {import('../http/responses.js').CodedError} */ (error ?? {});
+			this.#update({
+				step: 'failed',
+				error: error instanceof Error ? error.message : String(error),
+				errorCode: messageCode ?? null,
+				errorParams: messageParams ?? null,
+				canDelete: false,
+			});
 		});
 	}
 
@@ -419,7 +429,7 @@ export class StartupSession {
 	#failedRoot() {
 		this.#expectPhase('initializing');
 		if (this.#initializer?.step !== 'failed') {
-			throw new StartupStateError('The folder is still loading.');
+			throw new StartupStateError('The folder is still loading.', 'startup.stillLoading');
 		}
 		return this.#initializer.root;
 	}
@@ -427,7 +437,7 @@ export class StartupSession {
 	/** @param {Phase} phase */
 	#expectPhase(phase) {
 		if (this.#phase !== phase) {
-			throw new StartupStateError(`Not possible while the soundboard is ${PHASE_NAMES[this.#phase]}.`);
+			throw new StartupStateError(`Not possible while the soundboard is ${PHASE_NAMES[this.#phase]}.`, `startup.while.${this.#phase}`);
 		}
 	}
 }

@@ -1,5 +1,5 @@
 import { h } from './dom.js';
-import { t } from './text.js';
+import { describe, t } from './text.js';
 
 /** @typedef {import('../logic/startup-flow.js').StartupState['tools']} ToolsInfo */
 
@@ -33,11 +33,11 @@ export function errorNotice() {
 
 /**
  * @param {HTMLElement} element from `errorNotice`
- * @param {string | null} message
+ * @param {import('../logic/errors.js').CodedText | null} error
  */
-export function showError(element, message) {
-	element.hidden = message === null;
-	element.textContent = message ?? '';
+export function showError(element, error) {
+	element.hidden = error === null;
+	element.textContent = error ? describe(error) : '';
 }
 
 /**

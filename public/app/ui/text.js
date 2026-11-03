@@ -40,6 +40,32 @@ export function t(key, params) {
 }
 
 /**
+ * A message from the server or from the page's logic in the page's language: the text under `errors.<code>` when the
+ * language files have one, else the English message it came with (DESIGN.md §9.21).
+ * @param {{ message: string, code?: string | null, params?: Params | null }} coded
+ */
+export function describe({ message, code, params }) {
+	const key = `errors.${code}`;
+	return code && translator.has(key) ? translator.t(key, params ?? {}) : message;
+}
+
+/**
+ * The text of an error caught on the page, translated when it carries a code (`ServerError`).
+ * @param {unknown} error
+ */
+export function describeError(error) {
+	if (error instanceof Error) {
+		const { code, params } = /** @type {{ code?: unknown, params?: unknown }} */ (error);
+		return describe({
+			message: error.message,
+			code: typeof code === 'string' ? code : null,
+			params: typeof params === 'object' ? /** @type {Params} */ (params) : null,
+		});
+	}
+	return String(error);
+}
+
+/**
  * The text under `key` as parts to append, with elements in place of some placeholders, for a sentence that holds a
  * bold name or a link: `tParts('banner.asks', { address: h('b', {}, address) })`.
  * @template {object} N an element; generic, since the Node tests type-check this file without the DOM

@@ -1,6 +1,6 @@
 import { Component } from './component.js';
 import { h, on } from './dom.js';
-import { t } from './text.js';
+import { describe, t } from './text.js';
 
 /** @typedef {import('../logic/soundboard.js').Soundboard} Soundboard */
 
@@ -67,7 +67,7 @@ export class ProblemsDialog extends Component {
 				h('div', { class: 'min-w-0 flex-1' },
 					h('div', { class: 'text-xs font-semibold text-muted uppercase' }, kindLabel(problem.kind), problem.count > 1 ? ` ×${problem.count}` : ''),
 					h('div', { class: 'truncate text-sm', title: problem.path }, problem.path),
-					h('div', { class: 'text-sm text-muted' }, problem.message)),
+					h('div', { class: 'text-sm text-muted' }, describe(problem))),
 				dismiss);
 			}));
 		};

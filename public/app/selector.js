@@ -6,7 +6,7 @@ import { card } from './ui/customize-parts.js';
 import { h } from './ui/dom.js';
 import { icon } from './ui/icons.js';
 import { connectionNotice, errorNotice, showError, toolsHeader } from './ui/startup-parts.js';
-import { t } from './ui/text.js';
+import { describe, t } from './ui/text.js';
 import { showToast } from './ui/toast.js';
 
 /** @typedef {import('./logic/startup-flow.js').StartupView} StartupView */
@@ -172,7 +172,7 @@ function render(view) {
 		givenList.replaceChildren(...state.paths.map((folder) => folderCard({
 			name: folder.name,
 			path: folder.path,
-			reason: folder.reason,
+			reason: folder.reason === null ? null : describe({ message: folder.reason, code: folder.reasonCode }),
 			busy,
 			onOpen: () => flow.select(folder.path),
 		})), browseRefused);
@@ -219,7 +219,7 @@ function render(view) {
 		drawn.browseFailures = view.browseFailures;
 		pathInput.value = view.listing?.path ?? '';
 		// A note in the corner that fades after a second, for a folder that can't be shown.
-		showToast(view.browseError ?? '', { tone: 'danger' });
+		showToast(view.browseError ? describe(view.browseError) : '', { tone: 'danger' });
 	}
 }
 
@@ -228,6 +228,7 @@ function render(view) {
  * @param {boolean} busy
  */
 function drawListing(listing, busy) {
+	const reason = listing.reason === null ? '' : describe({ message: listing.reason, code: listing.reasonCode });
 	const summary = listing.soundboard
 		? t('selector.soundboardFolder')
 		: listing.allowed
@@ -235,7 +236,7 @@ function drawListing(listing, busy) {
 					folders: t('selector.folderCount', { count: listing.folders.length }),
 					files: t('selector.audioFileCount', { count: listing.audioFiles }),
 				})
-			: listing.reason;
+			: reason;
 	upTarget = listing.parent;
 	upButton.disabled = listing.parent === null;
 	upButton.title = listing.parent === null ? t('selector.up') : t('selector.upTo', { path: listing.parent });
@@ -244,7 +245,7 @@ function drawListing(listing, busy) {
 			'class': `min-w-0 flex-1 text-sm ${listing.allowed ? 'text-muted' : 'text-notice'}`,
 			'data-folder-summary': true,
 		}, summary),
-		h('span', { title: listing.reason ?? '' }, h('button', {
+		h('span', { title: reason }, h('button', {
 			'type': 'button',
 			'class': PRIMARY,
 			'disabled': !listing.allowed || busy,
@@ -264,7 +265,7 @@ function drawListing(listing, busy) {
 	}, folderIcon('🎵'), file));
 	folderList.replaceChildren(...listing.folders.map((folder) => h('li', {
 		'class': 'flex items-center gap-2 pr-2 hover:bg-raised-hover data-[refused=true]:text-muted',
-		'title': folder.refused ?? '',
+		'title': folder.refused === null ? '' : describe({ message: folder.refused, code: folder.refusedCode }),
 		'data-folder': folder.path,
 		'data-refused': String(folder.refused !== null),
 	},

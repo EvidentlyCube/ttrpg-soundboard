@@ -178,7 +178,7 @@ describe('downloads over HTTP', () => {
 		assert.equal((await call('/api/download', { method: 'POST', body: { target: { kind: 'sound' } } })).status, 400);
 		assert.deepEqual(await call('/api/download', { method: 'POST', body: { probeId: 'old', target: { kind: 'sound' } } }), {
 			status: 400,
-			body: { error: 'That lookup is too old. Look the link up again.' },
+			body: { error: 'That lookup is too old. Look the link up again.', code: 'download.oldLookup', params: {} },
 		});
 		assert.equal((await call('/api/download', { method: 'PUT' })).status, 405);
 	});

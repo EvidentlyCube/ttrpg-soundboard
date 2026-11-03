@@ -52,6 +52,14 @@ export class Translator {
 	}
 
 	/**
+	 * Whether `key` names a text, in this language or in English: for keys built from codes the server sends.
+	 * @param {string} key
+	 */
+	has(key) {
+		return lookUp(this.#translation.messages, key) !== null || lookUp(this.#fallback.messages, key) !== null;
+	}
+
+	/**
 	 * @param {number} value
 	 * @param {Intl.NumberFormatOptions} [options]
 	 */

@@ -28,7 +28,7 @@ import { SoundEditor } from './sound-editor.js';
 import { SoundTile } from './sound-tile.js';
 import { Splash } from './splash.js';
 import { tileGrid } from './tile-grid.js';
-import { t } from './text.js';
+import { describe, t } from './text.js';
 import { TrashButton } from './trash-button.js';
 import { TrashDialog } from './trash-dialog.js';
 import { VolumeControls } from './volume-controls.js';
@@ -148,11 +148,11 @@ export class App extends Component {
 			isRefreshing = true;
 			location.reload();
 		}));
-		this.own(soundboard.on('library.refreshFailed', ({ message, restartNeeded }) => {
-			if (restartNeeded) {
+		this.own(soundboard.on('library.refreshFailed', (event) => {
+			if (event.restartNeeded) {
 				this.#phase = 'stopped';
 				this.#overlay.close();
-				splash.show(t('splash.restartNeeded'), message);
+				splash.show(t('splash.restartNeeded'), describe(event));
 			}
 		}));
 		this.own(() => this.#board?.destroy());

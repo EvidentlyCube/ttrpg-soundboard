@@ -107,7 +107,15 @@ export function updateProblem(update) {
 	if (update.state !== 'outdated') {
 		return null;
 	}
-	return { id: 'ytdlp-outdated:yt-dlp', kind: 'ytdlp-outdated', severity: 'warning', path: 'yt-dlp', message: outdatedMessage(update) };
+	return {
+		id: 'ytdlp-outdated:yt-dlp',
+		kind: 'ytdlp-outdated',
+		severity: 'warning',
+		path: 'yt-dlp',
+		message: outdatedMessage(update),
+		code: 'problem.ytdlp-outdated',
+		params: { latest: update.latest ?? '', current: update.current ?? '', error: update.error ?? '' },
+	};
 }
 
 /** @param {YtDlpUpdate} update */

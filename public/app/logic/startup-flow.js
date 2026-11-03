@@ -1,4 +1,7 @@
+import { codedTextOf } from './errors.js';
+
 /** @typedef {import('./ports.js').Clock} Clock */
+/** @typedef {import('./errors.js').CodedText} CodedText */
 
 /** How often the startup pages ask the server where things stand. */
 export const STARTUP_POLL_MS = 500;
@@ -17,13 +20,15 @@ export const STARTUP_POLL_MS = 500;
  * @property {{ done: number, total: number } | null} progress
  * @property {{ path: string, problems: string[] }[]} failures
  * @property {string | null} error
+ * @property {string | null} [errorCode] what the page translates `error` by (DESIGN.md §9.21)
+ * @property {Readonly<Record<string, string | number>> | null} [errorParams]
  * @property {boolean} canDelete
  */
 
 /**
  * @typedef {object} StartupState `GET /api/startup` (DESIGN.md §5.2)
  * @property {'selecting' | 'initializing' | 'ready'} phase
- * @property {{ path: string, name: string, allowed: boolean, reason: string | null }[] | null} paths
+ * @property {{ path: string, name: string, allowed: boolean, reason: string | null, reasonCode?: string | null }[] | null} paths
  * @property {{ path: string, name: string, exists: boolean }[]} recent
  * @property {InitializerState | null} initializer
  * @property {import('./ports.js').AppInfo & { checking: boolean }} tools
@@ -35,13 +40,15 @@ export const STARTUP_POLL_MS = 500;
  * @typedef {object} FolderListing
  * @property {string} path
  * @property {string | null} parent
- * @property {{ name: string, title: string | null, path: string, soundboard: boolean, holdsSoundboard: boolean, refused: string | null }[]} folders
- * 	`title`: a soundboard's own name; `holdsSoundboard`: a soundboard was found up to three levels inside
+ * @property {{ name: string, title: string | null, path: string, soundboard: boolean, holdsSoundboard: boolean, refused: string | null,
+ * 	refusedCode?: string | null }[]} folders `title`: a soundboard's own name; `holdsSoundboard`: a soundboard was found up to
+ * 	three levels inside
  * @property {number} audioFiles
  * @property {string[]} files the audio files' names
  * @property {boolean} soundboard
  * @property {boolean} allowed
  * @property {string | null} reason
+ * @property {string | null} [reasonCode]
  */
 
 /**
@@ -64,8 +71,8 @@ export const STARTUP_POLL_MS = 500;
  * @property {boolean} connected false while the server doesn't answer
  * @property {Place[]} places
  * @property {FolderListing | null} listing the folder being browsed
- * @property {string | null} error the last action's failure, until the next action
- * @property {string | null} browseError why the last folder asked for could not be shown
+ * @property {CodedText | null} error the last action's failure, until the next action
+ * @property {CodedText | null} browseError why the last folder asked for could not be shown
  * @property {number} browseFailures counts the folders that could not be shown, so the page can tell about each one and
  * 	put the path it shows back, even when the same refused path is typed twice
  * @property {boolean} busy while an action runs
@@ -143,7 +150,7 @@ export class StartupFlow {
 				await this.browse(places[0].path);
 			}
 		} catch (error) {
-			this.#set({ error: messageOf(error) });
+			this.#set({ error: codedTextOf(error) });
 		}
 	}
 
@@ -161,7 +168,7 @@ export class StartupFlow {
 			}
 		} catch (error) {
 			if (generation === this.#browseGeneration) {
-				this.#set({ browseError: messageOf(error), browseFailures: this.#view.browseFailures + 1 });
+				this.#set({ browseError: codedTextOf(error), browseFailures: this.#view.browseFailures + 1 });
 			}
 		}
 	}
@@ -205,7 +212,7 @@ export class StartupFlow {
 		try {
 			await action();
 		} catch (error) {
-			this.#set({ error: messageOf(error) });
+			this.#set({ error: codedTextOf(error) });
 		}
 		this.#set({ busy: false });
 		await this.#poll();
@@ -237,9 +244,4 @@ export class StartupFlow {
 		this.#view = { ...this.#view, ...changes };
 		this.#onChange(this.#view);
 	}
-}
-
-/** @param {unknown} error */
-function messageOf(error) {
-	return error instanceof Error ? error.message : String(error);
 }

@@ -6,7 +6,7 @@
 
 /**
  * @typedef {{ type: 'sound.activeChanged', soundId: string, active: boolean }} SoundActiveChangedEvent
- * @typedef {{ type: 'sound.error', soundId: string, message: string }} SoundErrorEvent
+ * @typedef {{ type: 'sound.error', soundId: string, message: string, code?: string, params?: Record<string, string> }} SoundErrorEvent
  * @typedef {SoundActiveChangedEvent | SoundErrorEvent} SoundEvent
  */
 
@@ -77,7 +77,13 @@ export class SoundPlayer {
 	/** @param {AudioFileJson} sound */
 	play(sound) {
 		if (!this.#isPlayable(sound)) {
-			this.#emit({ type: 'sound.error', soundId: sound.id, message: `This browser cannot play ${sound.format} files` });
+			this.#emit({
+				type: 'sound.error',
+				soundId: sound.id,
+				message: `This browser cannot play ${sound.format} files`,
+				code: 'play.unsupportedFormat',
+				params: { format: sound.format.toUpperCase() },
+			});
 			return;
 		}
 		// Taken from the sound as it is now, so a later change of the points leaves this instance alone.

@@ -2,7 +2,7 @@ import { h } from './dom.js';
 import { filledField } from './filled-field.js';
 import { holdButton } from './hold-button.js';
 import { icon } from './icons.js';
-import { t } from './text.js';
+import { describeError, t } from './text.js';
 
 /** @typedef {import('./dom.js').Child} Child */
 
@@ -263,7 +263,7 @@ export function moveOrDeleteCard({ title, accent, onMove, onDelete, note }) {
 			remove.setBusy(true);
 			onDelete().catch((/** @type {unknown} */ reason) => {
 				remove.setBusy(false);
-				error.textContent = t('customize.deleteFailed', { reason: reason instanceof Error ? reason.message : String(reason) });
+				error.textContent = t('customize.deleteFailed', { reason: describeError(reason) });
 				error.hidden = false;
 			});
 		},

@@ -7,6 +7,8 @@
  * @property {'error' | 'warning'} severity
  * @property {string} path root-relative path of the file or directory, using `/`
  * @property {string} message
+ * @property {string} [code] what the page translates the message by (DESIGN.md §9.21)
+ * @property {Record<string, string | number>} [params]
  */
 
 /** @type {Record<ScanWarning['kind'], string>} */
@@ -44,7 +46,7 @@ export function startupProblems(warnings, library) {
  * @returns {Problem}
  */
 function problemOf(kind, severity, path, message) {
-	return { id: `${kind}:${path}`, kind, severity, path, message };
+	return { id: `${kind}:${path}`, kind, severity, path, message, code: `problem.${kind}`, params: {} };
 }
 
 /**

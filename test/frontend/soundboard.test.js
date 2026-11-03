@@ -969,7 +969,7 @@ describe('Soundboard', () => {
 			clock.advance(500);
 			await settle();
 			assert.deepEqual(soundboard.getProblems(), [{
-				id: 'save-failed:Boom.mp3', kind: 'save-failed', severity: 'error', path: 'Boom.mp3', message: 'disk full', count: 2,
+				id: 'save-failed:Boom.mp3', kind: 'save-failed', severity: 'error', path: 'Boom.mp3', message: 'disk full', code: null, params: null, count: 2,
 			}]);
 			api.saveError = null;
 			soundboard.customizeSound('Boom.mp3', { gain: 1 });
@@ -1135,6 +1135,8 @@ describe('Soundboard', () => {
 			assert.deepEqual(eventsOf('library.refreshFailed'), [{
 				type: 'library.refreshFailed',
 				message: 'Some options files are invalid.',
+				code: 'refresh.invalid',
+				params: null,
 				errors: [{ path: 'Boom.mp3.json', message: 'invalid JSON' }],
 				restartNeeded: false,
 			}]);
@@ -1142,11 +1144,13 @@ describe('Soundboard', () => {
 
 		it('reports when only a restart can help', async () => {
 			const { soundboard, api, eventsOf } = await started();
-			api.refreshResult = { status: 'restartNeeded', message: 'The .soundboard file is gone. Restart the app.' };
+			api.refreshResult = { status: 'restartNeeded', message: 'The .soundboard file is gone. Restart the app.', code: 'refresh.restart', params: null };
 			await soundboard.refreshLibrary();
 			assert.deepEqual(eventsOf('library.refreshFailed'), [{
 				type: 'library.refreshFailed',
 				message: 'The .soundboard file is gone. Restart the app.',
+				code: 'refresh.restart',
+				params: null,
 				errors: [],
 				restartNeeded: true,
 			}]);
@@ -1158,7 +1162,14 @@ describe('Soundboard', () => {
 				throw new Error('offline');
 			};
 			await soundboard.refreshLibrary();
-			assert.deepEqual(eventsOf('library.refreshFailed'), [{ type: 'library.refreshFailed', message: 'offline', errors: [], restartNeeded: false }]);
+			assert.deepEqual(eventsOf('library.refreshFailed'), [{
+				type: 'library.refreshFailed',
+				message: 'offline',
+				code: null,
+				params: null,
+				errors: [],
+				restartNeeded: false,
+			}]);
 			assert.match(String(logged[0]?.[0]), /Could not refresh the library/);
 		});
 

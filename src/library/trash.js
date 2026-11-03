@@ -43,6 +43,8 @@ export class UnknownTrashItemError extends Error {
 	constructor({ kind, id }) {
 		super(`There is no ${kind} "${id}" in the trash`);
 		this.name = 'UnknownTrashItemError';
+		this.messageCode = 'item.notInTrash';
+		this.messageParams = { id };
 	}
 }
 

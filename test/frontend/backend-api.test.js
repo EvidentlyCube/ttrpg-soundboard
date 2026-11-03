@@ -151,7 +151,12 @@ describe('HttpBackendApi refreshing against the real server', () => {
 
 	it('says when only a restart can help', async () => {
 		await rename(join(tree.root, '.soundboard'), join(tree.root, 'settings.bak'));
-		assert.deepEqual(await api.refresh(), { status: 'restartNeeded', message: 'The .soundboard file is gone. Restart the app.' });
+		assert.deepEqual(await api.refresh(), {
+			status: 'restartNeeded',
+			message: 'The .soundboard file is gone. Restart the app.',
+			code: 'refresh.restart',
+			params: {},
+		});
 		await rename(join(tree.root, 'settings.bak'), join(tree.root, '.soundboard'));
 	});
 });

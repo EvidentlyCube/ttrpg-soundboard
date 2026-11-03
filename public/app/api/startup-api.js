@@ -1,3 +1,6 @@
+import { ServerError } from '../logic/errors.js';
+import { errorOf } from './backend-api.js';
+
 /** @typedef {import('../logic/startup-flow.js').StartupApi} StartupApi */
 
 /**
@@ -71,8 +74,8 @@ export class HttpStartupApi {
 			body: body === undefined ? undefined : JSON.stringify(body),
 		});
 		if (!response.ok) {
-			const { error } = /** @type {{ error?: unknown }} */ (await response.json().catch(() => ({})));
-			throw new Error(typeof error === 'string' ? error : `HTTP ${response.status}`);
+			const { message, code, params } = await errorOf(response);
+			throw new ServerError(message, code, params);
 		}
 		return response.status === 204 ? undefined : response.json();
 	}

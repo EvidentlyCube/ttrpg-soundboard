@@ -2,7 +2,7 @@ import { readdir, readFile, stat } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { audioFormatOf } from '../library/classify.js';
 import { validateName } from '../library/validate.js';
-import { browseRefusalOf, checkFolder, refusalOf, resolvedPath } from './folder-rules.js';
+import { browseRefusalOf, checkFolder, reasonCodeOf, refusalOf, resolvedPath } from './folder-rules.js';
 
 /** @typedef {import('./folder-rules.js').Platform} Platform */
 
@@ -10,7 +10,8 @@ import { browseRefusalOf, checkFolder, refusalOf, resolvedPath } from './folder-
  * @typedef {object} FolderListing what the Selector's folder browser shows (DESIGN.md §5.2)
  * @property {string} path with symbolic links resolved
  * @property {string | null} parent null at the top of a disk; it may be outside the roots, which the next listing refuses
- * @property {{ name: string, title: string | null, path: string, soundboard: boolean, holdsSoundboard: boolean, refused: string | null }[]} folders
+ * @property {{ name: string, title: string | null, path: string, soundboard: boolean, holdsSoundboard: boolean, refused: string | null,
+ * 	refusedCode: string | null }[]} folders `refusedCode`: what the page translates `refused` by (DESIGN.md §9.21)
  * 	the subfolders by name, without hidden ones unless they are allowed; `title` is a soundboard's own name;
  * 	`holdsSoundboard` that a soundboard was found inside one that isn't; `refused` is why one can't be opened, judged
  * 	by its path alone
@@ -19,6 +20,7 @@ import { browseRefusalOf, checkFolder, refusalOf, resolvedPath } from './folder-
  * @property {boolean} soundboard whether it holds `.soundboard`
  * @property {boolean} allowed whether it can be opened
  * @property {string | null} reason why not
+ * @property {string | null} reasonCode its code
  */
 
 /** @typedef {{ name: string, path: string }} Place */
@@ -55,6 +57,8 @@ export class FolderUnreadableError extends Error {
 	constructor(path) {
 		super(`This folder can’t be opened: ${path}`);
 		this.name = 'FolderUnreadableError';
+		this.messageCode = 'folder.cantOpen';
+		this.messageParams = { path };
 	}
 }
 
@@ -64,6 +68,7 @@ export class FolderNotAllowedError extends Error {
 	constructor(reason) {
 		super(reason);
 		this.name = 'FolderNotAllowedError';
+		this.messageCode = reasonCodeOf(reason) ?? undefined;
 	}
 }
 
@@ -106,13 +111,15 @@ export async function listFolder(path, platform) {
 	const folders = await Promise.all(names.map(async (name) => {
 		const folder = join(real, name);
 		const marker = await readMarker(folder);
+		const refused = refusalOf(folder, platform);
 		return {
 			name,
 			title: marker.name,
 			path: folder,
 			soundboard: marker.soundboard,
 			holdsSoundboard: false,
-			refused: refusalOf(folder, platform),
+			refused,
+			refusedCode: reasonCodeOf(refused),
 		};
 	}));
 	await markNestedSoundboards(folders.filter((folder) => !folder.soundboard), platform);
@@ -127,6 +134,7 @@ export async function listFolder(path, platform) {
 		soundboard: entries.some((entry) => entry.name === '.soundboard'),
 		allowed: check.allowed,
 		reason: check.reason,
+		reasonCode: reasonCodeOf(check.reason),
 	};
 }
 

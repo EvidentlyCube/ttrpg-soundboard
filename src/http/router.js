@@ -77,7 +77,7 @@ export function createRequestHandler(context) {
 			await route(request, response, context);
 		} catch (error) {
 			if (error instanceof HttpError) {
-				sendJson(response, error.status, { error: error.message }, error.headers);
+				sendJson(response, error.status, error.toJSON(), error.headers);
 				return;
 			}
 			context.logError(error);
@@ -288,7 +288,7 @@ async function refresh(response, context) {
 			return;
 		}
 		case 'noSettings':
-			throw new HttpError(503, 'The .soundboard file is gone. Restart the app.');
+			throw new HttpError(503, 'The .soundboard file is gone. Restart the app.', {}, { messageCode: 'refresh.restart' });
 	}
 }
 
@@ -338,7 +338,7 @@ async function probeLink(request, response, downloads) {
  */
 function requireDownloads(downloads) {
 	if (!downloads) {
-		throw new HttpError(503, 'Downloads are not available');
+		throw new HttpError(503, 'Downloads are not available', {}, { messageCode: 'download.unavailable' });
 	}
 	return downloads;
 }
@@ -353,16 +353,16 @@ function downloadCall(call) {
 	/** @param {unknown} error */
 	const translate = (error) => {
 		if (error instanceof ToolsUnavailableError) {
-			return new HttpError(503, error.message);
+			return HttpError.from(503, error);
 		}
 		if (error instanceof UnusableLinkError) {
-			return new HttpError(422, error.message);
+			return HttpError.from(422, error);
 		}
 		if (error instanceof DownloadBusyError) {
-			return new HttpError(409, error.message);
+			return HttpError.from(409, error);
 		}
 		if (error instanceof InvalidDownloadError) {
-			return new HttpError(400, error.message);
+			return HttpError.from(400, error);
 		}
 		return error;
 	};
@@ -449,10 +449,10 @@ async function trashCall(call) {
 		return await call();
 	} catch (error) {
 		if (error instanceof UnknownTrashItemError) {
-			throw new HttpError(404, error.message);
+			throw HttpError.from(404, error);
 		}
 		if (error instanceof ValidationError) {
-			throw new HttpError(400, error.message);
+			throw HttpError.from(400, error);
 		}
 		throw error;
 	}
@@ -488,10 +488,10 @@ async function editItem(pathname, prefix, edit) {
 		return await edit(id);
 	} catch (error) {
 		if (error instanceof UnknownSoundError || error instanceof UnknownPlaylistError || error instanceof UnknownTrackError) {
-			throw new HttpError(404, error.message);
+			throw HttpError.from(404, error);
 		}
 		if (error instanceof ValidationError) {
-			throw new HttpError(400, error.message);
+			throw HttpError.from(400, error);
 		}
 		throw error;
 	}
@@ -513,7 +513,7 @@ async function updateVolumes(settings, body) {
 		return await settings.updateVolumes(body);
 	} catch (error) {
 		if (error instanceof ValidationError) {
-			throw new HttpError(400, error.message);
+			throw HttpError.from(400, error);
 		}
 		throw error;
 	}
@@ -532,7 +532,7 @@ async function updateName(settings, body) {
 		return await settings.updateName(name);
 	} catch (error) {
 		if (error instanceof ValidationError) {
-			throw new HttpError(400, error.message);
+			throw HttpError.from(400, error);
 		}
 		throw error;
 	}
@@ -607,10 +607,10 @@ async function serveWaveform(request, response, waveforms, pathname) {
 		response.end(peaks);
 	} catch (error) {
 		if (error instanceof UnknownWaveformFileError) {
-			throw new HttpError(404, error.message);
+			throw HttpError.from(404, error);
 		}
 		if (error instanceof InvalidWaveformError) {
-			throw new HttpError(400, error.message);
+			throw HttpError.from(400, error);
 		}
 		throw error;
 	}

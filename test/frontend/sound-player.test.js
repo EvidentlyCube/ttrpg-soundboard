@@ -207,7 +207,13 @@ describe('SoundPlayer', () => {
 			const { player, engine, events } = setup({ isPlayable: () => false });
 			player.play(LARGE);
 			assert.equal(engine.voices.length, 0);
-			assert.deepEqual(events, [{ type: 'sound.error', soundId: 'Rain.mp3', message: 'This browser cannot play mp3 files' }]);
+			assert.deepEqual(events, [{
+				type: 'sound.error',
+				soundId: 'Rain.mp3',
+				message: 'This browser cannot play mp3 files',
+				code: 'play.unsupportedFormat',
+				params: { format: 'MP3' },
+			}]);
 		});
 	});
 

@@ -1,6 +1,6 @@
 import { Component } from './component.js';
 import { h } from './dom.js';
-import { t } from './text.js';
+import { describeError, t } from './text.js';
 
 /** @typedef {import('../logic/soundboard.js').Soundboard} Soundboard */
 
@@ -94,7 +94,7 @@ export class MoveDialog extends Component {
 			enabled.forEach((button) => {
 				button.disabled = false;
 			});
-			error.textContent = t('move.failed', { reason: reason instanceof Error ? reason.message : String(reason) });
+			error.textContent = t('move.failed', { reason: describeError(reason) });
 			error.hidden = false;
 		}
 	}

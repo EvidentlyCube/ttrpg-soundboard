@@ -5,6 +5,8 @@
  * @property {'error' | 'warning'} severity
  * @property {string} path the file, directory or download it is about
  * @property {string} message the latest message
+ * @property {string | null} [code] what the page translates the message by (DESIGN.md §9.21)
+ * @property {Readonly<Record<string, string | number>> | null} [params]
  * @property {number} count how often it happened; 1 for the server's problems
  */
 
@@ -36,13 +38,13 @@ export class ProblemList {
 	}
 
 	/**
-	 * @param {{ kind: string, path: string, message: string, severity?: ProblemJson['severity'] }} problem errors unless
-	 * 	said otherwise
+	 * @param {{ kind: string, path: string, message: string, code?: string | null, params?: ProblemJson['params'],
+	 * 	severity?: ProblemJson['severity'] }} problem errors unless said otherwise
 	 */
-	record({ kind, path, message, severity = 'error' }) {
+	record({ kind, path, message, code = null, params = null, severity = 'error' }) {
 		const id = `${kind}:${path}`;
 		const known = this.#page.get(id);
-		this.#page.set(id, { id, kind, severity, path, message, count: (known?.count ?? 0) + 1 });
+		this.#page.set(id, { id, kind, severity, path, message, code, params, count: (known?.count ?? 0) + 1 });
 	}
 
 	/**

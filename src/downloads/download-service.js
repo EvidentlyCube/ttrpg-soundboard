@@ -195,7 +195,7 @@ export class DownloadService {
 		}
 		const probe = this.#probes.get(request.probeId);
 		if (!probe) {
-			throw new InvalidDownloadError('That lookup is too old. Look the link up again.');
+			throw new InvalidDownloadError('That lookup is too old. Look the link up again.', 'download.oldLookup');
 		}
 		const targetTitle = this.#targetTitle(request.target);
 		const { items, fetches } = plan(probe, request);
@@ -251,18 +251,18 @@ export class DownloadService {
 				return 'Sound effects';
 			case 'newPlaylist':
 				if (typeof target.title !== 'string' || target.title.trim() === '') {
-					throw new InvalidDownloadError('The new playlist needs a title.');
+					throw new InvalidDownloadError('The new playlist needs a title.', 'download.noTitle');
 				}
 				return target.title.trim();
 			case 'playlist': {
 				const playlist = this.#editor().playlist(target.playlistId);
 				if (!playlist) {
-					throw new InvalidDownloadError('That playlist no longer exists.');
+					throw new InvalidDownloadError('That playlist no longer exists.', 'download.playlistGone');
 				}
 				return playlist.title;
 			}
 			default:
-				throw new InvalidDownloadError('Unknown target.');
+				throw new InvalidDownloadError('Unknown target.', 'download.unknownTarget');
 		}
 	}
 
@@ -564,7 +564,7 @@ function plan(probe, request) {
 				|| new Set(chapters).size !== chapters.length
 				|| !chapters.every((index) => Number.isInteger(index) && index >= 0 && index < probe.chapters.length)
 			) {
-				throw new InvalidDownloadError('Choose at least one chapter.');
+				throw new InvalidDownloadError('Choose at least one chapter.', 'download.noChapter');
 			}
 			const sorted = chapters.toSorted((a, b) => a - b);
 			return {
@@ -583,7 +583,7 @@ function plan(probe, request) {
 			const wanted = new Set(Array.isArray(request.entries) ? request.entries : []);
 			const entries = probe.entries.filter((entry) => wanted.has(entry.id));
 			if (entries.length === 0) {
-				throw new InvalidDownloadError('Choose at least one entry.');
+				throw new InvalidDownloadError('Choose at least one entry.', 'download.noEntry');
 			}
 			return {
 				items: entries.map((entry) => item(entry.title)),
@@ -598,7 +598,7 @@ function plan(probe, request) {
 			};
 		}
 		default:
-			throw new UnusableLinkError('Unknown kind of link.');
+			throw new UnusableLinkError('Unknown kind of link.', 'link.unknownKind');
 	}
 }
 

@@ -57,6 +57,8 @@ export class UnknownSoundError extends Error {
 	constructor(soundId) {
 		super(`Unknown sound "${soundId}"`);
 		this.name = 'UnknownSoundError';
+		this.messageCode = 'item.unknownSound';
+		this.messageParams = { id: soundId };
 	}
 }
 
@@ -66,6 +68,8 @@ export class UnknownTrackError extends Error {
 	constructor(trackId) {
 		super(`Unknown track "${trackId}"`);
 		this.name = 'UnknownTrackError';
+		this.messageCode = 'item.unknownTrack';
+		this.messageParams = { id: trackId };
 	}
 }
 
@@ -75,6 +79,8 @@ export class UnknownPlaylistError extends Error {
 	constructor(playlistId) {
 		super(`Unknown playlist "${playlistId}"`);
 		this.name = 'UnknownPlaylistError';
+		this.messageCode = 'item.unknownPlaylist';
+		this.messageParams = { id: playlistId };
 	}
 }
 

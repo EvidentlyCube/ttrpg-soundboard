@@ -172,7 +172,7 @@ describe('StartupFlow', () => {
 		folders.set('/etc', new Error('This folder is outside the folders the app may open.'));
 		await flow.browse('/etc');
 		assert.equal(flow.view.listing?.path, '/home/ana');
-		assert.equal(flow.view.browseError, 'This folder is outside the folders the app may open.');
+		assert.equal(flow.view.browseError?.message, 'This folder is outside the folders the app may open.');
 		assert.equal(flow.view.browseFailures, 1);
 		assert.equal(flow.view.error, null);
 		await flow.browse('/etc');
@@ -208,7 +208,7 @@ describe('StartupFlow', () => {
 		const { flow, calls, failActions } = setup();
 		failActions(new Error('No audio files found here.'));
 		await flow.select('/home/ana/empty');
-		assert.equal(flow.view.error, 'No audio files found here.');
+		assert.equal(flow.view.error?.message, 'No audio files found here.');
 		assert.equal(flow.view.busy, false);
 		failActions(null);
 		const first = flow.select('/home/ana/board');

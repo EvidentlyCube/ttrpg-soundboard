@@ -25,6 +25,28 @@ export const NO_AUDIO_REASON = 'No audio files found here.';
 export const HOLDS_SOUNDBOARD_REASON = 'A folder inside this one is already a soundboard.';
 export const INSIDE_SOUNDBOARD_REASON = 'This folder is inside a soundboard.';
 
+/** The code the pages translate each reason by (DESIGN.md §9.21). */
+const REASON_CODES = new Map([
+	[OUTSIDE_REASON, 'folder.outside'],
+	[HIDDEN_REASON, 'folder.hidden'],
+	[SYSTEM_REASON, 'folder.system'],
+	[CONTAINER_REASON, 'folder.container'],
+	[MISSING_REASON, 'folder.missing'],
+	[NOT_FOLDER_REASON, 'folder.notFolder'],
+	[UNREADABLE_REASON, 'folder.unreadable'],
+	[NO_AUDIO_REASON, 'folder.noAudio'],
+	[HOLDS_SOUNDBOARD_REASON, 'folder.holdsSoundboard'],
+	[INSIDE_SOUNDBOARD_REASON, 'folder.insideSoundboard'],
+]);
+
+/**
+ * @param {string | null} reason
+ * @returns {string | null}
+ */
+export function reasonCodeOf(reason) {
+	return reason === null ? null : REASON_CODES.get(reason) ?? null;
+}
+
 /** Refused with everything inside them (DESIGN.md §5.7). */
 const POSIX_SYSTEM = ['/bin', '/boot', '/dev', '/etc', '/lib', '/lib32', '/lib64', '/opt', '/proc', '/root', '/run', '/sbin', '/snap', '/srv', '/sys', '/usr', '/var'];
 const MAC_SYSTEM = ['/System', '/Library', '/Applications', '/private', '/cores'];

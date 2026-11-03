@@ -116,6 +116,8 @@ describe('describeUpdate and updateProblem', () => {
 			severity: 'warning',
 			path: 'yt-dlp',
 			message: 'yt-dlp 2026.10.26 is available (installed: 2026.10.21), but the update failed: Insufficient permissions to write to /usr/bin',
+			code: 'problem.ytdlp-outdated',
+			params: { latest: '2026.10.26', current: '2026.10.21', error: 'Insufficient permissions to write to /usr/bin' },
 		});
 		assert.equal(updateProblem({ state: 'failed', current: null, latest: null, error: 'offline' }), null);
 		assert.equal(updateProblem({ state: 'current', current: '1', latest: '1', error: null }), null);

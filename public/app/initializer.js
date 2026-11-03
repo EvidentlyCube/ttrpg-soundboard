@@ -5,7 +5,7 @@ import { StartupFlow } from './logic/startup-flow.js';
 import { h } from './ui/dom.js';
 import { holdButton } from './ui/hold-button.js';
 import { connectionNotice, errorNotice, pageHeader, showError } from './ui/startup-parts.js';
-import { t } from './ui/text.js';
+import { describe, t } from './ui/text.js';
 
 /** @typedef {import('./logic/startup-flow.js').StartupView} StartupView */
 /** @typedef {import('./logic/startup-flow.js').InitializerState} InitializerState */
@@ -159,7 +159,9 @@ function drawFailure(initializer, busy) {
 		h('p', { class: 'font-semibold text-danger' }, initializer.failures.length > 0
 			? t('initializer.unreadable')
 			: t('initializer.failed')),
-		initializer.error ? h('p', { 'class': 'text-sm', 'data-startup-failure': true }, initializer.error) : null,
+		initializer.error
+			? h('p', { 'class': 'text-sm', 'data-startup-failure': true }, describe({ message: initializer.error, code: initializer.errorCode, params: initializer.errorParams }))
+			: null,
 		initializer.failures.length > 0
 			? list(initializer.failures.map((failure) => h('li', { 'class': 'space-y-0.5', 'data-startup-failure': failure.path },
 					h('p', { class: 'font-mono text-danger' }, failure.path || t('initializer.noFile')),

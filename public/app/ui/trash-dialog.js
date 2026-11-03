@@ -2,7 +2,7 @@ import { Component } from './component.js';
 import { h } from './dom.js';
 import { formatBytes, formatMegabytes } from './format.js';
 import { holdButton } from './hold-button.js';
-import { t } from './text.js';
+import { describeError, t } from './text.js';
 
 /** @typedef {import('../logic/soundboard.js').Soundboard} Soundboard */
 /** @typedef {import('../logic/ports.js').TrashTarget} TrashTarget */
@@ -234,6 +234,6 @@ export class TrashDialog extends Component {
  * @param {unknown} reason
  */
 function showError(error, what, reason) {
-	error.textContent = t(what, { reason: reason instanceof Error ? reason.message : String(reason) });
+	error.textContent = t(what, { reason: describeError(reason) });
 	error.hidden = false;
 }

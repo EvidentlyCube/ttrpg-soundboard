@@ -39,7 +39,7 @@ export class YtDlp {
 		try {
 			info = JSON.parse(stdout);
 		} catch {
-			throw new UnusableLinkError('yt-dlp gave an answer that could not be read.');
+			throw new UnusableLinkError('yt-dlp gave an answer that could not be read.', 'link.unreadableAnswer');
 		}
 		return toProbe(info, link);
 	}

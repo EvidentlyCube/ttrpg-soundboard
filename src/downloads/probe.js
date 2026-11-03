@@ -42,10 +42,10 @@ export function parseLink(text) {
 	try {
 		url = new URL(text.trim());
 	} catch {
-		throw new UnusableLinkError('That is not a link.');
+		throw new UnusableLinkError('That is not a link.', 'link.notALink');
 	}
 	if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-		throw new UnusableLinkError('Only http and https links can be downloaded.');
+		throw new UnusableLinkError('Only http and https links can be downloaded.', 'link.notHttp');
 	}
 	return url;
 }
@@ -66,7 +66,7 @@ export function namesPlaylist(url) {
  */
 export function toProbe(info, link) {
 	if (!isPlainObject(info)) {
-		throw new UnusableLinkError('yt-dlp gave an answer that could not be read.');
+		throw new UnusableLinkError('yt-dlp gave an answer that could not be read.', 'link.unreadableAnswer');
 	}
 	const id = text(info.id) ?? '';
 	const title = text(info.title) ?? id;
@@ -74,7 +74,7 @@ export function toProbe(info, link) {
 	if (info._type === 'playlist') {
 		const entries = (Array.isArray(info.entries) ? info.entries : []).flatMap((entry) => toEntry(entry));
 		if (entries.length === 0) {
-			throw new UnusableLinkError('This playlist has nothing that can be downloaded.');
+			throw new UnusableLinkError('This playlist has nothing that can be downloaded.', 'link.emptyPlaylist');
 		}
 		const total = typeof info.playlist_count === 'number' ? info.playlist_count : null;
 		return {
@@ -87,7 +87,7 @@ export function toProbe(info, link) {
 		};
 	}
 	if (info.is_live === true || info.live_status === 'is_live' || info.live_status === 'is_upcoming') {
-		throw new UnusableLinkError("Live streams can't be downloaded.");
+		throw new UnusableLinkError("Live streams can't be downloaded.", 'link.live');
 	}
 	const duration = seconds(info.duration);
 	return {

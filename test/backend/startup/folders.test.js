@@ -45,15 +45,16 @@ describe('listFolder', () => {
 			path: root,
 			parent: dirname(root),
 			folders: [
-				{ name: 'board', title: null, path: join(root, 'board'), soundboard: true, holdsSoundboard: false, refused: null },
-				{ name: 'Track 9', title: null, path: join(root, 'Track 9'), soundboard: false, holdsSoundboard: false, refused: null },
-				{ name: 'Track 10', title: null, path: join(root, 'Track 10'), soundboard: false, holdsSoundboard: false, refused: null },
+				{ name: 'board', title: null, path: join(root, 'board'), soundboard: true, holdsSoundboard: false, refused: null, refusedCode: null },
+				{ name: 'Track 9', title: null, path: join(root, 'Track 9'), soundboard: false, holdsSoundboard: false, refused: null, refusedCode: null },
+				{ name: 'Track 10', title: null, path: join(root, 'Track 10'), soundboard: false, holdsSoundboard: false, refused: null, refusedCode: null },
 			],
 			audioFiles: 2,
 			files: ['Boom.mp3', 'Rain.ogg'],
 			soundboard: false,
 			allowed: false,
 			reason: HOLDS_SOUNDBOARD_REASON,
+			reasonCode: 'folder.holdsSoundboard',
 		});
 	});
 

@@ -127,8 +127,8 @@ describe('StartupSession', () => {
 		const { session, root } = await setup({ open: () => new Promise((resolve) => {
 			finish = resolve;
 		}) });
-		await assert.rejects(session.select(join(root, 'empty')), new FolderRefusedError(NO_AUDIO_REASON));
-		await assert.rejects(session.select('/'), new FolderRefusedError(OUTSIDE_REASON));
+		await assert.rejects(session.select(join(root, 'empty')), new FolderRefusedError(NO_AUDIO_REASON, 'folder.noAudio'));
+		await assert.rejects(session.select('/'), new FolderRefusedError(OUTSIDE_REASON, 'folder.outside'));
 		await assert.rejects(session.select('board'), FolderRefusedError);
 		await session.select(join(root, 'board'));
 		assert.equal(session.phase, 'initializing');
@@ -140,12 +140,12 @@ describe('StartupSession', () => {
 		const { session, root } = await setup({ paths: ['board', 'empty'] });
 		const state = await session.state();
 		assert.deepEqual(state.paths, [
-			{ path: join(root, 'board'), name: 'board', allowed: true, reason: null },
-			{ path: join(root, 'empty'), name: 'empty', allowed: false, reason: NO_AUDIO_REASON },
+			{ path: join(root, 'board'), name: 'board', allowed: true, reason: null, reasonCode: null },
+			{ path: join(root, 'empty'), name: 'empty', allowed: false, reason: NO_AUDIO_REASON, reasonCode: 'folder.noAudio' },
 		]);
 		assert.deepEqual(state.recent, []);
 		assert.equal(session.hasGivenPaths, true);
-		await assert.rejects(session.select(join(root, 'other')), new FolderRefusedError(ONLY_GIVEN_PATHS));
+		await assert.rejects(session.select(join(root, 'other')), new FolderRefusedError(ONLY_GIVEN_PATHS, 'folder.onlyGiven'));
 	});
 
 	it('asks each question with what was reported for it, and goes on with the answer', async () => {

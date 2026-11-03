@@ -3,6 +3,7 @@ import { FolderRefusedError, StartupStateError } from '../startup/errors.js';
 import { FolderNotAllowedError, FolderUnreadableError, listFolder, startingPlaces } from '../startup/folders.js';
 import { isPlainObject } from '../library/validate.js';
 import { availableLanguages } from '../startup/app-settings.js';
+import { ONLY_GIVEN_PATHS } from '../startup/startup-session.js';
 import { isLoopbackAddress } from './lan-access.js';
 import { LOOPBACK_HOSTS, checkRequest } from './request-guard.js';
 import { logWhenDone } from './request-log.js';
@@ -62,7 +63,7 @@ export async function startApp({ session, port, platform, info, lan, lanManager 
 			await route(request, response, context);
 		} catch (error) {
 			if (error instanceof HttpError) {
-				sendJson(response, error.status, { error: error.message }, error.headers);
+				sendJson(response, error.status, error.toJSON(), error.headers);
 				return;
 			}
 			logError(error);
@@ -217,7 +218,7 @@ async function serveStartup(request, response, pathname, { session, platform, in
 			case '/api/startup/folders': {
 				allowMethods(request, ['GET']);
 				if (session.hasGivenPaths) {
-					throw new HttpError(403, 'Only the folders given when the app was started can be opened.');
+					throw new HttpError(403, ONLY_GIVEN_PATHS, {}, { messageCode: 'folder.onlyGiven' });
 				}
 				const path = new URL(request.url ?? '/', 'http://localhost').searchParams.get('path');
 				if (!path) {
@@ -279,16 +280,16 @@ async function serveStartup(request, response, pathname, { session, platform, in
 		}
 	} catch (error) {
 		if (error instanceof StartupStateError) {
-			throw new HttpError(409, error.message);
+			throw HttpError.from(409, error);
 		}
 		if (error instanceof FolderRefusedError) {
-			throw new HttpError(400, error.message);
+			throw HttpError.from(400, error);
 		}
 		if (error instanceof FolderUnreadableError) {
-			throw new HttpError(404, error.message);
+			throw HttpError.from(404, error);
 		}
 		if (error instanceof FolderNotAllowedError) {
-			throw new HttpError(403, error.message);
+			throw HttpError.from(403, error);
 		}
 		throw error;
 	}

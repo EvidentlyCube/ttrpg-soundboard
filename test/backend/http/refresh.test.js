@@ -181,7 +181,7 @@ describe('external changes over HTTP', () => {
 			await rename(join(root, '.soundboard'), join(root, 'settings.bak'));
 			assert.deepEqual(await call('/api/refresh', { method: 'POST' }), {
 				status: 503,
-				body: { error: 'The .soundboard file is gone. Restart the app.' },
+				body: { error: 'The .soundboard file is gone. Restart the app.', code: 'refresh.restart', params: {} },
 			});
 		});
 

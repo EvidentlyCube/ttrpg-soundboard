@@ -15,15 +15,21 @@ export class ToolsUnavailableError extends Error {
 		super(`Downloads need yt-dlp and ffmpeg. Not found: ${missing.join(', ')}. Install them, then restart the app.`);
 		this.name = 'ToolsUnavailableError';
 		this.missing = missing;
+		this.messageCode = 'download.toolsMissing';
+		this.messageParams = { tools: missing.join(', ') };
 	}
 }
 
 /** A link that can't be downloaded; the message says why, in words for the user. */
 export class UnusableLinkError extends Error {
-	/** @param {string} message */
-	constructor(message) {
+	/**
+	 * @param {string} message
+	 * @param {string} [messageCode] what the page translates it by (DESIGN.md §9.21); none for yt-dlp's own words
+	 */
+	constructor(message, messageCode) {
 		super(message);
 		this.name = 'UnusableLinkError';
+		this.messageCode = messageCode;
 	}
 }
 
@@ -32,14 +38,19 @@ export class DownloadBusyError extends Error {
 	constructor() {
 		super('Another download is still running');
 		this.name = 'DownloadBusyError';
+		this.messageCode = 'download.busy';
 	}
 }
 
 /** A download request that doesn't fit the lookup it refers to. */
 export class InvalidDownloadError extends Error {
-	/** @param {string} message */
-	constructor(message) {
+	/**
+	 * @param {string} message
+	 * @param {string} messageCode
+	 */
+	constructor(message, messageCode) {
 		super(message);
 		this.name = 'InvalidDownloadError';
+		this.messageCode = messageCode;
 	}
 }

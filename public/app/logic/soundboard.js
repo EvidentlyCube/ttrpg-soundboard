@@ -1,6 +1,6 @@
 import { BufferCache } from './buffer-cache.js';
 import { validateCommand } from './commands.js';
-import { InvalidCommandError, NotReadyError } from './errors.js';
+import { codedTextOf, InvalidCommandError, NotReadyError, ServerError } from './errors.js';
 import { EventEmitter } from './event-emitter.js';
 import { LibraryModel } from './library-model.js';
 import { OptionsSync } from './options-sync.js';
@@ -32,6 +32,7 @@ export const MAX_NAME_LENGTH = 100;
 /** @typedef {import('./ports.js').ItemOptions} ItemOptions */
 /** @typedef {import('./ports.js').PlaylistJson} PlaylistJson */
 /** @typedef {import('./commands.js').Command} Command */
+/** @typedef {import('./errors.js').CodedText} CodedText */
 /** @typedef {import('./playlist-player.js').PlaylistEvent} PlaylistEvent */
 /** @typedef {import('./playlist-player.js').PlaylistSnapshot} PlaylistSnapshot */
 /** @typedef {import('./sound-player.js').SoundEvent} SoundEvent */
@@ -65,7 +66,7 @@ export const MAX_NAME_LENGTH = 100;
  * @typedef {{ type: 'library.externalChanges', pending: boolean }
  * 	| { type: 'library.refreshing' }
  * 	| { type: 'library.refreshed' }
- * 	| { type: 'library.refreshFailed', message: string, errors: { path: string, message: string }[], restartNeeded: boolean }
+ * 	| { type: 'library.refreshFailed', errors: { path: string, message: string }[], restartNeeded: boolean } & CodedText
  * 	| { type: 'trash.changed', size: number, count: number }
  * 	| { type: 'problems.changed', count: number }
  * 	| { type: 'access.requestsChanged', requests: import('./ports.js').AccessRequest[] }} RefreshEvent
@@ -248,9 +249,10 @@ export class Soundboard {
 		 * @param {string} kind
 		 * @param {string} path
 		 * @param {string} message
+		 * @param {{ code?: string, params?: Record<string, string> }} [coded]
 		 */
-		const record = (kind, path, message) => {
-			this.#problems.record({ kind, path, message });
+		const record = (kind, path, message, { code, params } = {}) => {
+			this.#problems.record({ kind, path, message, code, params });
 			this.#announceProblems();
 		};
 		/**
@@ -261,7 +263,7 @@ export class Soundboard {
 			this.#announceProblems();
 		};
 		const events = this.#events;
-		events.on('sound.error', ({ soundId, message }) => record('play-failed', soundId, message));
+		events.on('sound.error', ({ soundId, message, code, params }) => record('play-failed', soundId, message, { code, params }));
 		events.on('playlist.error', ({ playlistId, trackId, message }) => record('play-failed', trackId ?? playlistId, message));
 		events.on('sound.saveFailed', ({ soundId, message }) => record('save-failed', soundId, message));
 		events.on('playlist.saveFailed', ({ playlistId, message }) => record('save-failed', playlistId, message));
@@ -278,7 +280,7 @@ export class Soundboard {
 			this.#reportedJob = job.id;
 			for (const item of job.items) {
 				if (item.state === 'failed') {
-					record('download-failed', item.title, item.error ?? 'The download failed.');
+					record('download-failed', item.title, item.error ?? 'The download failed.', item.error ? {} : { code: 'download.failed' });
 				}
 			}
 		});
@@ -415,12 +417,7 @@ export class Soundboard {
 			}
 		} catch (error) {
 			this.#logger.warn('Could not become the host.', error);
-			this.#problems.record({
-				kind: 'host-failed',
-				path: 'host',
-				message: error instanceof Error ? error.message : String(error),
-				severity: 'warning',
-			});
+			this.#problems.record({ kind: 'host-failed', path: 'host', ...codedTextOf(error), severity: 'warning' });
 			this.#announceProblems();
 			return 'failed';
 		}
@@ -447,7 +444,7 @@ export class Soundboard {
 				reject,
 				timer: this.#clock.setTimeout(() => {
 					this.#streamWaiters = this.#streamWaiters.filter((entry) => entry !== waiter);
-					reject(new Error('The page is not connected to the server'));
+					reject(new ServerError('The page is not connected to the server', 'host.notConnected'));
 				}, STREAM_WAIT_MS),
 			};
 			this.#streamWaiters.push(waiter);
@@ -470,11 +467,11 @@ export class Soundboard {
 	/**
 	 * The server says this page is not the host (any more): another page took over, or the connection was lost for too
 	 * long. The page carries on as it is, and the problems list says what happened.
-	 * @param {string} message
+	 * @param {CodedText} why
 	 */
-	#loseHost(message) {
+	#loseHost(why) {
 		this.#hosting = false;
-		this.#problems.record({ kind: 'host-lost', path: 'host', message });
+		this.#problems.record({ kind: 'host-lost', path: 'host', ...why });
 		this.#announceProblems();
 		this.#events.emit({ type: 'host.changed', hosting: false });
 	}
@@ -494,8 +491,8 @@ export class Soundboard {
 		}
 		if (this.#hosting) {
 			this.#loseHost(message.reason === 'replaced'
-				? 'Another page took over as host.'
-				: 'This page was disconnected from the server for too long, so it is not the host any more.');
+				? { message: 'Another page took over as host.', code: 'host.replaced', params: null }
+				: { message: 'This page was disconnected from the server for too long, so it is not the host any more.', code: 'host.disconnected', params: null });
 		}
 	}
 
@@ -1107,14 +1104,21 @@ export class Soundboard {
 			if (result.status === 'refreshed') {
 				this.#events.emit({ type: 'library.refreshed' });
 			} else if (result.status === 'invalid') {
-				this.#events.emit({ type: 'library.refreshFailed', message: 'Some options files are invalid.', errors: result.errors, restartNeeded: false });
+				this.#events.emit({
+					type: 'library.refreshFailed',
+					message: 'Some options files are invalid.',
+					code: 'refresh.invalid',
+					params: null,
+					errors: result.errors,
+					restartNeeded: false,
+				});
 			} else {
-				this.#events.emit({ type: 'library.refreshFailed', message: result.message, errors: [], restartNeeded: true });
+				const { message, code, params } = result;
+				this.#events.emit({ type: 'library.refreshFailed', message, code, params, errors: [], restartNeeded: true });
 			}
 		} catch (error) {
 			this.#logger.error('Could not refresh the library', error);
-			const message = error instanceof Error ? error.message : String(error);
-			this.#events.emit({ type: 'library.refreshFailed', message, errors: [], restartNeeded: false });
+			this.#events.emit({ type: 'library.refreshFailed', ...codedTextOf(error), errors: [], restartNeeded: false });
 		} finally {
 			this.#refreshing = false;
 		}
