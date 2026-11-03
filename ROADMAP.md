@@ -39,13 +39,15 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 - §5.7, §5.8, §3 (startup): a soundboard's name is read from its `.soundboard` (a broken or missing one counts as no name) for the folder cards (given folders and Recent), the listing's subfolders and the listing itself. They gain `title`: the name, or `null`.
 - §6.1: `Soundboard` keeps the name from the settings it loads at start, `setName(name)` applies it at once (`settings.nameChanged`) and saves it with the 500 ms debounce of the other customizations, flushed by `flushSettings`.
 - §9.1, §9.3: the header shows the name (the folder's name without one), and the document title becomes "<name> · Soundboard". The ☰ menu gets **Options** (enabled only once started), opening the Options dialog (new §9.x): one "Name" field, its placeholder the folder's name, saving as you type.
-- §9.18: a soundboard card shows the name over the path; a soundboard row in Browse shows the name, with the folder's name in muted text after it when they differ.
+- §9.18: a soundboard card shows the name over the path; a soundboard row in Browse shows the name instead of the folder's.
+- §9.0: the page waits for `GET /api/settings` before drawing the splash and its frame.
 
-**Open questions.**
-1. *What does the header show on the splash, before anything is loaded?* Today the only request before the click is `GET /api/remote` (§9.0). **Recommended:** add the name to that answer's neighbor, `GET /api/settings`, fetched on load as well — it reads one small file and starts no audio, and the header then never jumps from "Soundboard" to the name. The rule in §9.0 becomes "the only requests are `GET /api/remote` and `GET /api/settings`".
-2. *Do other open pages (another tab, the remote page) update live when the name changes?* **Recommended:** no; they show it after a reload. A live update needs a new event on the event stream for a rare action.
-3. *Does the remote page show the name?* **Recommended:** not in this feature; it has no header today (§9.15).
-4. *Where does the folder's name come from when there is no name?* **Recommended:** the folder's base name, as the Selector shows it today.
+**Answered questions.**
+1. *What does the header show on the splash, before anything is loaded?* The page calls `GET /api/settings` on load and shows only the dark background until it answers, so the first real render already has the name. The rule in §9.0 becomes "the only requests before the click are `GET /api/remote` and `GET /api/settings`".
+2. *Do other open pages update live when the name changes?* No; they show it after a reload.
+3. *Does the remote page show the name?* Only if it already shows a title, which it doesn't (§9.15), so no.
+4. *Where does the folder's name come from when there is no name?* The folder's base name, as the Selector shows it today.
+5. *How does a named soundboard look in Browse?* The name only.
 
 **Plan.**
 1. `.soundboard` `name`: validation, `SettingsStore` load/update, `GET /api/settings` and `PUT /api/settings/name` — backend tests for the key's rules, the merge with volumes, and the route's answers.
