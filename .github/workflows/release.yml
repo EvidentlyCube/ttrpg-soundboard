@@ -1,0 +1,108 @@
+name: Release
+
+# A new version in package.json on main becomes a draft release with the zips attached (DESIGN.md §13).
+on:
+  push:
+    branches: [main]
+    paths: [package.json]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      new: ${{ steps.version.outputs.new }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # A draft release has no tag until it is published, so the release itself is looked up, not the tag.
+        run: |
+          version=$(node -p "require('./package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if gh release view "v$version" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "new=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "new=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  pack:
+    needs: version
+    if: needs.version.outputs.new == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - uses: actions/cache@v4
+        with:
+          path: dist/cache
+          key: node-runtimes-${{ hashFiles('scripts/pack/platforms.js') }}
+      - run: npm run pack
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zips
+          path: dist/*.zip
+          if-no-files-found: error
+
+  try:
+    needs: [version, pack]
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x64
+            launcher: ./start-soundboard.sh
+          - os: macos-latest
+            platform: macos-arm64
+            launcher: ./Start Soundboard.command
+          - os: windows-latest
+            platform: windows-x64
+            launcher: .\Start Soundboard.cmd
+    runs-on: ${{ matrix.os }}
+    env:
+      NAME: soundboard-${{ needs.version.outputs.version }}-${{ matrix.platform }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: zips
+      - if: runner.os != 'Windows'
+        run: |
+          unzip -q "$NAME.zip"
+          cd "$NAME"
+          "${{ matrix.launcher }}" --help
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Expand-Archive "$env:NAME.zip" -DestinationPath .
+          Set-Location $env:NAME
+          & '${{ matrix.launcher }}' --help
+
+  release:
+    needs: [version, try]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: zips
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: >
+          gh release create "v$VERSION" *.zip
+          --repo "$GITHUB_REPOSITORY"
+          --draft
+          --generate-notes
+          --target "$GITHUB_SHA"
+          --title "Soundboard $VERSION"
