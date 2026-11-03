@@ -174,6 +174,16 @@ export class AccessControl {
 		return this.#devices.has(hash(secret));
 	}
 
+	/** Forgets every allowed device and every request, as when the soundboard closes. Bans stay (DESIGN.md §5.6). */
+	revokeAll() {
+		const hadPending = this.pending().length > 0;
+		this.#entries.clear();
+		this.#devices.clear();
+		if (hadPending) {
+			this.#changed();
+		}
+	}
+
 	/** @returns {PendingRequest[]} the requests waiting for an answer, oldest first */
 	pending() {
 		const result = [];

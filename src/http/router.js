@@ -48,13 +48,13 @@ import { serveRemote } from './remote-routes.js';
  * @property {Promise<RefreshOutcome> | null} refreshing the refresh running now
  * @property {DownloadService} [downloads] without it, downloads are not available
  * @property {AppInfo} info the versions `GET /api/info` reports
- * @property {boolean} initializing set until the tools are found and yt-dlp updated; pages get the initializing page
- * 	meanwhile (DESIGN.md §3.4)
+ * @property {Set<() => void>} streams ends each open event stream, for when the soundboard closes
  */
 
 /**
  * @typedef {object} AppInfo
  * @property {string} app the app's version
+ * @property {boolean} checking set while the tools are looked for and yt-dlp updated (DESIGN.md §3.4)
  * @property {import('../downloads/tools.js').Tools} tools
  * @property {import('../downloads/yt-dlp-update.js').YtDlpUpdate | null} update null when it didn't run
  */
@@ -100,10 +100,6 @@ async function route(request, response, context) {
 	let pathname = (request.url ?? '/').split('?')[0];
 
 	checkRequest(request.headers, context.guard);
-	if (context.initializing) {
-		await serveInitializing(request, response, context.publicDir, pathname);
-		return;
-	}
 	if (context.access) {
 		const entry = checkAccess(request, pathname, context.access);
 		if (entry) {
@@ -146,8 +142,7 @@ async function route(request, response, context) {
 		sendJson(response, 200, { externalChanges: (await context.watcher?.check()) ?? false });
 	} else if (pathname === '/api/info') {
 		allowMethods(request, ['GET']);
-		const { app, tools, update } = context.info;
-		sendJson(response, 200, { app, ytDlp: { version: tools.ytDlp, update }, ffmpeg: tools.ffmpeg });
+		sendJson(response, 200, infoJson(context.info));
 	} else if (pathname === '/api/library') {
 		allowMethods(request, ['GET']);
 		sendJson(response, 200, toLibraryJson(library));
@@ -239,20 +234,20 @@ async function route(request, response, context) {
 }
 
 /**
- * While the app starts: the API is unavailable and every page is the initializing page, which reloads itself once a
- * request no longer gets a 503. Scripts, styles and icons are served, since that page needs some of them.
- * @param {Request} request
- * @param {Response} response
- * @param {string} publicDir
+ * Whether a path asks for a page rather than a script, style or icon: `/`, a path ending in `.html`, or one without an
+ * extension.
  * @param {string} pathname
  */
-async function serveInitializing(request, response, publicDir, pathname) {
-	if (pathname.startsWith('/api/')) {
-		throw new HttpError(503, 'The app is starting.', { 'Retry-After': '1' });
-	}
-	allowMethods(request, ['GET', 'HEAD']);
-	const isPage = pathname.endsWith('/') || pathname.endsWith('.html') || !pathname.slice(pathname.lastIndexOf('/')).includes('.');
-	await serveStaticFile(request, response, publicDir, isPage ? '/initializing.html' : pathname);
+export function isPagePath(pathname) {
+	return pathname.endsWith('/') || pathname.endsWith('.html') || !pathname.slice(pathname.lastIndexOf('/')).includes('.');
+}
+
+/**
+ * What `GET /api/info` answers (DESIGN.md §5.2).
+ * @param {AppInfo} info
+ */
+export function infoJson({ app, checking, tools, update }) {
+	return { app, checking, ytDlp: { version: tools.ytDlp, update }, ffmpeg: tools.ffmpeg };
 }
 
 /**
@@ -538,7 +533,7 @@ function requireContentType(request, expected) {
  * @param {Request} request
  * @returns {Promise<unknown>}
  */
-async function readJsonBody(request, limit = MAX_BODY_BYTES) {
+export async function readJsonBody(request, limit = MAX_BODY_BYTES) {
 	requireContentType(request, 'application/json');
 	/** @type {Buffer[]} */
 	const chunks = [];

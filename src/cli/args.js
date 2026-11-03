@@ -1,8 +1,9 @@
 import { isIP } from 'node:net';
 import { parseArgs } from 'node:util';
 
-export const USAGE = 'Usage: node index.js <audio-directory> [--port <number>] [--lan [<address>]] [--verbose]';
-export const DEFAULT_PORT = 3000;
+export const USAGE = 'Usage: node index.js [<audio-directory>…] [--port <number>] [--lan [<address>]] [--no-open] [--verbose]';
+/** High enough not to clash with the usual development servers. */
+export const DEFAULT_PORT = 13872;
 
 /** The command line was used incorrectly; the message is shown to the user together with the usage line. */
 export class UsageError extends Error {
@@ -15,8 +16,9 @@ export class UsageError extends Error {
 
 /**
  * @param {string[]} argv arguments after the script name
- * @returns {{ directory: string, port: number, verbose: boolean, lan: { address: string | null } | null }}
- * 	`lan` is set with `--lan`: the address to listen on, or null for every interface
+ * @returns {{ directories: string[], port: number, verbose: boolean, open: boolean, lan: { address: string | null } | null }}
+ * 	`directories` are the only folders the Selector offers when there are any; `lan` is set with `--lan`: the address
+ * 	to listen on, or null for every interface
  */
 export function parseArguments(argv) {
 	let parsed;
@@ -24,17 +26,25 @@ export function parseArguments(argv) {
 		parsed = parseArgs({
 			args: withLanValue(argv),
 			allowPositionals: true,
-			options: { port: { type: 'string' }, verbose: { type: 'boolean', default: false }, lan: { type: 'string' } },
+			options: {
+				'port': { type: 'string' },
+				'verbose': { type: 'boolean', default: false },
+				'no-open': { type: 'boolean', default: false },
+				'lan': { type: 'string' },
+			},
 		});
 	} catch (error) {
 		throw new UsageError(/** @type {Error} */ (error).message);
 	}
 
 	const { positionals, values } = parsed;
-	if (positionals.length !== 1) {
-		throw new UsageError(positionals.length === 0 ? 'Missing the audio directory.' : 'Expected exactly one audio directory.');
-	}
-	return { directory: positionals[0], port: parsePort(values.port), verbose: values.verbose, lan: parseLan(values.lan) };
+	return {
+		directories: positionals,
+		port: parsePort(values.port),
+		verbose: values.verbose,
+		open: !values['no-open'],
+		lan: parseLan(values.lan),
+	};
 }
 
 /**

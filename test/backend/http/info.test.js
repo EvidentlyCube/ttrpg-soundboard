@@ -27,7 +27,6 @@ async function setup(downloads) {
 		music: { '.soundboard': JSON.stringify({ version: 1 }), 'Boom.mp3': 'boom' },
 		public: {
 			'index.html': '<!doctype html><title>App</title>',
-			'initializing.html': '<!doctype html><title>Initializing</title>',
 			'favicon.svg': '<svg/>',
 		},
 	});
@@ -47,33 +46,12 @@ async function setup(downloads) {
 	return server;
 }
 
-describe('starting up', () => {
-	it('shows the initializing page and refuses the API until the tools are ready', async () => {
-		/** @type {(ports: import('../../../src/http/server.js').DownloadPorts) => void} */
-		let finish = () => {};
-		const server = await setup(() => new Promise((resolve) => {
-			finish = resolve;
-		}));
-
-		for (const path of ['/', '/index.html', '/connect']) {
-			assert.match(await (await fetch(`${server.url}${path}`)).text(), /Initializing/, path);
-		}
-		assert.equal((await fetch(`${server.url}/favicon.svg`)).status, 200);
-		const api = await fetch(`${server.url}/api/library`);
-		assert.equal(api.status, 503);
-		assert.equal(api.headers.get('retry-after'), '1');
-
-		finish({ tools: { ytDlp: '2026.10.21', ffmpeg: '8.1' }, update: OUTDATED });
-		await server.ready;
-		assert.match(await (await fetch(`${server.url}/`)).text(), /App/);
-		assert.equal((await fetch(`${server.url}/api/library`)).status, 200);
-	});
-
+describe('the info route', () => {
 	it('reports the versions and the update, and lists a failed update as a problem', async () => {
-		const server = await setup(async () => ({ tools: { ytDlp: '2026.10.21', ffmpeg: '8.1' }, update: OUTDATED }));
-		await server.ready;
+		const server = await setup({ tools: { ytDlp: '2026.10.21', ffmpeg: '8.1' }, update: OUTDATED });
 		assert.deepEqual(await (await fetch(`${server.url}/api/info`)).json(), {
 			app: APP_VERSION,
+			checking: false,
 			ytDlp: { version: '2026.10.21', update: OUTDATED },
 			ffmpeg: '8.1',
 		});
@@ -91,6 +69,7 @@ describe('starting up', () => {
 		const server = await setup(undefined);
 		assert.deepEqual(await (await fetch(`${server.url}/api/info`)).json(), {
 			app: APP_VERSION,
+			checking: false,
 			ytDlp: { version: null, update: null },
 			ffmpeg: null,
 		});

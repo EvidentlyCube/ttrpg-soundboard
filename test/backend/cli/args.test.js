@@ -2,25 +2,33 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_PORT, parseArguments, UsageError } from '../../../src/cli/args.js';
 
+const DEFAULTS = { directories: ['/music'], port: DEFAULT_PORT, verbose: false, open: true, lan: null };
+
 describe('parseArguments', () => {
-	it('takes the directory, the default port and quiet output', () => {
-		assert.deepEqual(parseArguments(['/music']), { directory: '/music', port: DEFAULT_PORT, verbose: false, lan: null });
-		assert.equal(DEFAULT_PORT, 3000);
+	it('takes the directory, the default port, quiet output and opening the browser', () => {
+		assert.deepEqual(parseArguments(['/music']), DEFAULTS);
+		assert.equal(DEFAULT_PORT, 13872);
+	});
+
+	it('takes no directory, or several', () => {
+		assert.deepEqual(parseArguments([]).directories, []);
+		assert.deepEqual(parseArguments(['/a', '/b']).directories, ['/a', '/b']);
 	});
 
 	it('accepts --port in both forms', () => {
-		assert.deepEqual(parseArguments(['/music', '--port', '8080']), { directory: '/music', port: 8080, verbose: false, lan: null });
-		assert.deepEqual(parseArguments(['--port=8081', '/music']), { directory: '/music', port: 8081, verbose: false, lan: null });
+		assert.deepEqual(parseArguments(['/music', '--port', '8080']), { ...DEFAULTS, port: 8080 });
+		assert.deepEqual(parseArguments(['--port=8081', '/music']), { ...DEFAULTS, port: 8081 });
 	});
 
-	it('accepts --verbose', () => {
-		assert.deepEqual(parseArguments(['/music', '--verbose']), { directory: '/music', port: DEFAULT_PORT, verbose: true, lan: null });
+	it('accepts --verbose and --no-open', () => {
+		assert.deepEqual(parseArguments(['/music', '--verbose']), { ...DEFAULTS, verbose: true });
+		assert.deepEqual(parseArguments(['/music', '--no-open']), { ...DEFAULTS, open: false });
 	});
 
 	it('accepts --lan alone, for every interface, and with an address to listen on', () => {
 		assert.deepEqual(parseArguments(['/music', '--lan']).lan, { address: null });
 		assert.deepEqual(parseArguments(['--lan', '/music']).lan, { address: null });
-		assert.deepEqual(parseArguments(['--lan', '192.168.1.20', '/music']), { directory: '/music', port: DEFAULT_PORT, verbose: false, lan: { address: '192.168.1.20' } });
+		assert.deepEqual(parseArguments(['--lan', '192.168.1.20', '/music']), { ...DEFAULTS, lan: { address: '192.168.1.20' } });
 		assert.deepEqual(parseArguments(['/music', '--lan=192.168.1.20']).lan, { address: '192.168.1.20' });
 		assert.deepEqual(parseArguments(['/music', '--lan', '::1']).lan, { address: '::1' });
 	});
@@ -32,11 +40,6 @@ describe('parseArguments', () => {
 
 	it('rejects a --lan address that is not one', () => {
 		assert.throws(() => parseArguments(['/music', '--lan=nonsense']), new UsageError('Invalid address for --lan: "nonsense".'));
-	});
-
-	it('requires exactly one directory', () => {
-		assert.throws(() => parseArguments([]), new UsageError('Missing the audio directory.'));
-		assert.throws(() => parseArguments(['/a', '/b']), new UsageError('Expected exactly one audio directory.'));
 	});
 
 	it('rejects invalid ports', () => {

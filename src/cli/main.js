@@ -1,18 +1,20 @@
-import { stat } from 'node:fs/promises';
-import { hostname, networkInterfaces } from 'node:os';
-import { resolve } from 'node:path';
+import { homedir, hostname, networkInterfaces } from 'node:os';
+import { join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { runProcess } from '../downloads/process-runner.js';
 import { describeTools, findTools, missingTools } from '../downloads/tools.js';
 import { clearWorkspace } from '../downloads/workspace.js';
 import { describeUpdate, updateYtDlp } from '../downloads/yt-dlp-update.js';
-import { startServer } from '../http/server.js';
+import { AccessControl } from '../http/access-control.js';
+import { PORT_ATTEMPTS, startApp } from '../http/app-server.js';
+import { appVersion, createBoard } from '../http/server.js';
 import { BootstrapService } from '../library/bootstrap-service.js';
 import { ChangeWatcher } from '../library/change-watcher.js';
+import { configFolder, RecentFolders } from '../startup/recent-folders.js';
+import { StartupSession } from '../startup/startup-session.js';
 import { parseArguments, USAGE, UsageError } from './args.js';
 import { createColors, shouldUseColor } from './colors.js';
-import { TerminalPrompter } from './prompter.js';
-import { ConsoleReporter } from './reporter.js';
+import { openInBrowser } from './open-browser.js';
 
 /**
  * @typedef {object} Terminal
@@ -20,19 +22,33 @@ import { ConsoleReporter } from './reporter.js';
  * @property {{ write: (chunk: string) => unknown, isTTY?: boolean }} output
  * @property {{ write: (chunk: string) => unknown }} errorOutput
  * @property {Record<string, string | undefined>} env
- * @property {() => Promise<void>} waitForShutdown resolves when the server should stop, e.g. on SIGINT;
- * 	only called once the server is up, so Ctrl+C during the startup questions still ends the process immediately
+ * @property {() => Promise<void>} waitForShutdown resolves when the server should stop, e.g. on SIGINT
  * @property {import('../downloads/process-runner.js').ProcessRunner} [run] starts yt-dlp and ffmpeg; tests pass a fake
  * @property {() => string[]} [networkAddresses] this machine's addresses on the local network, for `--lan`; tests pass a fixed list
+ * @property {(url: string) => void} [openBrowser] tests pass one that opens nothing
+ * @property {import('../startup/folder-rules.js').Platform} [platform] tests pass a home folder of their own
+ * @property {string} [configDirectory] where `recent.json` goes; tests pass a temporary folder
  */
 
 /**
- * Runs the app from the command line and resolves with the process exit code once the server has stopped.
+ * Runs the app from the command line and resolves with the process exit code once the server has stopped. Choosing
+ * and loading a soundboard happen in the browser (DESIGN.md §3); the terminal only reports.
  * @param {string[]} argv arguments after the script name
  * @param {Terminal} terminal
  * @returns {Promise<number>}
  */
-export async function main(argv, { input, output, errorOutput, env, waitForShutdown, run = runProcess, networkAddresses = lanAddresses }) {
+export async function main(argv, {
+	input,
+	output,
+	errorOutput,
+	env,
+	waitForShutdown,
+	run = runProcess,
+	networkAddresses = lanAddresses,
+	openBrowser = openInBrowser,
+	platform = { name: process.platform, home: homedir(), systemDrive: env.SystemDrive },
+	configDirectory = configFolder(platform, env),
+}) {
 	let args;
 	try {
 		args = parseArguments(argv);
@@ -44,48 +60,24 @@ export async function main(argv, { input, output, errorOutput, env, waitForShutd
 		return 1;
 	}
 
-	const root = resolve(args.directory);
-	if (!(await isDirectory(root))) {
-		errorOutput.write(`Not a directory: ${args.directory}\n\n${USAGE}\n`);
-		return 1;
-	}
-
 	const colors = createColors(shouldUseColor(output, env));
-	const reporter = new ConsoleReporter(output, colors, root);
-	const prompter = new TerminalPrompter(input, output);
-	const watcher = new ChangeWatcher({ root, log: (message) => output.write(`${message}\n`) });
-	// The prompter is closed once the server runs, but a refresh never asks anything.
-	const bootstrap = new BootstrapService({ prompter, reporter, updateSettingsFile: watcher.updateFile });
-	let outcome;
-	try {
-		outcome = await bootstrap.run(root);
-	} finally {
-		prompter.close();
-	}
-	if (outcome.status !== 'ready') {
-		return outcome.status === 'invalid' ? 1 : 0;
-	}
+	/** @param {string} text @param {boolean} [warning] */
+	const say = (text, warning = false) => output.write(`${warning ? colors.yellow(text) : text}\n`);
+	/** @param {unknown} error */
+	const logError = (error) => errorOutput.write(`${error instanceof Error ? error.stack : String(error)}\n`);
 
-	await clearWorkspace(root);
-	// Runs while the server shows the initializing page (DESIGN.md §3.4).
-	const prepareDownloads = async () => {
-		let tools = await findTools(run);
-		/** @param {string} text @param {boolean} warning */
-		const say = (text, warning) => output.write(`${warning ? colors.yellow(text) : text}\n`);
-		say(describeTools(tools), missingTools(tools).length > 0);
-		if (tools.ytDlp === null) {
-			return { tools, update: null, run };
-		}
-		output.write('Checking for a yt-dlp update…\n');
-		const update = await updateYtDlp(run);
-		const line = describeUpdate(update);
-		say(line.text, line.warning);
-		if (update.state === 'updated') {
-			tools = await findTools(run);
-		}
-		return { tools, update, run };
-	};
+	/** @type {import('../http/router.js').AppInfo} */
+	const info = { app: await appVersion(), checking: true, tools: { ytDlp: null, ffmpeg: null }, update: null };
+	// Runs while a folder is chosen; the Initializer waits for it before opening the soundboard (DESIGN.md §3.4).
+	const toolsReady = prepareDownloads(run, say).then((downloads) => {
+		info.tools = downloads.tools;
+		info.update = downloads.update;
+		return downloads;
+	}).finally(() => {
+		info.checking = false;
+	});
 
+	const accessControl = new AccessControl();
 	/** @type {{ options: import('../http/server.js').LanOptions, addresses: string[] } | undefined} */
 	let lan;
 	if (args.lan) {
@@ -96,31 +88,79 @@ export async function main(argv, { input, output, errorOutput, env, waitForShutd
 				address: args.lan.address ?? '0.0.0.0',
 				addresses,
 				names: [...addresses, ...(args.lan.address ? [] : [hostname(), `${hostname()}.local`])].map((name) => (name.includes(':') ? `[${name}]` : name)),
-				// A page that is open shows the request too; this is for when none is.
-				onRequest: ({ address, code }) => output.write(`Connection request from ${address}, code ${code}\n`),
 			},
 		};
+		// A page that is open shows the request too; this is for when none is.
+		accessControl.onRequest(({ address, code }) => say(`Connection request from ${address}, code ${code}`));
 	}
-	let server;
+
+	/** @type {{ port: number, url: string, close: () => Promise<void> } | undefined} */
+	let app;
+	/** @type {import('../startup/startup-session.js').Opener} */
+	const open = async (root, { prompter, reporter }) => {
+		const watcher = new ChangeWatcher({ root, log: (message) => say(message) });
+		const bootstrap = new BootstrapService({ prompter, reporter, updateSettingsFile: watcher.updateFile });
+		const outcome = await bootstrap.run(root);
+		if (outcome.status !== 'ready') {
+			return outcome;
+		}
+		const start = async () => {
+			try {
+				await clearWorkspace(root);
+				await watcher.start(outcome.scan);
+				const board = await createBoard({
+					library: outcome.library,
+					settings: outcome.settings,
+					problems: outcome.problems,
+					port: /** @type {NonNullable<typeof app>} */ (app).port,
+					logError,
+					watcher,
+					downloads: await toolsReady,
+					lan: lan?.options,
+					accessControl,
+					info,
+					refresh: () => watcher.refresh(() => {
+						say('Refreshing after external changes…');
+						return bootstrap.refresh(root);
+					}),
+				});
+				const { playlists, sounds } = outcome.library;
+				say(`Opened ${root}: ${count(playlists.length, 'playlist')} and ${count(sounds.length, 'sound')}.`);
+				return {
+					handle: board.handle,
+					close: async () => {
+						await board.close();
+						watcher.stop();
+						say(`Closed ${root}.`);
+					},
+				};
+			} catch (error) {
+				watcher.stop();
+				throw error;
+			}
+		};
+		return { status: 'ready', start };
+	};
+	const session = new StartupSession({
+		paths: args.directories.length > 0 ? args.directories.map((directory) => resolve(directory)) : null,
+		recent: new RecentFolders(join(configDirectory, 'recent.json')),
+		platform,
+		open,
+		toolsReady,
+		logError,
+	});
+
 	try {
-		await watcher.start(outcome.scan);
-		server = await startServer({
-			library: outcome.library,
-			settings: outcome.settings,
-			problems: outcome.problems,
+		app = await startApp({
+			session,
 			port: args.port,
-			logError: (error) => errorOutput.write(`${error instanceof Error ? error.stack : String(error)}\n`),
-			logRequest: args.verbose ? (line) => output.write(`${line}\n`) : undefined,
-			watcher,
-			downloads: prepareDownloads,
+			platform,
+			info,
 			lan: lan?.options,
-			refresh: () => watcher.refresh(() => {
-				output.write('Refreshing after external changes…\n');
-				return bootstrap.refresh(root);
-			}),
+			logError,
+			logRequest: args.verbose ? (line) => say(line) : undefined,
 		});
 	} catch (error) {
-		watcher.stop();
 		const message = listenErrorMessage(/** @type {NodeJS.ErrnoException} */ (error), args.port);
 		if (message === null) {
 			throw error;
@@ -129,19 +169,46 @@ export async function main(argv, { input, output, errorOutput, env, waitForShutd
 		return 1;
 	}
 
-	output.write(`Soundboard running at ${server.url}\n`);
-	await server.ready;
-	if (lan) {
-		writeLanLinks(output, colors, lan.addresses, args.port);
+	if (app.port !== args.port) {
+		say(`Port ${args.port} is in use, so the app uses port ${app.port}.`, true);
 	}
-	output.write('Press Ctrl+C or type exit and press Enter to stop.\n');
+	say(`Soundboard running at ${app.url}`);
+	if (lan) {
+		writeLanLinks(output, colors, lan.addresses, app.port);
+	}
+	if (args.open) {
+		openBrowser(app.url);
+	}
+	say('Press Ctrl+C or type exit and press Enter to stop.');
 	const exitTyped = waitForExitCommand(input);
 	await Promise.race([waitForShutdown(), exitTyped.promise]);
 	exitTyped.stop();
-	watcher.stop();
-	await server.close();
-	output.write('Stopped.\n');
+	await session.shutdown();
+	await app.close();
+	say('Stopped.');
 	return 0;
+}
+
+/**
+ * Looks for the download tools and updates yt-dlp, printing what it found. Never rejects.
+ * @param {import('../downloads/process-runner.js').ProcessRunner} run
+ * @param {(text: string, warning?: boolean) => void} say
+ * @returns {Promise<import('../http/server.js').DownloadPorts & { update: import('../downloads/yt-dlp-update.js').YtDlpUpdate | null }>}
+ */
+async function prepareDownloads(run, say) {
+	let tools = await findTools(run);
+	say(describeTools(tools), missingTools(tools).length > 0);
+	if (tools.ytDlp === null) {
+		return { tools, update: null, run };
+	}
+	say('Checking for a yt-dlp update…');
+	const update = await updateYtDlp(run);
+	const line = describeUpdate(update);
+	say(line.text, line.warning);
+	if (update.state === 'updated') {
+		tools = await findTools(run);
+	}
+	return { tools, update, run };
 }
 
 /**
@@ -151,7 +218,7 @@ export async function main(argv, { input, output, errorOutput, env, waitForShutd
  * @returns {{ promise: Promise<void>, stop: () => void }}
  */
 function waitForExitCommand(input) {
-	// No output stream, as in the prompter: the terminal does the echoing.
+	// No output stream: the terminal does the echoing.
 	const lines = createInterface({ input });
 	const promise = new Promise((resolve) => {
 		lines.on('line', (line) => {
@@ -171,17 +238,12 @@ function waitForExitCommand(input) {
 function listenErrorMessage(error, port) {
 	switch (error.code) {
 		case 'EADDRINUSE':
-			return `Port ${port} is already in use. Stop the program using it, or choose another port with --port.`;
+			return `Ports ${port} to ${port + PORT_ATTEMPTS - 1} are all in use. Choose another port with --port.`;
 		case 'EACCES':
 			return `Not allowed to use port ${port}. Choose a port above 1023 with --port.`;
 		default:
 			return null;
 	}
-}
-
-/** @param {string} path */
-async function isDirectory(path) {
-	return stat(path).then((stats) => stats.isDirectory(), () => false);
 }
 
 /**
@@ -195,11 +257,19 @@ function writeLanLinks(output, colors, addresses, port) {
 		output.write(colors.yellow('--lan: no address on the local network was found, so nothing else can reach the app.\n'));
 		return;
 	}
-	output.write('Open one of these on another device on the same network, then allow it here or in the app:\n');
+	output.write('Once a soundboard is open, open one of these on another device on the same network, then allow it in the app:\n');
 	for (const address of addresses) {
 		const host = address.includes(':') ? `[${address}]` : address;
 		output.write(`  http://${host}:${port}/\n`);
 	}
+}
+
+/**
+ * @param {number} amount
+ * @param {string} noun singular form; the plural adds "s"
+ */
+function count(amount, noun) {
+	return `${amount} ${noun}${amount === 1 ? '' : 's'}`;
 }
 
 /** Docker, bridges and virtual machines: addresses no phone can reach. */

@@ -21,22 +21,37 @@ const KEEP_ALIVE_MS = 30_000;
  * @param {Response} response
  * @param {{ watcher?: ChangeWatcher, downloads?: DownloadService, libraryChanges?: LibraryChanges,
  * 	trash?: import('../library/trash.js').Trash, problems?: import('../library/problems.js').Problems, relay?: RemoteRelay,
- * 	pairing?: import('./access-control.js').AccessControl }} sources without them, nothing ever changes
+ * 	pairing?: import('./access-control.js').AccessControl, streams?: Set<() => void> }} sources without them, nothing
+ * 	ever changes. `streams` collects a function per open stream that sends `startup.closed` and ends it, for when the
+ * 	soundboard closes (DESIGN.md §3)
  */
-export function serveEvents(request, response, { watcher, downloads, libraryChanges, trash, problems, relay, pairing }) {
+export function serveEvents(request, response, { watcher, downloads, libraryChanges, trash, problems, relay, pairing, streams }) {
 	response.writeHead(200, {
 		'Content-Type': 'text/event-stream; charset=utf-8',
 		'Cache-Control': 'no-store',
 		'Connection': 'keep-alive',
 	});
+	// A closed soundboard ends the stream before the client goes away, and sources may still report until it does.
+	/** @param {string} text */
+	const write = (text) => {
+		if (!response.writableEnded) {
+			response.write(text);
+		}
+	};
 	/** @param {unknown} message */
-	const send = (message) => response.write(`data: ${JSON.stringify(message)}\n\n`);
+	const send = (message) => write(`data: ${JSON.stringify(message)}\n\n`);
+	const end = () => {
+		send({ type: 'startup.closed' });
+		response.end();
+	};
+	streams?.add(end);
+	request.on('close', () => streams?.delete(end));
 	const { searchParams } = new URL(request.url ?? '/', 'http://localhost');
 	const isRemote = searchParams.get('role') === 'remote';
 	const pageId = searchParams.get('page');
 	if (isRemote && relay) {
 		const detachRemote = relay.attachRemote(send);
-		const keepAliveRemote = setInterval(() => response.write(': keep-alive\n\n'), KEEP_ALIVE_MS);
+		const keepAliveRemote = setInterval(() => write(': keep-alive\n\n'), KEEP_ALIVE_MS);
 		request.on('close', () => {
 			clearInterval(keepAliveRemote);
 			detachRemote();
@@ -74,7 +89,7 @@ export function serveEvents(request, response, { watcher, downloads, libraryChan
 	const unsubscribeWatcher = watcher?.onChange(sendExternalChanges);
 	const unsubscribeDownloads = downloads?.onEvent((event) => send(toMessage(event)));
 	const unsubscribeLibrary = libraryChanges?.onChange((change) => send(toMessage(change)));
-	const keepAlive = setInterval(() => response.write(': keep-alive\n\n'), KEEP_ALIVE_MS);
+	const keepAlive = setInterval(() => write(': keep-alive\n\n'), KEEP_ALIVE_MS);
 	request.on('close', () => {
 		clearInterval(keepAlive);
 		detachPage?.();

@@ -23,27 +23,32 @@ const PACKAGE_JSON = join(import.meta.dirname, '..', '..', 'package.json');
 const LOOPBACK = '127.0.0.1';
 
 /** @returns {Promise<string>} the app's version, from `package.json` */
-async function appVersion() {
+export async function appVersion() {
 	return /** @type {{ version: string }} */ (JSON.parse(await readFile(PACKAGE_JSON, 'utf8'))).version;
 }
 
 /**
- * @typedef {object} ServerOptions
+ * @typedef {object} BoardOptions
  * @property {import('../library/library.js').Library} library
  * @property {import('../library/settings-store.js').SettingsStore} settings
  * @property {import('../library/problems.js').Problem[]} [problems] what startup found wrong (DESIGN.md §5.1)
- * @property {number} port 0 picks a free port
+ * @property {number} port the port the server listens on, which requests must name
  * @property {string} [publicDir]
  * @property {(error: unknown) => void} logError
- * @property {(line: string) => void} [logRequest] receives one line per request; requests are not logged without it
  * @property {import('../library/change-watcher.js').ChangeWatcher} [watcher] notices external changes and records the
  * 	app's own saves; without it there never are any
  * @property {() => Promise<import('../library/bootstrap-service.js').RefreshOutcome>} [refresh] rebuilds the library
  * 	after external changes; without it `POST /api/refresh` is unavailable
- * @property {DownloadPorts | (() => Promise<DownloadPorts>)} [downloads] without it, downloads are not available. As a
- * 	function it is called once the server listens, and the server answers with the initializing page until it is done
- * 	(DESIGN.md §3.4)
+ * @property {DownloadPorts} [downloads] without it, downloads are not available
  * @property {LanOptions} [lan] without it, the server listens on the loopback address only
+ * @property {import('./access-control.js').AccessControl} [accessControl] who is allowed in with `--lan`; the server
+ * 	keeps one across soundboards so bans last
+ * @property {import('./router.js').AppInfo} [info] shared with the server, which fills in the tools once they are known
+ */
+
+/**
+ * @typedef {BoardOptions & { logRequest?: (line: string) => void }} ServerOptions `logRequest` receives one line per
+ * 	request; requests are not logged without it
  */
 
 /**
@@ -65,12 +70,49 @@ async function appVersion() {
  */
 
 /**
- * Starts the HTTP server on the loopback address. Rejects with the listen error, such as EADDRINUSE.
- * @param {ServerOptions} options
- * @returns {Promise<{ url: string, ready: Promise<void>, close: () => Promise<void> }>} `ready` resolves once the
- * 	server stops initializing
+ * Starts an HTTP server on the loopback address that serves one soundboard, without the startup phases (DESIGN.md §3).
+ * The tests use it; the app uses `createBoard` inside `startApp`. Rejects with the listen error, such as EADDRINUSE.
+ * @param {ServerOptions} options `port` 0 picks a free port
+ * @returns {Promise<{ url: string, close: () => Promise<void> }>}
  */
-export async function startServer({ library, settings, problems = [], port, publicDir = PUBLIC_DIR, logError, logRequest, watcher, refresh, downloads, lan }) {
+export async function startServer({ logRequest, ...options }) {
+	const board = await createBoard(options);
+	const server = createServer((request, response) => {
+		if (logRequest) {
+			logWhenDone(request, response, logRequest);
+		}
+		board.handle(request, response);
+	});
+	await new Promise((resolve, reject) => {
+		server.once('error', reject);
+		server.listen(options.port, options.lan?.address ?? LOOPBACK, () => {
+			server.off('error', reject);
+			resolve(undefined);
+		});
+	});
+	const address = server.address();
+	const port = typeof address === 'object' && address !== null ? address.port : options.port;
+	board.setPort(port);
+	return {
+		url: `http://${LOOPBACK}:${port}`,
+		close: async () => {
+			await board.close();
+			await new Promise((resolve) => {
+				server.close(() => resolve(undefined));
+				// Media streams and keep-alive connections would otherwise hold the server open.
+				server.closeAllConnections();
+			});
+		},
+	};
+}
+
+/**
+ * Everything that serves one loaded soundboard: its services and its request handler. Closing it ends its event
+ * streams with `startup.closed`, cancels a running download and forgets every allowed device (DESIGN.md §3).
+ * @param {BoardOptions} options
+ * @returns {Promise<import('../startup/startup-session.js').Board & { setPort: (port: number) => void }>}
+ */
+export async function createBoard({ library, settings, problems = [], port, publicDir = PUBLIC_DIR, logError, watcher, refresh, downloads, lan, accessControl, info }) {
 	const updateFile = watcher?.updateFile;
 	/** @type {import('../library/library-editor.js').FilesWriter} */
 	const writeFiles = (task) => (watcher ? watcher.writeFiles(task) : task());
@@ -83,8 +125,8 @@ export async function startServer({ library, settings, problems = [], port, publ
 	// The trash is not watched (DESIGN.md §2.5): it is read now and after the app's own changes to it.
 	const trash = new Trash(library.root);
 	await trash.reload();
-	const control = new AccessControl();
-	if (lan?.onRequest) {
+	const control = accessControl ?? new AccessControl();
+	if (!accessControl && lan?.onRequest) {
 		control.onRequest(lan.onRequest);
 	}
 	/** @type {import('./router.js').RouterContext} */
@@ -102,8 +144,8 @@ export async function startServer({ library, settings, problems = [], port, publ
 		libraryChanges: new LibraryChanges(),
 		trash,
 		problems: new Problems(problems),
-		info: { app: await appVersion(), tools: { ytDlp: null, ffmpeg: null }, update: null },
-		initializing: typeof downloads === 'function',
+		info: info ?? { app: await appVersion(), checking: false, tools: { ytDlp: null, ffmpeg: null }, update: null },
+		streams: new Set(),
 		refreshing: null,
 		refresh: refresh && (async () => {
 			const outcome = await refresh();
@@ -133,43 +175,32 @@ export async function startServer({ library, settings, problems = [], port, publ
 			writeFiles,
 		});
 	};
-	if (downloads && typeof downloads !== 'function') {
+	if (downloads) {
 		startDownloads(downloads);
 	}
-	const handle = createRequestHandler(context);
-	const server = createServer((request, response) => {
-		if (logRequest) {
-			logWhenDone(request, response, logRequest);
+	/** @param {number} actualPort */
+	const setPort = (actualPort) => {
+		context.guard.port = actualPort;
+		if (context.access && lan) {
+			context.access.links = lan.addresses.map((name) => `http://${name.includes(':') ? `[${name}]` : name}:${actualPort}/`);
 		}
-		handle(request, response);
-	});
-	await new Promise((resolve, reject) => {
-		server.once('error', reject);
-		server.listen(port, lan?.address ?? LOOPBACK, () => {
-			server.off('error', reject);
-			resolve(undefined);
-		});
-	});
-
-	const address = server.address();
-	const actualPort = typeof address === 'object' && address !== null ? address.port : port;
-	context.guard.port = actualPort;
-	if (context.access && lan) {
-		context.access.links = lan.addresses.map((name) => `http://${name.includes(':') ? `[${name}]` : name}:${actualPort}/`);
-	}
-	let ready = Promise.resolve();
-	if (typeof downloads === 'function') {
-		ready = downloads().then(startDownloads, logError).finally(() => {
-			context.initializing = false;
-		});
-	}
+	};
+	setPort(port);
+	const handle = createRequestHandler(context);
+	let closed = false;
 	return {
-		url: `http://${LOOPBACK}:${actualPort}`,
-		ready,
-		close: () => new Promise((resolve) => {
-			server.close(() => resolve());
-			// Media streams and keep-alive connections would otherwise hold the server open.
-			server.closeAllConnections();
-		}),
+		handle,
+		setPort,
+		close: async () => {
+			if (closed) {
+				return;
+			}
+			closed = true;
+			for (const end of [...context.streams]) {
+				end();
+			}
+			context.downloads?.cancel();
+			control.revokeAll();
+		},
 	};
 }

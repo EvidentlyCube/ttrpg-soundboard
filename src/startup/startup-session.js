@@ -125,6 +125,11 @@ export class StartupSession {
 		return this.#phase;
 	}
 
+	/** @returns {boolean} whether folders were given on the command line, which then are the only choices */
+	get hasGivenPaths() {
+		return this.#paths !== null;
+	}
+
 	/** @returns {Board | null} the soundboard while the phase is `ready` */
 	get board() {
 		return this.#board;
@@ -144,6 +149,11 @@ export class StartupSession {
 			recent: recent.map((folder) => ({ ...folder, name: basename(folder.path) || folder.path })),
 			initializer: this.#initializer && { ...this.#initializer },
 		};
+	}
+
+	/** @param {string} path */
+	async forgetRecent(path) {
+		await this.#recent.forget(path);
 	}
 
 	/**
