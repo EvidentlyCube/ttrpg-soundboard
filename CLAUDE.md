@@ -15,6 +15,7 @@ Project documents:
 - `npm test`: all tests. Single file: `node --test test/backend/foo.test.js`; several: a quoted glob (a bare directory path does not work)
 - `npm run typecheck`, `npm run lint`, `npm run lint:fix`
 - `npm run check`: typecheck + lint + test
+- `npm run pack`: the release zips into `dist/` (`DESIGN.md` §13). A release is a commit that only bumps `version` in `package.json`
 
 To try the app by hand, use `test_fixtures/example_soundboard`. **Copy it to a temp directory first**, because the app writes `.json` files into the directory it's given and the fixture must stay pristine. The app only opens folders inside the home folder unless told otherwise, so allow the temp directory: `npm start -- --whitelisted-root /tmp/sb /tmp/sb`. Add `--no-open` when nobody will look at the browser.
 
