@@ -41,9 +41,11 @@ import { VolumeControl } from './volume.js';
  * 	| { type: 'audio.suspended' }
  * 	| { type: 'audio.resumed' }
  * 	| { type: 'panic.changed', state: PanicState }
- * 	| { type: 'host.changed', hosting: boolean }} AppEvent
+ * 	| { type: 'host.changed', hosting: boolean }
+ * 	| { type: 'app.closed' }} AppEvent
  * `panic.changed`: Panic Stop moved between its two states (`panicState()`). `host.changed`: this page became the host that
- * remotes control, or stopped being it (DESIGN.md §6.10).
+ * remotes control, or stopped being it (DESIGN.md §6.10). `app.closed`: the soundboard was closed, from this page or
+ * another, and the page should load `/` for the Selector (DESIGN.md §9.3); it comes once.
  * @typedef {{ type: 'playlist.levelChanged', playlistId: string, level: number }} LevelEvent
  * `playlist.levelChanged`: a playlist's live level (DESIGN.md §6.4) changed; `level` is a slider position, 0..1.
  * @typedef {{ type: 'sound.changed', sound: AudioFileJson }
@@ -138,6 +140,7 @@ export class Soundboard {
 	/** Id of the download job whose failures are listed already. @type {string | null} */
 	#reportedJob = null;
 	#checkingChanges = false;
+	#closed = false;
 	#refreshing = false;
 	/** Media URLs by sound or track id, for the waveforms. @type {Map<string, string>} */
 	#urls = new Map();
@@ -536,6 +539,24 @@ export class Soundboard {
 	/** Call synchronously at the start of every click handler, in case the browser suspended audio since. */
 	unlockAudio() {
 		this.#engine.unlock();
+	}
+
+	/**
+	 * Closes the soundboard on the server, which goes back to the Selector (DESIGN.md §9.3). Pending saves are sent
+	 * first. Announces `app.closed` once it is done.
+	 * @returns {Promise<void>} rejects with the server's message
+	 */
+	async closeSoundboard() {
+		this.flushSettings();
+		await this.#api.closeSoundboard();
+		this.#announceClosed();
+	}
+
+	#announceClosed() {
+		if (!this.#closed) {
+			this.#closed = true;
+			this.#events.emit({ type: 'app.closed' });
+		}
 	}
 
 	/** Saves pending volume and option changes immediately; call it when the page is being hidden or closed. */
@@ -1288,6 +1309,9 @@ export class Soundboard {
 				if (this.#problems.setServer(message.problems)) {
 					this.#announceProblems();
 				}
+				return;
+			case 'startup.closed':
+				this.#announceClosed();
 				return;
 			case 'access.requests':
 				this.#accessRequests = message.requests;

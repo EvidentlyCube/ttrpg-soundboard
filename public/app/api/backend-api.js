@@ -240,6 +240,14 @@ export class HttpBackendApi {
 		await this.#request('POST', '/api/access/requests/answer', { body: { address, decision }, plainErrors: true });
 	}
 
+	/** @type {BackendApi['closeSoundboard']} */
+	async closeSoundboard() {
+		const response = await fetch(`${this.#baseUrl}/api/startup/close`, { method: 'POST' });
+		if (!response.ok) {
+			throw new Error(await errorMessageOf(response));
+		}
+	}
+
 	/** @param {string} path */
 	async #delete(path) {
 		const response = await fetch(this.#baseUrl + path, { method: 'DELETE' });

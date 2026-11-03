@@ -169,6 +169,8 @@ export class RemoteView extends Component {
 		show();
 		this.own(remote.on('remote.hostChanged', show));
 		this.own(remote.on('remote.stateChanged', show));
+		// The server forgot this device, so `/` shows the waiting page, then pairing once a soundboard is open again.
+		this.own(remote.on('remote.closed', () => window.location.assign('/')));
 		this.own(on(root, 'contextmenu', (event) => event.preventDefault()));
 		return root;
 	}

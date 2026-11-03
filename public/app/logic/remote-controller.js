@@ -9,8 +9,10 @@ import { EventEmitter } from './event-emitter.js';
 /**
  * @typedef {{ type: 'remote.hostChanged', connected: boolean }
  * 	| { type: 'remote.stateChanged', state: RemoteState | null }
- * 	| { type: 'panic.changed', state: 'fade' | 'now' }} RemoteEvent
+ * 	| { type: 'panic.changed', state: 'fade' | 'now' }
+ * 	| { type: 'remote.closed' }} RemoteEvent
  * `panic.changed` is the same event the soundboard announces, so the Panic Stop button works with either.
+ * `remote.closed`: the soundboard was closed on the server, which forgot this device (DESIGN.md §1.1).
  */
 
 /**
@@ -62,6 +64,9 @@ export class RemoteController {
 				this.#setConnected(message.connected);
 			} else if (message.type === 'remote.state') {
 				this.#setState(message.state);
+			} else if (message.type === 'startup.closed') {
+				this.stop();
+				this.#events.emit({ type: 'remote.closed' });
 			}
 		}, { role: 'remote' });
 	}

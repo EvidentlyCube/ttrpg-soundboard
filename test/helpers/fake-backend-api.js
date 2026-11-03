@@ -239,6 +239,12 @@ export class FakeBackendApi {
 		return structuredClone(this.info);
 	}
 
+	closedSoundboard = false;
+
+	async closeSoundboard() {
+		this.closedSoundboard = true;
+	}
+
 	/** @type {{ address: string, decision: 'allow' | 'deny' }[]} */
 	accessAnswers = [];
 

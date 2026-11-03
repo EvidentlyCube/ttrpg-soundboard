@@ -142,6 +142,8 @@
  * @property {(address: string, decision: 'allow' | 'deny') => Promise<void>} answerAccessRequest rejects when the request
  * 	is gone (DESIGN.md §5.2)
  * @property {() => Promise<AppInfo>} fetchInfo
+ * @property {() => Promise<void>} closeSoundboard closes the soundboard on the server, which goes back to the Selector
+ * 	(DESIGN.md §3); rejects with the server's message
  */
 
 /** @typedef {{ address: string, code: string }} AccessRequest a device that asks to be paired (DESIGN.md §5.6) */
@@ -208,9 +210,11 @@
  * 	| { type: 'command', command: unknown }
  * 	| { type: 'remote.host', connected: boolean }
  * 	| { type: 'remote.state', state: import('./remote-state.js').RemoteState | null }
+ * 	| { type: 'startup.closed' }
  * 	| LibraryChangeMessage} ServerMessage
  * 	`log` comes with the first `download` message of every connection and replaces the log; `replaceLast`: the first
- * 	line replaces the last one already received
+ * 	line replaces the last one already received; `startup.closed` is the last message of a stream, sent when the
+ * 	soundboard closes
  */
 
 /** @typedef {{ kind: 'sound' } | { kind: 'newPlaylist', title: string } | { kind: 'playlist', playlistId: string }} DownloadTarget */

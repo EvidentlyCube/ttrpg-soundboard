@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Soundboard</title>
+	<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+	<style>
+		html { background: #0e1014; color: #e7e9ee; color-scheme: dark; }
+	</style>
+	<script src="/vendor/tailwindcss-browser-4.3.3.js"></script>
+	<style type="text/tailwindcss">
+		@theme {
+			--color-surface: #0e1014;
+			--color-panel: #15181e;
+			--color-raised: #1d2129;
+			--color-raised-hover: #262b35;
+			--color-line: #2c313c;
+			--color-text: #e7e9ee;
+			--color-muted: #8b93a3;
+			--color-music: #5b8cff;
+			--color-sfx: #f2a541;
+			--color-danger: #f05d5e;
+			--color-notice: #f5d140;
+			--color-host: #3fc08d;
+			--font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+		}
+
+		@layer base {
+			body {
+				@apply h-full bg-surface font-sans text-text antialiased;
+			}
+		}
+	</style>
+	<script type="module" src="/app/initializer.js"></script>
+</head>
+<body>
+	<div id="initializer" class="flex min-h-full flex-col"></div>
+</body>
+</html>

@@ -247,6 +247,8 @@ class Board extends Component {
 						this.#openConnectPhone();
 					} else if (item === 'info') {
 						this.#openInfo();
+					} else if (item === 'changeSoundboard') {
+						soundboard.closeSoundboard().catch((error) => console.error('Could not close the soundboard', error));
 					}
 				});
 			},
@@ -260,6 +262,8 @@ class Board extends Component {
 		this.own(soundboard.on('host.changed', ({ hosting }) => {
 			header.dataset.role = hosting ? 'host' : 'standalone';
 		}));
+		// Leaving the page stops all audio; `/` now shows the Selector.
+		this.own(soundboard.on('app.closed', () => window.location.assign('/')));
 		this.#adopt(new ProblemsButton(soundboard, () => this.#openProblems()).mount(controls));
 		this.#adopt(new ExternalChangesButton(soundboard, (problems) => this.#showRefreshProblems(problems)).mount(controls));
 		this.#adopt(new WaveformIndicator(soundboard).mount(controls));

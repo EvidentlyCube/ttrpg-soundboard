@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Soundboard</title>
+	<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+	<style>
+		html { background: #0e1014; color: #e7e9ee; color-scheme: dark; }
+	</style>
+	<script src="/vendor/tailwindcss-browser-4.3.3.js"></script>
+	<style type="text/tailwindcss">
+		@theme {
+			--color-surface: #0e1014;
+			--color-text: #e7e9ee;
+			--color-muted: #8b93a3;
+			--font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+		}
+
+		@layer base {
+			body {
+				@apply h-full bg-surface font-sans text-text antialiased;
+			}
+		}
+	</style>
+</head>
+<body>
+	<main class="mx-auto flex h-full max-w-sm flex-col items-center justify-center gap-2 px-4 text-center">
+		<h1 class="text-xl font-semibold">Soundboard</h1>
+		<p class="text-lg font-semibold" data-waiting>No soundboard is open</p>
+		<p class="text-sm text-muted">This page opens by itself once a soundboard is opened on the computer that runs the app.</p>
+	</main>
+	<script type="module">
+		// Other devices may use nothing else until a soundboard is open (DESIGN.md §1.1).
+		async function poll() {
+			try {
+				const response = await fetch('/api/startup/ready', { cache: 'no-store' });
+				if (response.ok && (await response.json()).ready) {
+					location.reload();
+					return;
+				}
+			} catch {
+				// The server may be restarting; keep trying.
+			}
+			setTimeout(poll, 2000);
+		}
+		poll();
+	</script>
+</body>
+</html>
