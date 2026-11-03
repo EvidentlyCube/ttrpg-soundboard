@@ -87,6 +87,14 @@ export class ConsoleReporter {
 		this.#print(`Measuring the duration of ${count(files, 'audio file')}…`);
 	}
 
+	/** @type {Reporter['largeFolder']} */
+	largeFolder(files) {
+		this.#print(`This folder holds ${count(files, 'audio file')}.`);
+	}
+
+	/** @type {Reporter['measured']} */
+	measured() {}
+
 	/** @type {Reporter['libraryLoaded']} */
 	libraryLoaded(library) {
 		this.#print(`Loaded ${count(library.playlists.length, 'playlist')} and ${count(library.sounds.length, 'sound')}.`);

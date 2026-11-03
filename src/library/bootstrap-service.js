@@ -23,10 +23,13 @@ import { validateAudioOptions, validatePlaylistOptions, validateSettingsFile } f
  * @typedef {object} Reporter
  * @property {(errors: ValidationError[]) => void} validationErrors
  * @property {(warnings: ScanWarning[]) => void} warnings
+ * @property {(count: number) => void} largeFolder a folder without `.soundboard` holds more than `LARGE_FOLDER_FILES` audio
+ * 	files; sent before the question
  * @property {(paths: string[]) => void} nestedDirectories root-relative paths, such as `Combat/Boss`
  * @property {(titles: { path: string, title: string }[]) => void} metadataTitles
  * @property {(count: number) => void} optionsGenerated
  * @property {(count: number) => void} measuringDurations sent before files are read to measure their durations
+ * @property {(done: number, total: number) => void} measured sent after each file whose duration was measured
  * @property {(library: Library) => void} libraryLoaded
  */
 
@@ -39,6 +42,9 @@ import { validateAudioOptions, validatePlaylistOptions, validateSettingsFile } f
 
 export const NESTED_DIRECTORIES_QUESTION = 'Nested directories will be merged into their playlists. Continue?';
 export const METADATA_TITLES_QUESTION = 'Use these titles in the generated options files?';
+export const LARGE_FOLDER_QUESTION = 'This folder holds a lot of audio files. Create an options file next to each of them?';
+/** More audio files than this in a folder that isn't a soundboard yet are asked about before anything is written. */
+export const LARGE_FOLDER_FILES = 5000;
 
 /**
  * Prepares an audio directory before the server starts (DESIGN.md §3): validates every options file, asks about
@@ -109,6 +115,14 @@ export class BootstrapService {
 
 		// Empty playlists are hidden from the UI, so asking about them or creating their options would only be noise.
 		const playlists = scan.playlists.filter((playlist) => playlist.tracks.length > 0);
+		const audioFiles = [...scan.sounds, ...playlists.flatMap((playlist) => playlist.tracks)];
+		// A first run writes next to every file, so a folder chosen by mistake, such as a whole music collection, is caught here.
+		if (interactive && !scan.hasSettingsFile && audioFiles.length > LARGE_FOLDER_FILES) {
+			this.#reporter.largeFolder(audioFiles.length);
+			if (!(await this.#prompter.confirm(LARGE_FOLDER_QUESTION))) {
+				return { status: 'cancelled' };
+			}
+		}
 		// The library takes every track found, so leaving the new directories unrecorded only defers the question.
 		const newSubdirectories = interactive ? findNewSubdirectories(playlists, optionsByPath) : new Map();
 		const nestedPaths = [...newSubdirectories].flatMap(([id, subdirectories]) => subdirectories.map((/** @type {string} */ path) => `${id}/${path}`));
@@ -120,20 +134,27 @@ export class BootstrapService {
 		}
 
 		const isFirstRun = !scan.hasSettingsFile;
-		const audioFiles = [...scan.sounds, ...playlists.flatMap((playlist) => playlist.tracks)];
 		const missingOptions = audioFiles.filter((audio) => !audio.hasOptions);
 		const titles = await this.#chooseTitles(missingOptions, isFirstRun);
 
-		const toMeasure = audioFiles.filter((audio) => !isMeasured(audio, optionsByPath.get(audio.optionsPath)));
-		if (toMeasure.length > 0) {
-			this.#reporter.measuringDurations(toMeasure.length);
+		const toMeasure = new Set(audioFiles.filter((audio) => !isMeasured(audio, optionsByPath.get(audio.optionsPath))));
+		if (toMeasure.size > 0) {
+			this.#reporter.measuringDurations(toMeasure.size);
 		}
+		let measured = 0;
+		/** @param {ScannedAudio} audio */
+		const countMeasured = (audio) => {
+			if (toMeasure.has(audio)) {
+				this.#reporter.measured(++measured, toMeasure.size);
+			}
+		};
 
 		let written = 0;
 		for (const audio of missingOptions) {
 			const title = titles.get(audio.id) ?? audio.name;
 			/** @type {AudioOptions} */
 			const options = { title, ...(await measureIfNeeded(audio, undefined)), ...(await sourceFor(audio, title)) };
+			countMeasured(audio);
 			await writeJsonAtomic(audio.optionsPath, options);
 			optionsByPath.set(audio.optionsPath, options);
 			written++;
@@ -141,6 +162,7 @@ export class BootstrapService {
 		for (const audio of audioFiles.filter((file) => file.hasOptions)) {
 			const existing = /** @type {AudioOptions | undefined} */ (optionsByPath.get(audio.optionsPath));
 			const measurement = await measureIfNeeded(audio, existing);
+			countMeasured(audio);
 			if (measurement) {
 				await updateJsonFile(audio.optionsPath, (current) => ({ ...current, ...measurement }));
 				optionsByPath.set(audio.optionsPath, { ...existing, ...measurement });

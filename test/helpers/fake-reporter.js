@@ -46,6 +46,16 @@ export class FakeReporter {
 		this.calls.push(['measuringDurations', count]);
 	}
 
+	/** @type {Reporter['largeFolder']} */
+	largeFolder(count) {
+		this.calls.push(['largeFolder', count]);
+	}
+
+	/** @type {Reporter['measured']} */
+	measured(done, total) {
+		this.calls.push(['measured', [done, total]]);
+	}
+
 	/** @type {Reporter['libraryLoaded']} */
 	libraryLoaded(library) {
 		this.calls.push(['libraryLoaded', library]);
