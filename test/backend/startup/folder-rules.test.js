@@ -8,6 +8,7 @@ import {
 	CONTAINER_REASON,
 	HIDDEN_REASON,
 	HOLDS_SOUNDBOARD_REASON,
+	INSIDE_SOUNDBOARD_REASON,
 	MISSING_REASON,
 	NO_AUDIO_REASON,
 	NOT_FOLDER_REASON,
@@ -152,6 +153,20 @@ describe('checkFolder', () => {
 		for (const name of ['deeper', 'hidden', 'nested']) {
 			assert.equal((await checkFolder(join(root, name), platform)).allowed, true, name);
 		}
+	});
+
+	it('refuses a folder anywhere inside a soundboard, but opens a soundboard there', async () => {
+		const root = await tree({
+			board: {
+				'.soundboard': '{}',
+				'Battle': { 'Song.ogg': '', 'Deep': { 'Song.ogg': '' } },
+				'inner': { '.soundboard': '{}' },
+			},
+		});
+		const platform = { ...LINUX, home: '/nowhere', roots: [root] };
+		assert.equal((await checkFolder(join(root, 'board', 'Battle'), platform)).reason, INSIDE_SOUNDBOARD_REASON);
+		assert.equal((await checkFolder(join(root, 'board', 'Battle', 'Deep'), platform)).reason, INSIDE_SOUNDBOARD_REASON);
+		assert.equal((await checkFolder(join(root, 'board', 'inner'), platform)).allowed, true);
 	});
 
 	it('resolves symbolic links, so one can neither lead out of the roots nor hide where it leads', async () => {

@@ -1,5 +1,5 @@
 import { readdir, realpath, stat } from 'node:fs/promises';
-import { join, posix, win32 } from 'node:path';
+import { dirname, join, posix, win32 } from 'node:path';
 import { audioFormatOf } from '../library/classify.js';
 
 /**
@@ -23,6 +23,7 @@ export const NOT_FOLDER_REASON = 'This is not a folder.';
 export const UNREADABLE_REASON = 'This folder can’t be read.';
 export const NO_AUDIO_REASON = 'No audio files found here.';
 export const HOLDS_SOUNDBOARD_REASON = 'A folder inside this one is already a soundboard.';
+export const INSIDE_SOUNDBOARD_REASON = 'This folder is inside a soundboard.';
 
 /** Refused with everything inside them (DESIGN.md §5.7). */
 const POSIX_SYSTEM = ['/bin', '/boot', '/dev', '/etc', '/lib', '/lib32', '/lib64', '/opt', '/proc', '/root', '/run', '/sbin', '/snap', '/srv', '/sys', '/usr', '/var'];
@@ -157,6 +158,9 @@ export async function checkFolder(path, platform) {
 	if (entries.some((entry) => entry.name === '.soundboard')) {
 		return allowed;
 	}
+	if (await insideSoundboard(real)) {
+		return refused(INSIDE_SOUNDBOARD_REASON);
+	}
 	let audio = entries.some((entry) => entry.isFile() && audioFormatOf(entry.name));
 	for (const entry of entries) {
 		if (!entry.isDirectory() || entry.name.startsWith('.')) {
@@ -170,4 +174,17 @@ export async function checkFolder(path, platform) {
 		audio ||= names.some((name) => audioFormatOf(name));
 	}
 	return audio ? allowed : refused(NO_AUDIO_REASON);
+}
+
+/**
+ * Whether a folder above this one, up to the top of the disk, holds `.soundboard`.
+ * @param {string} path absolute and resolved
+ */
+async function insideSoundboard(path) {
+	for (let folder = dirname(path); folder !== path; path = folder, folder = dirname(folder)) {
+		if (await stat(join(folder, '.soundboard')).then(() => true, () => false)) {
+			return true;
+		}
+	}
+	return false;
 }
