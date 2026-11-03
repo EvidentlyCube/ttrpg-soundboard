@@ -344,7 +344,7 @@ export const translation = {
 		connectPhone: {
 			title: 'Połącz telefon',
 			noLan: 'Uruchom aplikację z --lan, aby połączyć telefon.',
-			scan: 'Zeskanuj to telefonem w tej samej sieci. Potem zezwól na połączenie tutaj.',
+			scan: 'Zeskanuj kdd QR telefonem w tej samej sieci wifi. Następnie zezwól na połączenie.',
 			qrLabel: 'Kod QR z linkiem do tego soundboardu',
 		},
 		options: {
@@ -551,8 +551,8 @@ export const translation = {
 			hideView: 'Ukryj podgląd odtwarzania',
 			voices: {
 				empty: 'Nic nie gra.',
-				sfx: 'Efekt',
-				music: 'Muzyka',
+				sfx: 'SFX',
+				music: 'MUSIC',
 				status: {
 					loading: 'wczytywanie',
 					playing: 'gra',
