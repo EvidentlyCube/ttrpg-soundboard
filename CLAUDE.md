@@ -1,4 +1,4 @@
-# Soundboard
+# TTRPG Soundboard
 
 A local soundboard for running RPG sessions. A Node.js server scans a directory of MP3/OGG files and streams them to a vanilla-JS web app, which plays everything in the browser: overlapping sound effects plus several music playlists at once.
 

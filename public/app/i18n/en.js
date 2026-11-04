@@ -7,7 +7,7 @@ export const translation = {
 	name: 'English',
 	messages: {
 		app: {
-			name: 'Soundboard',
+			name: 'TTRPG Soundboard',
 		},
 		common: {
 			loading: 'Loading…',
@@ -382,7 +382,7 @@ export const translation = {
 			},
 		},
 		selector: {
-			title: 'Soundboard Selection',
+			title: 'TTRPG Soundboard',
 			soundboards: 'Soundboards',
 			recent: 'Recent',
 			browse: 'Browse',

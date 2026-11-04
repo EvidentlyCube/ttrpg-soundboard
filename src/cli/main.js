@@ -199,7 +199,7 @@ export async function main(argv, {
 	if (app.port !== args.port) {
 		say(`Port ${args.port} is in use, so the app uses port ${app.port}.`, true);
 	}
-	say(`Soundboard running at ${app.url}`);
+	say(`TTRPG Soundboard running at ${app.url}`);
 	if (lan) {
 		writeLanLinks(output, colors, lan.addresses, app.port);
 	}

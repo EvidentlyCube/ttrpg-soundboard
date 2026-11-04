@@ -72,7 +72,7 @@ jobs:
             launcher: .\Start Soundboard.cmd
     runs-on: ${{ matrix.os }}
     env:
-      NAME: soundboard-${{ needs.version.outputs.version }}-${{ matrix.platform }}
+      NAME: ttrpg-soundboard-${{ needs.version.outputs.version }}-${{ matrix.platform }}
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -105,4 +105,4 @@ jobs:
           --draft
           --generate-notes
           --target "$GITHUB_SHA"
-          --title "Soundboard $VERSION"
+          --title "TTRPG Soundboard $VERSION"

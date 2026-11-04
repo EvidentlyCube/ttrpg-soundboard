@@ -38,7 +38,7 @@ test.describe('the Selector', () => {
 			await expect(page.locator('[data-folder-open]')).toBeDisabled();
 			await expect(page.locator('[data-browse-back]')).toBeHidden();
 			await expect(page.locator('[data-tool=ffmpeg]')).toContainText('not installed');
-			await expect(page.getByRole('heading', { name: 'Soundboard Selection' })).toBeVisible();
+			await expect(page.getByRole('heading', { name: 'TTRPG Soundboard' })).toBeVisible();
 			await expect(page.locator('[data-app-version]')).toHaveText(`v${VERSION}`);
 		});
 

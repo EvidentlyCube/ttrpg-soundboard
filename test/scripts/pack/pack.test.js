@@ -72,20 +72,20 @@ describe('pack', () => {
 		});
 
 		assert.deepEqual(written.map(({ file }) => file), [
-			join(output, 'soundboard-1.2.3-linux-x64.zip'),
-			join(output, 'soundboard-1.2.3-windows-x64.zip'),
+			join(output, 'ttrpg-soundboard-1.2.3-linux-x64.zip'),
+			join(output, 'ttrpg-soundboard-1.2.3-windows-x64.zip'),
 		]);
 		const files = readZip(await readFile(written[0].file));
 		assert.deepEqual(files.map(({ path }) => path), [
-			'soundboard-1.2.3-linux-x64/start-soundboard.sh',
-			'soundboard-1.2.3-linux-x64/README.txt',
-			'soundboard-1.2.3-linux-x64/app/LICENSE',
-			'soundboard-1.2.3-linux-x64/app/index.js',
-			'soundboard-1.2.3-linux-x64/app/package.json',
-			'soundboard-1.2.3-linux-x64/app/public/index.html',
-			'soundboard-1.2.3-linux-x64/app/src/main.js',
-			'soundboard-1.2.3-linux-x64/runtime/node',
-			'soundboard-1.2.3-linux-x64/runtime/LICENSE',
+			'ttrpg-soundboard-1.2.3-linux-x64/start-soundboard.sh',
+			'ttrpg-soundboard-1.2.3-linux-x64/README.txt',
+			'ttrpg-soundboard-1.2.3-linux-x64/app/LICENSE',
+			'ttrpg-soundboard-1.2.3-linux-x64/app/index.js',
+			'ttrpg-soundboard-1.2.3-linux-x64/app/package.json',
+			'ttrpg-soundboard-1.2.3-linux-x64/app/public/index.html',
+			'ttrpg-soundboard-1.2.3-linux-x64/app/src/main.js',
+			'ttrpg-soundboard-1.2.3-linux-x64/runtime/node',
+			'ttrpg-soundboard-1.2.3-linux-x64/runtime/LICENSE',
 		]);
 		assert.ok(files.every(({ date }) => date.toISOString() === '2026-10-01T08:00:00.000Z'));
 		assert.match(files[1].data.toString('utf8'), /Version 1\.2\.3\./);
@@ -122,7 +122,7 @@ describe('pack', () => {
 		});
 
 		const app = readZip(await readFile(file)).filter(({ path }) => path.includes('/app/src/'));
-		assert.deepEqual(app.map(({ path, data }) => [path, data.toString('utf8')]), [['soundboard-1.2.3-linux-x64/app/src/main.js', 'changed']]);
+		assert.deepEqual(app.map(({ path, data }) => [path, data.toString('utf8')]), [['ttrpg-soundboard-1.2.3-linux-x64/app/src/main.js', 'changed']]);
 	});
 
 	it('gives a package that starts the app through its launcher', { skip: process.platform === 'win32' && 'the launcher is a shell script' }, async () => {

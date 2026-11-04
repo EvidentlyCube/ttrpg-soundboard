@@ -1,5 +1,5 @@
-Soundboard
-==========
+TTRPG Soundboard
+================
 
 Version {{VERSION}}. A local soundboard for tabletop roleplaying games. Your sound effects and music stay in a
 folder on your computer, and the app plays them in your browser.

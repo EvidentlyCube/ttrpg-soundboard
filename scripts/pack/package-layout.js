@@ -21,7 +21,7 @@ const LAUNCHERS = Object.freeze({
  * @returns {string} the zip's name without `.zip`, which is also its top folder
  */
 export function packageName(version, platform) {
-	return `soundboard-${version}-${platform.name}`;
+	return `ttrpg-soundboard-${version}-${platform.name}`;
 }
 
 /**

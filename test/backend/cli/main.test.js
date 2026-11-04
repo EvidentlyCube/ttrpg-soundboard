@@ -49,7 +49,7 @@ async function run(argv, { home, config, whileRunning = async () => {}, typed, t
 	let errorOutput = '';
 	/** @type {string[]} */
 	const opened = [];
-	const url = () => /Soundboard running at (\S+)/.exec(output)?.[1] ?? assert.fail('No address printed');
+	const url = () => /TTRPG Soundboard running at (\S+)/.exec(output)?.[1] ?? assert.fail('No address printed');
 	const code = await main(argv, {
 		input,
 		output: { write: (chunk) => (output += chunk, true) },
@@ -126,7 +126,7 @@ describe('main', () => {
 		assert.equal(result.code, 0);
 		assert.deepEqual(result.opened, [`http://localhost:${port}`]);
 		assert.match(result.output, new RegExp(`Folders the app may open: ${home}\n`));
-		assert.match(result.output, new RegExp(`Soundboard running at http://localhost:${port}\n`));
+		assert.match(result.output, new RegExp(`TTRPG Soundboard running at http://localhost:${port}\n`));
 		assert.match(result.output, /Press Ctrl\+C or type exit and press Enter to stop\.\n/);
 		assert.match(result.output, /Stopped\.\n$/);
 	});
@@ -145,7 +145,7 @@ describe('main', () => {
 		try {
 			const result = await run([`--port=${port}`, '--no-open'], { home, config });
 			assert.match(result.output, new RegExp(`Port ${port} is in use, so the app uses port ${port + 1}\\.`));
-			assert.match(result.output, new RegExp(`Soundboard running at http://localhost:${port + 1}\n`));
+			assert.match(result.output, new RegExp(`TTRPG Soundboard running at http://localhost:${port + 1}\n`));
 		} finally {
 			await new Promise((resolve) => blocker.close(() => resolve(undefined)));
 		}

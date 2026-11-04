@@ -81,9 +81,9 @@ export class App extends Component {
 		this.#splash = splash;
 		// From any page, including before it has started, since the menu offers Change soundboard from the start.
 		this.own(soundboard.on('app.closed', () => window.location.assign('/')));
-		document.title = `${soundboard.displayName()} · Soundboard`;
+		document.title = `${soundboard.displayName()} · ${t('app.name')}`;
 		this.own(soundboard.on('name.changed', ({ displayName }) => {
-			document.title = `${displayName} · Soundboard`;
+			document.title = `${displayName} · ${t('app.name')}`;
 		}));
 		this.own(() => this.#frame?.destroy());
 		// The splash is the one place that asks the server something before the page has chosen what to be.

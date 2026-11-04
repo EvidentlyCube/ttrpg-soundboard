@@ -7,8 +7,8 @@ test('Options renames the soundboard in the header and the tab title, and the na
 		await soundboard.open();
 		await splash.expectVisible();
 		const folderName = await title.textContent();
-		expect(folderName).not.toBe('Soundboard');
-		await expect(page).toHaveTitle(`${folderName} · Soundboard`);
+		expect(folderName).not.toBe('TTRPG Soundboard');
+		await expect(page).toHaveTitle(`${folderName} · TTRPG Soundboard`);
 		await soundboard.startAndWaitUntilLoaded();
 		await expect(title).toHaveText(folderName ?? '');
 	});
@@ -21,7 +21,7 @@ test('Options renames the soundboard in the header and the tab title, and the na
 		await expect(field).toHaveValue('');
 		await field.fill('Tavern night');
 		await expect(title).toHaveText('Tavern night');
-		await expect(page).toHaveTitle('Tavern night · Soundboard');
+		await expect(page).toHaveTitle('Tavern night · TTRPG Soundboard');
 	});
 
 	await test.step('After the save and a reload, the splash already shows it', async () => {

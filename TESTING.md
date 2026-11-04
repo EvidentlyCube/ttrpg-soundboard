@@ -1,4 +1,4 @@
-# Soundboard — Testing
+# TTRPG Soundboard — Testing
 
 How the app is tested: the automated suite that runs in Node, the Playwright suite that drives the real page in a browser with a fake audio engine, and the manual checks in real browsers. [`DESIGN.md`](DESIGN.md) §11 summarizes the approach.
 
@@ -223,7 +223,7 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 **Downloads** (yt-dlp and ffmpeg installed, unless a check says otherwise)
 - [ ] The terminal prints `Downloads: yt-dlp …, ffmpeg …` at startup. With one of them off the `PATH`, it prints `Downloads are off: … was not found.`, and every Add button opens a notice naming what is missing instead of the add dialog.
 - [ ] Then it prints `Checking for a yt-dlp update…` and the outcome (`yt-dlp is up to date (…).`, or in yellow why it could not update). Without yt-dlp neither line appears.
-- [ ] The Selector's header reads "Soundboard Selection" with "v0.1.0" beside it in smaller grey text, and the tool versions on the right. yt-dlp reads "checking…" during that check, then its version with ✓, "updated" or "update failed" (its reason as a tooltip). A folder opened during the check waits on "Waiting for the yt-dlp update to finish…", then opens by itself. To make the check last, put a script named `yt-dlp` first on the `PATH` that answers `-U` with `sleep 5` and the "update failed" output from DESIGN.md §5.4, and passes everything else to the real one.
+- [ ] The Selector's header reads "TTRPG Soundboard" with "v1.0.0" beside it in smaller grey text, and the tool versions on the right. yt-dlp reads "checking…" during that check, then its version with ✓, "updated" or "update failed" (its reason as a tooltip). A folder opened during the check waits on "Waiting for the yt-dlp update to finish…", then opens by itself. To make the check last, put a script named `yt-dlp` first on the `PATH` that answers `-U` with `sleep 5` and the "update failed" output from DESIGN.md §5.4, and passes everything else to the real one.
 - [ ] With that script, the Problems button counts one warning, "yt-dlp outdated", with the versions and the reason; it stays after a refresh, and Dismiss removes it until the next start.
 - [ ] ☰ → Info shows the app's version, yt-dlp's with "Up to date" (or the update in yellow, its reason as a tooltip), and ffmpeg's; a missing tool reads "Not installed".
 - [ ] "+ Add playlist" and "+ Add sound" sit next to the section titles, even when a section is empty. "+ Add tracks" sits under the list on the playlist dialog's Tracks tab; the playlist menu has no "Add tracks…".

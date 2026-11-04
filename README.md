@@ -1,4 +1,4 @@
-# Soundboard
+# TTRPG Soundboard
 
 > **Note:** This app is entirely written by AI (Claude Code) and is primarily a personal project, built for my own tabletop sessions. It is shared as is, with no promise of support or stability.
 
@@ -17,11 +17,11 @@ Everything runs on your machine. Audio is played in the browser; a small server 
 
 These instructions are followed at your own responsibility.
 
-1. On this project's GitHub page, open **Releases** and download the zip for your system:
-   - Windows: `soundboard-<version>-windows-x64.zip`
-   - macOS on Apple silicon (M1 and later): `soundboard-<version>-macos-arm64.zip`
-   - macOS on Intel: `soundboard-<version>-macos-x64.zip`
-   - Linux: `soundboard-<version>-linux-x64.zip`
+1. Open the project's [Releases](https://github.com/EvidentlyCube/ttrpg-soundboard/releases) page and download the zip for your system:
+   - Windows: `ttrpg-soundboard-<version>-windows-x64.zip`
+   - macOS on Apple silicon (M1 and later): `ttrpg-soundboard-<version>-macos-arm64.zip`
+   - macOS on Intel: `ttrpg-soundboard-<version>-macos-x64.zip`
+   - Linux: `ttrpg-soundboard-<version>-linux-x64.zip`
 2. Unpack it: on Windows, right-click it and choose **Extract All…**; on macOS, double-click it; on Linux, use your file manager's "Extract here" or `unzip`.
 3. Move the unpacked folder wherever you like.
 

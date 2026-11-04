@@ -6,7 +6,7 @@ export const translation = {
 	name: 'Polski',
 	messages: {
 		app: {
-			name: 'Soundboard',
+			name: 'TTRPG Soundboard',
 		},
 		common: {
 			loading: 'Wczytywanie…',
@@ -386,7 +386,7 @@ export const translation = {
 			},
 		},
 		selector: {
-			title: 'Wybierz Soundboard',
+			title: 'TTRPG Soundboard',
 			soundboards: 'Soundboardy',
 			recent: 'Ostatnie',
 			browse: 'Przeglądaj',

@@ -1,4 +1,4 @@
-# Soundboard — Roadmap
+# TTRPG Soundboard — Roadmap
 
 Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the app as it is; this file describes where it is going.
 

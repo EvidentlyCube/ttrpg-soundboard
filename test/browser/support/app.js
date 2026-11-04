@@ -36,7 +36,7 @@ export async function startApp(args = []) {
 		configDirectory: join(home, '.config', 'soundboard'),
 	});
 	const deadline = Date.now() + 10_000;
-	while (!output.includes('Soundboard running at')) {
+	while (!output.includes('TTRPG Soundboard running at')) {
 		if (Date.now() > deadline) {
 			throw new Error(`The app did not start:\n${output}`);
 		}
