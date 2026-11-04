@@ -30,10 +30,11 @@ To try the app by hand, use `test_fixtures/example_soundboard`. **Copy it to a t
 
 Follow the process in `ROADMAP.md`:
 
-1. Write a proposal in `ROADMAP.md` under "Proposals", using its template: goal, the `DESIGN.md` sections it changes, open questions with recommended answers, and a step-by-step plan. Commit it on its own.
+1. Create the feature branch (see "Git"). Write a proposal in `ROADMAP.md` under "Proposals", using its template: goal, the `DESIGN.md` sections it changes, open questions with recommended answers, and a step-by-step plan. Commit it on its own.
 2. Wait for the owner's review and answers before writing code.
 3. Implement one plan step at a time, test-first. Commit each step once `npm run check` passes, summarize it, and wait for the go-ahead before the next step.
-4. Finally update `DESIGN.md` to describe the new behavior, in its own commit, and remove the proposal (and its backlog entry, if any) from `ROADMAP.md`.
+4. Update `DESIGN.md` to describe the new behavior, in its own commit, and remove the proposal (and its backlog entry, if any) from `ROADMAP.md`.
+5. Ask the owner for the commit message and squash the branch onto `main` (see "Git").
 
 ## DESIGN.md changes
 
@@ -82,6 +83,8 @@ Never quietly diverge from the design in code. Code comments refer to design sec
 
 ## Git
 
-- Work on `main`.
-- Commit as you go, one commit per completed step, and **only when `npm run check` passes**.
+- Each feature or fix gets its own branch, created from `main` at the start of the session (`feature/<name>` or `fix/<name>`). The proposal is committed on it too.
+- Commit as you go on the branch, one commit per completed step, and **only when `npm run check` passes**.
 - Commit messages are a short imperative summary (`Add ID3 title parser`).
+- When the feature or fix is finished, ask the owner for the commit message, then squash the branch onto `main` as a single commit with that message exactly as given (`git switch main`, `git merge --squash <branch>`, `git commit`) and delete the branch. Never merge or squash without the owner's message.
+- A release (`version` bump only) is committed directly on `main`.

@@ -4,10 +4,11 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 
 ## How a feature goes from idea to code
 
-1. **Proposal.** The feature gets a section under [Proposals](#proposals): what it does, how it changes the design (naming the `DESIGN.md` sections affected), open questions, and a step-by-step implementation plan.
+1. **Proposal.** Work starts on a branch of its own, created from `main` (`feature/<name>`, or `fix/<name>` for a fix). The feature gets a section under [Proposals](#proposals): what it does, how it changes the design (naming the `DESIGN.md` sections affected), open questions, and a step-by-step implementation plan.
 2. **Review.** The project owner reviews the proposal and answers its open questions. Work starts only once it is approved.
 3. **Implementation.** One step at a time, test-first, one commit per step, each passing `npm run check`.
 4. **Design update.** `DESIGN.md` is updated to describe the new behavior, in its own commit, reviewed like any design change. The proposal is then removed from this file, and its backlog entry too, if it had one.
+5. **Squash.** The owner writes the commit message, and the branch is squashed onto `main` as that one commit, then deleted. `main` therefore has one commit per feature or fix, plus the release commits.
 
 ### Proposal template
 
