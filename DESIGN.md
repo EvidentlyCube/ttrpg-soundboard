@@ -1746,4 +1746,4 @@ Only Node built-ins are used, so there is no new dependency: `zip.js` (`createZi
 3. **try**: on Linux, macOS (arm64) and Windows runners, unpacks that system's zip with its own tools and runs the launcher with `--help`.
 4. **release**: `gh release create v<version>` as a **draft**, with the zips, notes generated from the commits since the last release, and the pushed commit as its target. The owner reads it and publishes it, which creates the tag.
 
-So a release is cut by changing `version` in `package.json` in a commit of its own (`Release 0.2.0`) and pushing it.
+So a release is cut by changing `version` in `package.json` in a commit of its own (`Release 0.2.0`), made directly on `main`, and pushing it. Every feature and fix reaches `main` as one squashed commit (`ROADMAP.md`, "How a feature goes from idea to code"), so the generated notes list one line per feature or fix.
