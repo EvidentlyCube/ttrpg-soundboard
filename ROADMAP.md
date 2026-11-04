@@ -8,7 +8,7 @@ Planned features and feature proposals. [`DESIGN.md`](DESIGN.md) describes the a
 2. **Review.** The project owner reviews the proposal and answers its open questions. Work starts only once it is approved.
 3. **Implementation.** One step at a time, test-first, one commit per step, each passing `npm run check`.
 4. **Design update.** `DESIGN.md` is updated to describe the new behavior, in its own commit, reviewed like any design change. The proposal is then removed from this file, and its backlog entry too, if it had one.
-5. **Squash.** The owner writes the commit message, and the branch is squashed onto `main` as that one commit, then deleted. `main` therefore has one commit per feature or fix, plus the release commits.
+5. **Squash.** A commit message is proposed in the form `CLAUDE.md` describes ("Squash commit message": a summary line, then the bugs fixed, behavior changes and other details the branch's commits held), the owner approves or edits it, and the branch is squashed onto `main` as that one commit, then deleted. `main` therefore has one commit per feature or fix, plus the release commits.
 
 ### Proposal template
 

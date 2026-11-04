@@ -34,7 +34,7 @@ Follow the process in `ROADMAP.md`:
 2. Wait for the owner's review and answers before writing code.
 3. Implement one plan step at a time, test-first. Commit each step once `npm run check` passes, summarize it, and wait for the go-ahead before the next step.
 4. Update `DESIGN.md` to describe the new behavior, in its own commit, and remove the proposal (and its backlog entry, if any) from `ROADMAP.md`.
-5. Ask the owner for the commit message and squash the branch onto `main` (see "Git").
+5. Propose the squash commit message, get the owner's approval, and squash the branch onto `main` (see "Git").
 
 ## DESIGN.md changes
 
@@ -86,5 +86,41 @@ Never quietly diverge from the design in code. Code comments refer to design sec
 - Each feature or fix gets its own branch, created from `main` at the start of the session (`feature/<name>` or `fix/<name>`). The proposal is committed on it too.
 - Commit as you go on the branch, one commit per completed step, and **only when `npm run check` passes**.
 - Commit messages are a short imperative summary (`Add ID3 title parser`).
-- When the feature or fix is finished, ask the owner for the commit message, then squash the branch onto `main` as a single commit with that message exactly as given (`git switch main`, `git merge --squash <branch>`, `git commit`) and delete the branch. Never merge or squash without the owner's message.
+- When the feature or fix is finished, propose the squash commit message (see below) and revise it until the owner approves it. Then squash the branch onto `main` as a single commit with that message exactly as approved and delete the branch. Never merge or squash without the owner's approval of the message.
 - A release (`version` bump only) is committed directly on `main`.
+
+### Squash commit message
+
+The branch's commits disappear in the squash, so the message keeps what would otherwise be lost: bugs found and fixed along the way, behavior that changed, and decisions or pitfalls a later reader would need. Go through `git log main..<branch>` and the conversation before writing it.
+
+```
+<Short imperative summary, like the other commits on main>
+
+========================================================================
+
+IMPORTANT
+
+- <only when something is critical to know, such as an unfixed pitfall>
+
+BUG FIXES
+
+- <what was wrong, why, and how it was fixed>
+
+BEHAVIOR CHANGES
+
+- <what a user of the app now sees or does differently>
+
+OTHER DETAILS
+
+- <design decisions, internals, moved files, the DESIGN.md sections changed>
+
+Co-Authored-By: <the attribution line>
+```
+
+- The summary line stands alone; the release notes list it as the feature's one line (`DESIGN.md` §13).
+- The separator is a line of `=`, never `---`, which `git am` takes as the end of the message.
+- Sections come in this order, in capitals. Leave out a section with nothing in it; `IMPORTANT` is usually absent.
+- Bullets start with `- `, wrap at about 72 columns, continuation lines indented two spaces. Name files, functions and routes so they can be searched for.
+- The last bullet of `OTHER DETAILS` lists the `DESIGN.md` sections that changed.
+- Propose the whole message in a code block, and say why anything unusual is there. When a problem it describes can still be fixed on the branch, offer that before squashing.
+- Squash with the message in a file, so nothing in it is rewritten: `git switch main`, `git merge --squash <branch>`, `git commit --cleanup=verbatim -F <file>`. Check that `git diff <branch> HEAD` is empty, then `git branch -D <branch>`.
