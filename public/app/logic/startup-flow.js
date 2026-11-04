@@ -64,6 +64,7 @@ export const STARTUP_POLL_MS = 500;
  * @property {() => Promise<void>} deleteAndRetry
  * @property {(path: string) => Promise<void>} forgetRecent
  * @property {(language: string | null) => Promise<void>} setLanguage null: the browser's (DESIGN.md §9.21)
+ * @property {() => Promise<import('./ports.js').Licenses>} fetchLicenses
  */
 
 /**
@@ -216,6 +217,14 @@ export class StartupFlow {
 	async setLanguage(language) {
 		await this.#act(() => this.#api.setLanguage(language));
 		return this.#view.error === null;
+	}
+
+	/**
+	 * Not an action: it neither waits for nor blocks the others, and a failure is the caller's to show.
+	 * @returns {Promise<import('./ports.js').Licenses>}
+	 */
+	fetchLicenses() {
+		return this.#api.fetchLicenses();
 	}
 
 	/** @param {() => Promise<void>} action */

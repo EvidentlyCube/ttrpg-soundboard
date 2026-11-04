@@ -15,19 +15,36 @@ const fixtures = {
 const test = base.extend(fixtures);
 const pl = polish.messages;
 
+/**
+ * Opens the Selector's Language dialog from its ☰ menu.
+ * @param {import('@playwright/test').Page} page
+ * @param {string} item the menu item's label in the page's language
+ */
+async function openLanguage(page, item) {
+	await page.locator('[data-app-menu]').click();
+	await page.getByRole('menuitem', { name: item }).click();
+	await expect(page.locator('[data-language-dialog]')).toBeVisible();
+}
+
 test('the language chosen in the Selector applies to every page, until Automatic brings the browser’s back', async ({ page, browser, app }) => {
-	await test.step('The Selector starts in the browser’s language, English, and offers Polish by its own name', async () => {
+	await test.step('The Selector starts in the browser’s language, English, and its Language dialog offers Polish by its own name', async () => {
 		await page.goto(app.url);
 		await expect(page.locator('h1')).toHaveText(english.messages.selector.title);
-		await expect(page.locator('[data-language] option')).toHaveText([english.messages.selector.automatic, 'English', 'Polski']);
 		await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+		await expect(page.locator('[data-language]')).toHaveCount(0);
+		await openLanguage(page, english.messages.menu.language);
+		await expect(page.locator('[data-language-dialog] [data-language] option')).toHaveText([english.messages.selector.automatic, 'English', 'Polski']);
+		await expect(page.locator('[data-language]')).toHaveValue('');
 	});
 
 	await test.step('Choosing Polish reloads the Selector in Polish, server messages included', async () => {
 		await page.locator('[data-language]').selectOption('pl');
 		await expect(page.locator('h1')).toHaveText(pl.selector.title);
 		await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
+		await expect(page.locator('[data-language-dialog]')).toHaveCount(0);
+		await openLanguage(page, pl.menu.language);
 		await expect(page.locator('[data-language]')).toHaveValue('pl');
+		await page.keyboard.press('Escape');
 		// The home folder itself may not be opened; the server's reason comes with a code.
 		await expect(page.locator('[data-folder-summary]')).toHaveText(pl.errors.folder.container);
 	});
@@ -55,6 +72,7 @@ test('the language chosen in the Selector applies to every page, until Automatic
 	await test.step('Automatic brings back the browser’s language', async () => {
 		await page.locator('[data-app-menu]').click();
 		await page.getByRole('menuitem', { name: pl.menu.changeSoundboard }).click();
+		await openLanguage(page, pl.menu.language);
 		await page.locator('[data-language]').selectOption('');
 		await expect(page.locator('h1')).toHaveText(english.messages.selector.title);
 		await expect(page.locator('html')).toHaveAttribute('lang', 'en');

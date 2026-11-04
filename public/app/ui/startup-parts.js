@@ -43,18 +43,20 @@ export function showError(element, error) {
 /**
  * The Selector's title bar, styled like the Soundboard page's, with the app's version and the download tools' state (DESIGN.md §9.18).
  * @param {string} title
- * @param {HTMLElement} [end] shown after the tools, such as the language menu
+ * @param {HTMLElement} [start] shown before the title, such as the ☰ button
  * @returns {{ element: HTMLElement, show: (tools: ToolsInfo) => void }}
  */
-export function toolsHeader(title, end) {
+export function toolsHeader(title, start) {
 	const app = h('span', { 'class': 'text-xs text-muted', 'data-app-version': true });
 	const ytDlp = h('span', { 'data-tool': 'yt-dlp' });
 	const ffmpeg = h('span', { 'data-tool': 'ffmpeg' });
 	const element = h('header', {
 		class: 'sticky top-0 z-10 flex shrink-0 flex-wrap items-center justify-between gap-x-6 gap-y-1 border-b border-line bg-panel px-5 py-3',
 	},
-	h('div', { class: 'flex items-baseline gap-2' }, h('h1', { class: 'text-lg font-semibold tracking-tight' }, title), app),
-	h('div', { class: 'flex flex-wrap items-center justify-end gap-x-6 gap-y-1 text-xs text-muted' }, ytDlp, ffmpeg, end));
+	h('div', { class: 'flex items-center gap-3' },
+		start,
+		h('div', { class: 'flex items-baseline gap-2' }, h('h1', { class: 'text-lg font-semibold tracking-tight' }, title), app)),
+	h('div', { class: 'flex flex-wrap items-center justify-end gap-x-6 gap-y-1 text-xs text-muted' }, ytDlp, ffmpeg));
 	let drawn = '';
 	return {
 		element,

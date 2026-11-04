@@ -9,6 +9,7 @@ import { findMediaFile, isMediaPath, serveMedia } from './media.js';
 import { InvalidWaveformError, UnknownWaveformFileError } from '../library/waveform-store.js';
 import { serveEvents, toMessage } from './events.js';
 import { toFileJson, toLibraryJson, toPlaylistJson } from './library-json.js';
+import { readLicenses } from './licenses.js';
 import { allowMethods, HttpError, sendJson } from './responses.js';
 import { serveStaticFile } from './static-files.js';
 import { serveAccess } from './access-routes.js';
@@ -143,6 +144,9 @@ async function route(request, response, context) {
 	} else if (pathname === '/api/info') {
 		allowMethods(request, ['GET']);
 		sendJson(response, 200, infoJson(context.info));
+	} else if (pathname === '/api/licenses') {
+		allowMethods(request, ['GET']);
+		sendJson(response, 200, await readLicenses({ appVersion: context.info.app, publicDir }));
 	} else if (pathname === '/api/library') {
 		allowMethods(request, ['GET']);
 		sendJson(response, 200, toLibraryJson(library));

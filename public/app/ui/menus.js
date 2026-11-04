@@ -14,7 +14,7 @@ import { t } from './text.js';
  * The header's app menu (DESIGN.md §9.1).
  * @param {{ hosting: boolean, started?: boolean }} state `hosting`: whether remotes control this page, which decides
  * 	whether it offers to become the host or to stop being it, and whether a phone can connect; `started`: false while the splash asks how to start, when
- * 	only Info and Change soundboard can do anything
+ * 	only Info, Licenses and Change soundboard can do anything
  * @returns {MenuItem[]}
  */
 export function appMenuItems({ hosting, started = true }) {
@@ -26,8 +26,20 @@ export function appMenuItems({ hosting, started = true }) {
 		...hosting ? [{ id: 'connectPhone', label: t('menu.connectPhone'), enabled: started, group: 1 }] : [],
 		{ id: 'options', label: t('menu.options'), enabled: started, group: 2 },
 		{ id: 'info', label: t('menu.info'), enabled: true, group: 2 },
+		{ id: 'licenses', label: t('menu.licenses'), enabled: true, group: 2 },
 		{ id: 'debug', label: t('menu.debug'), enabled: started, group: 2 },
 		{ id: 'changeSoundboard', label: t('menu.changeSoundboard'), enabled: true, group: 3 },
+	];
+}
+
+/**
+ * The Selector's ☰ menu (DESIGN.md §9.18).
+ * @returns {MenuItem[]}
+ */
+export function selectorMenuItems() {
+	return [
+		{ id: 'language', label: t('menu.language'), enabled: true, group: 0 },
+		{ id: 'licenses', label: t('menu.licenses'), enabled: true, group: 0 },
 	];
 }
 

@@ -169,6 +169,11 @@ export class HttpBackendApi {
 		return this.#request('GET', '/api/info', { plainErrors: true });
 	}
 
+	/** @type {BackendApi['fetchLicenses']} */
+	async fetchLicenses() {
+		return this.#request('GET', '/api/licenses', { plainErrors: true });
+	}
+
 	/** @type {BackendApi['fetchTrash']} */
 	async fetchTrash() {
 		return this.#request('GET', '/api/trash', { plainErrors: true });

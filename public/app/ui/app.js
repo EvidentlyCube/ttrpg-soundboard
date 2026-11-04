@@ -2,15 +2,15 @@ import { AccessRequestsBanner } from './access-requests-banner.js';
 import { AddDialog } from './add-dialog.js';
 import { Component } from './component.js';
 import { ConnectPhoneDialog } from './connect-phone-dialog.js';
+import { appMenuButton } from './app-menu-button.js';
 import { InfoDialog } from './info-dialog.js';
-import { openContextMenu } from './context-menu.js';
+import { openLicenses } from './licenses-dialog.js';
 import { DebugDialog } from './debug-dialog.js';
 import { DebugView } from './debug-view.js';
 import { DownloadDialog } from './download-dialog.js';
 import { ExternalChangesButton } from './external-changes-button.js';
 import { Dialog } from './dialog.js';
 import { h, on } from './dom.js';
-import { icon } from './icons.js';
 import { appMenuItems } from './menus.js';
 import { MetadataDialog } from './metadata-dialog.js';
 import { MoveDialog } from './move-dialog.js';
@@ -198,28 +198,6 @@ export class App extends Component {
 const HEADER_CLASS = 'flex shrink-0 items-center justify-between gap-6 border-b border-line bg-panel px-5 py-3';
 
 /**
- * The header's ☰ button, which opens the app menu below itself.
- * @param {Overlay} overlay
- * @param {() => import('./menus.js').MenuItem[]} items
- * @param {(id: string) => void} onSelect
- */
-function appMenuButton(overlay, items, onSelect) {
-	const button = h('button', {
-		'type': 'button',
-		'class': 'grid size-8 cursor-pointer place-items-center rounded-md text-muted hover:bg-raised-hover hover:text-text focus-visible:outline-2 focus-visible:outline-music',
-		'title': t('header.menu'),
-		'aria-label': t('header.menu'),
-		'aria-haspopup': 'menu',
-		'data-app-menu': true,
-		'onClick': () => {
-			const { left, bottom } = button.getBoundingClientRect();
-			openContextMenu(overlay, items(), { x: left, y: bottom + 4 }, onSelect);
-		},
-	}, icon('menu', 'size-5'));
-	return button;
-}
-
-/**
  * The soundboard's name, kept up to date as Options changes it.
  * @param {Component} owner
  * @param {Soundboard} soundboard
@@ -253,7 +231,7 @@ function closeSoundboard(soundboard) {
 
 /**
  * The board's header and footer, shown around the splash while it asks how to start and while it loads, so the page
- * doesn't change shape when the board comes. Only Info and Change soundboard work yet, and Stop All is disabled.
+ * doesn't change shape when the board comes. Only Info, Licenses and Change soundboard work yet, and Stop All is disabled.
  */
 class StartFrame extends Component {
 	#soundboard;
@@ -279,6 +257,8 @@ class StartFrame extends Component {
 		const menuButton = appMenuButton(this.#overlay, () => appMenuItems({ hosting: false, started: false }), (item) => {
 			if (item === 'info') {
 				openInfo(this.#infoDialog, soundboard);
+			} else if (item === 'licenses') {
+				openLicenses(this.#infoDialog, () => soundboard.fetchLicenses());
 			} else if (item === 'changeSoundboard') {
 				closeSoundboard(soundboard);
 			}
@@ -359,6 +339,8 @@ class Board extends Component {
 				this.#openOptions();
 			} else if (item === 'info') {
 				this.#openInfo();
+			} else if (item === 'licenses') {
+				openLicenses(this.#infoDialog, () => soundboard.fetchLicenses());
 			} else if (item === 'debug') {
 				this.#openDebug(debugView);
 			} else if (item === 'changeSoundboard') {

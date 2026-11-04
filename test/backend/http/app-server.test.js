@@ -161,6 +161,16 @@ describe('startApp', () => {
 		assert.deepEqual((await call(`${base}/api/info`)).json, { app: '1.2.3', checking: false, ytDlp: { version: '2026.10.26', update: null }, ffmpeg: '8.1' });
 	});
 
+	it('answers the licenses in every phase, with the app’s version', async () => {
+		const { base, session, music } = await setup();
+		const { json: selecting } = await call(`${base}/api/licenses`);
+		assert.deepEqual(selecting.included[0], { id: 'app', name: 'TTRPG Soundboard', version: '1.2.3', license: 'The Unlicense', text: null, url: null });
+		assert.deepEqual(selecting.external.map((/** @type {{ id: string }} */ program) => program.id), ['yt-dlp', 'ffmpeg']);
+		await call(`${base}/api/startup/select`, 'POST', { path: join(music, 'board') });
+		await phase(session, 'ready');
+		assert.deepEqual((await call(`${base}/api/licenses`)).json, selecting);
+	});
+
 	it('keeps the request guard', async () => {
 		const { base } = await setup();
 		const response = await fetch(`${base}/api/startup`, { method: 'GET', headers: { Origin: 'http://evil.example' } });
@@ -333,6 +343,7 @@ describe('startApp with --lan, seen from another device', { skip: networkAddress
 		assert.equal((await call(`${remote}/app/selector.js`)).status, 403);
 		assert.equal((await call(`${remote}/api/startup`)).status, 503);
 		assert.equal((await call(`${remote}/api/info`)).status, 503);
+		assert.equal((await call(`${remote}/api/licenses`)).status, 503);
 		assert.deepEqual((await call(`${remote}/api/startup/ready`)).json, { ready: false });
 		// The waiting page is drawn in the app's language.
 		assert.deepEqual((await call(`${remote}/api/language`)).json, { language: null, available: ['en', 'pl'] });

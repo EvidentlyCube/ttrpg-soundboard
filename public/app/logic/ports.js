@@ -148,6 +148,7 @@
  * @property {(address: string, decision: 'allow' | 'deny') => Promise<void>} answerAccessRequest rejects when the request
  * 	is gone (DESIGN.md §5.2)
  * @property {() => Promise<AppInfo>} fetchInfo
+ * @property {() => Promise<Licenses>} fetchLicenses
  * @property {() => Promise<void>} closeSoundboard closes the soundboard on the server, which goes back to the Selector
  * 	(DESIGN.md §3); rejects with the server's message
  */
@@ -169,6 +170,24 @@
  * @property {string} app
  * @property {{ version: string | null, update: YtDlpUpdate | null }} ytDlp
  * @property {string | null} ffmpeg
+ */
+
+/**
+ * A part the app is made of, as the Licenses dialog lists it (DESIGN.md §9.22).
+ * @typedef {object} IncludedPart
+ * @property {string} id
+ * @property {string} name
+ * @property {string | null} version
+ * @property {string} license the license's name
+ * @property {string | null} text the full license, null when the server can't read it
+ * @property {string | null} url where the license can be read online
+ */
+
+/**
+ * The parts of the app and the programs it runs without shipping them.
+ * @typedef {object} Licenses
+ * @property {IncludedPart[]} included
+ * @property {{ id: string, name: string, url: string }[]} external
  */
 
 /** @typedef {'sound' | 'playlist' | 'track'} ItemKind */

@@ -241,6 +241,13 @@ export class FakeBackendApi {
 		return structuredClone(this.info);
 	}
 
+	/** @type {import('../../public/app/logic/ports.js').Licenses} */
+	licenses = { included: [], external: [] };
+
+	async fetchLicenses() {
+		return structuredClone(this.licenses);
+	}
+
 	closedSoundboard = false;
 
 	async closeSoundboard() {

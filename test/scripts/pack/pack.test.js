@@ -147,7 +147,10 @@ describe('pack', () => {
 		const [top] = await readdir(unpacked);
 		const launcher = (await readdir(join(unpacked, top))).find((name) => name.startsWith('start') || name.endsWith('.command'));
 
-		const { stdout } = await run(join(unpacked, top, /** @type {string} */ (launcher)), ['--help'], { cwd: output });
+		const launch = run(join(unpacked, top, /** @type {string} */ (launcher)), ['--help'], { cwd: output, timeout: 30_000 });
+		// When the app fails, the launcher waits for Enter; ending its input ends that wait, so the test fails instead of hanging.
+		launch.child.stdin?.end();
+		const { stdout } = await launch;
 
 		assert.match(stdout, /^Usage: node index\.js/);
 	});

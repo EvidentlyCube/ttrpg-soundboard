@@ -5,6 +5,7 @@ import { isPlainObject } from '../library/validate.js';
 import { availableLanguages } from '../startup/app-settings.js';
 import { ONLY_GIVEN_PATHS } from '../startup/startup-session.js';
 import { isLoopbackAddress } from './lan-access.js';
+import { readLicenses } from './licenses.js';
 import { LOOPBACK_HOSTS, checkRequest } from './request-guard.js';
 import { logWhenDone } from './request-log.js';
 import { allowMethods, HttpError, sendJson } from './responses.js';
@@ -161,6 +162,11 @@ async function route(request, response, context) {
 	if (pathname === '/api/info') {
 		allowMethods(request, ['GET']);
 		sendJson(response, 200, infoJson(context.info));
+		return;
+	}
+	if (pathname === '/api/licenses') {
+		allowMethods(request, ['GET']);
+		sendJson(response, 200, await readLicenses({ appVersion: context.info.app, publicDir }));
 		return;
 	}
 	if (pathname === '/api/startup' || pathname.startsWith(STARTUP_PREFIX)) {

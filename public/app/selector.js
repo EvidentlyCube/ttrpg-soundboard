@@ -2,9 +2,14 @@ import { HttpStartupApi } from './api/startup-api.js';
 import { browserClock } from './browser-clock.js';
 import { importLanguage, loadLanguage } from './language.js';
 import { StartupFlow } from './logic/startup-flow.js';
+import { appMenuButton } from './ui/app-menu-button.js';
 import { card } from './ui/customize-parts.js';
+import { Dialog } from './ui/dialog.js';
 import { h } from './ui/dom.js';
 import { icon } from './ui/icons.js';
+import { openLicenses } from './ui/licenses-dialog.js';
+import { selectorMenuItems } from './ui/menus.js';
+import { Overlay } from './ui/overlay.js';
 import { connectionNotice, errorNotice, showError, toolsHeader } from './ui/startup-parts.js';
 import { describe, t } from './ui/text.js';
 import { showToast } from './ui/toast.js';
@@ -126,7 +131,17 @@ document.addEventListener('keydown', (event) => {
 	}
 });
 
-const header = toolsHeader(t('selector.title'), await languageMenu());
+const overlay = new Overlay();
+const dialog = new Dialog();
+const languageSelect = await languageMenu();
+const menuButton = appMenuButton(overlay, selectorMenuItems, (item) => {
+	if (item === 'language') {
+		openLanguage();
+	} else if (item === 'licenses') {
+		openLicenses(dialog, () => flow.fetchLicenses());
+	}
+});
+const header = toolsHeader(t('selector.title'), menuButton);
 root.replaceChildren(
 	header.element,
 	h('main', { class: 'mx-auto w-full max-w-3xl flex-1 space-y-6 px-5 py-8' },
@@ -362,6 +377,26 @@ function browseCard(onClick) {
 	}, t('selector.browseFolders'));
 }
 
+/** The Language dialog: the language menu, and why saving the choice failed. */
+function openLanguage() {
+	const failure = errorNotice();
+	languageSelect.value = language.setting ?? '';
+	languageSelect.onchange = async () => {
+		failure.hidden = true;
+		if (await flow.setLanguage(languageSelect.value || null)) {
+			window.location.reload();
+		} else {
+			languageSelect.value = language.setting ?? '';
+			showError(failure, lastView?.error ?? null);
+		}
+	};
+	const body = h('div', { 'class': 'min-w-72 space-y-3 pt-3', 'data-language-dialog': true },
+		card(t('selector.language'), 'music', languageSelect),
+		failure);
+	dialog.open({ title: t('selector.language'), body });
+	languageSelect.focus();
+}
+
 /**
  * The app's language (DESIGN.md §9.21): Automatic, then each language by its own name. A choice is saved, and the page
  * loads again in it.
@@ -372,21 +407,13 @@ async function languageMenu() {
 		return /** @type {const} */ ([code, name]);
 	}));
 	const select = h('select', {
-		'class': 'cursor-pointer rounded-md border border-line bg-raised px-2 py-1 text-xs text-text hover:bg-raised-hover',
+		'class': 'w-full cursor-pointer rounded-md border border-line bg-panel px-3 py-2 text-sm text-text hover:bg-raised-hover focus:border-music focus:outline-none',
 		'aria-label': t('selector.language'),
 		'title': t('selector.language'),
 		'data-language': true,
 	},
 	h('option', { value: '' }, t('selector.automatic')),
 	...names.map(([code, name]) => h('option', { value: code, lang: code }, name)));
-	select.value = language.setting ?? '';
-	select.addEventListener('change', async () => {
-		if (await flow.setLanguage(select.value || null)) {
-			window.location.reload();
-		} else {
-			select.value = language.setting ?? '';
-		}
-	});
 	return select;
 }
 

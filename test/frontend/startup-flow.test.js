@@ -81,6 +81,10 @@ function setup({ phase = 'selecting', browsed = null } = {}) {
 		deleteAndRetry: () => act('deleteAndRetry'),
 		forgetRecent: (path) => act(`forget ${path}`),
 		setLanguage: (language) => act(`language ${language}`),
+		fetchLicenses: async () => {
+			calls.push('licenses');
+			return { included: [], external: [] };
+		},
 	};
 	let left = 0;
 	/** @type {import('../../public/app/logic/startup-flow.js').StartupView[]} */
@@ -219,6 +223,15 @@ describe('StartupFlow', () => {
 		failActions(new Error('Expected { language: … }'));
 		assert.equal(await flow.setLanguage('xx'), false);
 		assert.deepEqual(calls, ['language pl', 'language null', 'language xx']);
+	});
+
+	it('fetches the licenses without counting it as an action, so it works while one runs', async () => {
+		const { flow, calls } = setup();
+		const select = flow.select('/home/ana/Music/Board');
+		assert.equal(flow.view.busy, true);
+		assert.deepEqual(await flow.fetchLicenses(), { included: [], external: [] });
+		await select;
+		assert.deepEqual(calls, ['select /home/ana/Music/Board', 'licenses']);
 	});
 
 	it('sends each action, then asks for the state at once', async () => {

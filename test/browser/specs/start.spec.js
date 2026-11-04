@@ -15,7 +15,7 @@ test('the page shows the splash and only asks for the name and whether a host ex
 	});
 });
 
-test('the splash sits between the header and the footer, where only Info and Change soundboard work yet', async ({ page, soundboard, splash }) => {
+test('the splash sits between the header and the footer, where only Info, Licenses and Change soundboard work yet', async ({ page, soundboard, splash }) => {
 	await test.step('Open the page', async () => {
 		await soundboard.open();
 		await splash.expectVisible();
@@ -30,10 +30,10 @@ test('the splash sits between the header and the footer, where only Info and Cha
 		await expect(page.locator('[data-panic-button]')).toBeDisabled();
 	});
 
-	await test.step('The menu lists every item, with only Info and Change soundboard enabled', async () => {
+	await test.step('The menu lists every item, with only Info, Licenses and Change soundboard enabled', async () => {
 		await page.locator('[data-app-menu]').click();
 		const items = page.getByRole('menuitem');
-		await expect(items).toHaveText(['Become host', 'Options', 'Info', 'Debug', 'Change soundboard']);
+		await expect(items).toHaveText(['Become host', 'Options', 'Info', 'Licenses', 'Debug', 'Change soundboard']);
 		for (const name of ['Become host', 'Options', 'Debug']) {
 			await expect(page.getByRole('menuitem', { name })).toBeDisabled();
 		}

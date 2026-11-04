@@ -1054,6 +1054,11 @@ export class Soundboard {
 		return this.#api.fetchInfo();
 	}
 
+	/** @returns {Promise<import('./ports.js').Licenses>} what the app is made of, and under which licenses (DESIGN.md §9.22) */
+	fetchLicenses() {
+		return this.#api.fetchLicenses();
+	}
+
 	/**
 	 * Allows or denies a device that asked to be paired. The list changes when the server says so.
 	 * @param {string} address

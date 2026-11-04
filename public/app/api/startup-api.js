@@ -60,6 +60,11 @@ export class HttpStartupApi {
 		await this.#call('PUT', '/api/startup/language', { language });
 	}
 
+	/** @type {StartupApi['fetchLicenses']} */
+	fetchLicenses() {
+		return this.#call('GET', '/api/licenses');
+	}
+
 	/** @type {StartupApi['forgetRecent']} */
 	async forgetRecent(path) {
 		await this.#call('DELETE', '/api/startup/recent', { path });

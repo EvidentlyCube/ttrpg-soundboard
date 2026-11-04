@@ -1,23 +1,29 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { appMenuItems, playlistMenuItems, soundMenuItems } from '../../../public/app/ui/menus.js';
+import { appMenuItems, playlistMenuItems, selectorMenuItems, soundMenuItems } from '../../../public/app/ui/menus.js';
 
 /** @param {import('../../../public/app/ui/menus.js').MenuItem[]} items */
 const enabledLabels = (items) => items.filter((item) => item.enabled).map((item) => item.label);
 
 describe('appMenuItems', () => {
 	it('offers becoming the host, the options, the info and the debug tools', () => {
-		assert.deepEqual(enabledLabels(appMenuItems({ hosting: false })), ['Become host', 'Options', 'Info', 'Debug', 'Change soundboard']);
+		assert.deepEqual(enabledLabels(appMenuItems({ hosting: false })), ['Become host', 'Options', 'Info', 'Licenses', 'Debug', 'Change soundboard']);
 	});
 
 	it('offers to stop hosting and to connect a phone instead while the page is the host', () => {
-		assert.deepEqual(enabledLabels(appMenuItems({ hosting: true })), ['Stop hosting', 'Connect a phone', 'Options', 'Info', 'Debug', 'Change soundboard']);
+		assert.deepEqual(enabledLabels(appMenuItems({ hosting: true })), ['Stop hosting', 'Connect a phone', 'Options', 'Info', 'Licenses', 'Debug', 'Change soundboard']);
 	});
 
-	it('before the start lists the same items, but only Info and Change soundboard can be chosen', () => {
+	it('before the start lists the same items, but only Info, Licenses and Change soundboard can be chosen', () => {
 		const items = appMenuItems({ hosting: false, started: false });
 		assert.deepEqual(items.map((item) => item.label), appMenuItems({ hosting: false }).map((item) => item.label));
-		assert.deepEqual(enabledLabels(items), ['Info', 'Change soundboard']);
+		assert.deepEqual(enabledLabels(items), ['Info', 'Licenses', 'Change soundboard']);
+	});
+});
+
+describe('selectorMenuItems', () => {
+	it('offers the language and the licenses', () => {
+		assert.deepEqual(enabledLabels(selectorMenuItems()), ['Language…', 'Licenses']);
 	});
 });
 
