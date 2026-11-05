@@ -1,11 +1,13 @@
 import { t } from './text.js';
 
 /** @typedef {import('../logic/playlist-player.js').PlaylistState} PlaylistState */
+/** @typedef {import('./icon-names.js').IconName} IconName */
 
 /**
  * @typedef {object} MenuItem
  * @property {string} id
  * @property {string} label
+ * @property {IconName} icon
  * @property {boolean} enabled
  * @property {number} group items in different groups are separated by a divider
  */
@@ -18,17 +20,19 @@ import { t } from './text.js';
  * @returns {MenuItem[]}
  */
 export function appMenuItems({ hosting, started = true }) {
+	/** @type {MenuItem} */
+	const connectPhone = { id: 'connectPhone', label: t('menu.connectPhone'), icon: 'mobile-screen', enabled: started, group: 1 };
 	return [
 		hosting
-			? { id: 'stopHosting', label: t('menu.stopHosting'), enabled: started, group: 1 }
-			: { id: 'becomeHost', label: t('menu.becomeHost'), enabled: started, group: 1 },
+			? { id: 'stopHosting', label: t('menu.stopHosting'), icon: 'link-slash', enabled: started, group: 1 }
+			: { id: 'becomeHost', label: t('menu.becomeHost'), icon: 'tower-broadcast', enabled: started, group: 1 },
 		// A phone can only connect to a host, so the item is not there at all otherwise.
-		...hosting ? [{ id: 'connectPhone', label: t('menu.connectPhone'), enabled: started, group: 1 }] : [],
-		{ id: 'options', label: t('menu.options'), enabled: started, group: 2 },
-		{ id: 'info', label: t('menu.info'), enabled: true, group: 2 },
-		{ id: 'licenses', label: t('menu.licenses'), enabled: true, group: 2 },
-		{ id: 'debug', label: t('menu.debug'), enabled: started, group: 2 },
-		{ id: 'changeSoundboard', label: t('menu.changeSoundboard'), enabled: true, group: 3 },
+		...hosting ? [connectPhone] : [],
+		{ id: 'options', label: t('menu.options'), icon: 'gear', enabled: started, group: 2 },
+		{ id: 'info', label: t('menu.info'), icon: 'circle-info', enabled: true, group: 2 },
+		{ id: 'licenses', label: t('menu.licenses'), icon: 'scale-balanced', enabled: true, group: 2 },
+		{ id: 'debug', label: t('menu.debug'), icon: 'bug', enabled: started, group: 2 },
+		{ id: 'changeSoundboard', label: t('menu.changeSoundboard'), icon: 'folder-open', enabled: true, group: 3 },
 	];
 }
 
@@ -38,8 +42,8 @@ export function appMenuItems({ hosting, started = true }) {
  */
 export function selectorMenuItems() {
 	return [
-		{ id: 'language', label: t('menu.language'), enabled: true, group: 0 },
-		{ id: 'licenses', label: t('menu.licenses'), enabled: true, group: 0 },
+		{ id: 'language', label: t('menu.language'), icon: 'language', enabled: true, group: 0 },
+		{ id: 'licenses', label: t('menu.licenses'), icon: 'scale-balanced', enabled: true, group: 0 },
 	];
 }
 
@@ -50,10 +54,10 @@ export function selectorMenuItems() {
  */
 export function soundMenuItems(isActive) {
 	return [
-		{ id: 'play', label: t('menu.play'), enabled: true, group: 0 },
-		{ id: 'stopAll', label: t('menu.stopAll'), enabled: isActive, group: 0 },
-		{ id: 'customize', label: t('menu.customize'), enabled: true, group: 1 },
-		{ id: 'metadata', label: t('menu.metadata'), enabled: true, group: 1 },
+		{ id: 'play', label: t('menu.play'), icon: 'play', enabled: true, group: 0 },
+		{ id: 'stopAll', label: t('menu.stopAll'), icon: 'stop', enabled: isActive, group: 0 },
+		{ id: 'customize', label: t('menu.customize'), icon: 'sliders', enabled: true, group: 1 },
+		{ id: 'metadata', label: t('menu.metadata'), icon: 'file-lines', enabled: true, group: 1 },
 	];
 }
 
@@ -67,14 +71,14 @@ export function soundMenuItems(isActive) {
 export function playlistMenuItems({ state, resume }) {
 	const active = state !== 'idle';
 	return [
-		{ id: 'play', label: t('menu.play'), enabled: !active, group: 0 },
-		{ id: 'playInstant', label: t('menu.playInstant'), enabled: !active, group: 0 },
-		{ id: 'next', label: t('menu.next'), enabled: active, group: 1 },
-		{ id: 'nextInstant', label: t('menu.nextInstant'), enabled: active, group: 1 },
-		{ id: 'stop', label: t('menu.stop'), enabled: active, group: 2 },
-		{ id: 'stopInstant', label: t('menu.stopInstant'), enabled: active, group: 2 },
-		{ id: 'reset', label: t('menu.reset'), enabled: !active && resume !== null, group: 2 },
-		{ id: 'customize', label: t('menu.customize'), enabled: true, group: 3 },
-		{ id: 'metadata', label: t('menu.metadata'), enabled: true, group: 3 },
+		{ id: 'play', label: t('menu.play'), icon: 'play', enabled: !active, group: 0 },
+		{ id: 'playInstant', label: t('menu.playInstant'), icon: 'bolt', enabled: !active, group: 0 },
+		{ id: 'next', label: t('menu.next'), icon: 'forward-step', enabled: active, group: 1 },
+		{ id: 'nextInstant', label: t('menu.nextInstant'), icon: 'bolt', enabled: active, group: 1 },
+		{ id: 'stop', label: t('menu.stop'), icon: 'stop', enabled: active, group: 2 },
+		{ id: 'stopInstant', label: t('menu.stopInstant'), icon: 'bolt', enabled: active, group: 2 },
+		{ id: 'reset', label: t('menu.reset'), icon: 'rotate-left', enabled: !active && resume !== null, group: 2 },
+		{ id: 'customize', label: t('menu.customize'), icon: 'sliders', enabled: true, group: 3 },
+		{ id: 'metadata', label: t('menu.metadata'), icon: 'file-lines', enabled: true, group: 3 },
 	];
 }

@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { appMenuItems, playlistMenuItems, selectorMenuItems, soundMenuItems } from '../../../public/app/ui/menus.js';
+import { ICON_NAMES } from '../../../public/app/ui/icon-names.js';
 
 /** @param {import('../../../public/app/ui/menus.js').MenuItem[]} items */
 const enabledLabels = (items) => items.filter((item) => item.enabled).map((item) => item.label);
@@ -64,5 +65,26 @@ describe('playlistMenuItems', () => {
 
 	it('groups the items so the menu can separate them', () => {
 		assert.deepEqual(playlistMenuItems(idle).map((item) => item.group), [0, 0, 1, 1, 2, 2, 2, 3, 3]);
+	});
+});
+
+describe('menu icons', () => {
+	it('gives the instant playlist items the bolt and the plain ones their own icon', () => {
+		assert.deepEqual(playlistMenuItems({ state: 'idle', resume: null }).map((item) => item.icon), [
+			'play', 'bolt', 'forward-step', 'bolt', 'stop', 'bolt', 'rotate-left', 'sliders', 'file-lines',
+		]);
+	});
+
+	it('gives every item of every menu an icon from ICON_NAMES', () => {
+		const menus = [
+			appMenuItems({ hosting: false }),
+			appMenuItems({ hosting: true }),
+			selectorMenuItems(),
+			soundMenuItems(true),
+			playlistMenuItems({ state: 'playing', resume: null }),
+		];
+		for (const item of menus.flat()) {
+			assert.ok(ICON_NAMES.includes(item.icon), `${item.id}: ${item.icon}`);
+		}
 	});
 });

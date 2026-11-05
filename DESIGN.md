@@ -1143,7 +1143,7 @@ With a non-zero `crossfade` rule, one track gives way to the next by fading out 
 
 ## 9. UI
 
-Dark theme, plain and functional. Every text comes from the page's language file (§9.21); the texts quoted in this section are the English ones. Icons appear only on controls (play, pause, stop, previous, next, volume, and the track list chevron) and as the saving spinner and checkmark (§9.7). They are Font Awesome Free icons, drawn by `icon()` in `ui/icons.js` (§9.6). Sound tiles have no icons, and playlist tiles only the turned-down volume bubble (§9.1).
+Dark theme, plain and functional. Every text comes from the page's language file (§9.21); the texts quoted in this section are the English ones. Icons appear only on controls (play, pause, stop, previous, next, volume, and the track list chevron), before every menu item's label (§9.3) and as the saving spinner and checkmark (§9.7). They are Font Awesome Free icons, drawn by `icon()` in `ui/icons.js` (§9.6). Sound tiles have no icons, and playlist tiles only the turned-down volume bubble (§9.1).
 
 ### 9.0 Splash screen
 
@@ -1217,45 +1217,46 @@ One shared `Overlay` shows the context menus and the track list popover; opening
 - A full-screen backdrop (`black/35`) sits above the page. Presses on it are swallowed. A `click` or right-click on the backdrop **closes the popup**, so nothing on the page reacts. **Esc** also closes it. Closing on `click` rather than `pointerdown` keeps the whole press on the backdrop, so the element underneath never receives a stray click.
 - A popup opens at the cursor (the track list at its chevron button). Where it would overflow the window, it flips to the other side of that point, and as a last resort it is clamped inside an 8 px margin. It is placed again whenever its size changes, because Tailwind may only style a newly used class after the popup has been measured.
 - Right-clicking a tile suppresses the browser's own context menu. Choosing a menu item closes the menu first, then runs the action. Disabled items are greyed out.
+- Every menu item (`MenuItem` in `ui/menus.js`, drawn by `openContextMenu` in `ui/context-menu.js`) shows its icon (the tables below) before the label, `size-4` in `text-muted`, greyed out with the label on a disabled item. The "(Instant)" items all show a bolt, so they stand apart from their plain twin. The track list popover and the Selector's Places menu are lists to pick from, not menus, and have no icons.
 - The ☰ app menu has **Become host** while the page is standalone and **Stop hosting** while it hosts. Become host calls `becomeHost`; on `'taken'` the replace dialog opens (§9.15). **Connect a phone** is there only while the page hosts, since a phone can only connect to a host; the menu is built each time it opens, so it follows the role.
 - The ☰ app menu ends with **Change soundboard**, in a group of its own. It calls `closeSoundboard` (§6.1), and on `app.closed` the page loads `/` (from the splash too, §9.0), which is now the Selector (§9.18); leaving the page stops its audio. Every other page of the soundboard follows through `startup.closed`. A failure is only logged to the console.
 
 **Sound menu**
 
-| Item | Behavior |
-|---|---|
-| Play | `playSound` |
-| Stop All | `stopSound`; enabled only while instances are playing |
-| Customize | opens the sound's Customize dialog (§9.7) |
-| Metadata | opens the metadata dialog for the sound (§9.13) |
+| Item | Icon | Behavior |
+|---|---|---|
+| Play | `play` | `playSound` |
+| Stop All | `stop` | `stopSound`; enabled only while instances are playing |
+| Customize | `sliders` | opens the sound's Customize dialog (§9.7) |
+| Metadata | `file-lines` | opens the metadata dialog for the sound (§9.13) |
 
 **Playlist menu**
 
-| Item | Behavior |
-|---|---|
-| Play | `playPlaylist('default')`; disabled while active |
-| Play (Instant) | `playPlaylist('instant')`; disabled while active |
-| Next | `nextTrack('default')`; enabled only while active |
-| Next (Instant) | `nextTrack('instant')`; enabled only while active |
-| Stop | `stopPlaylist('default')`; enabled only while active |
-| Stop (Instant) | `stopPlaylist('instant')`; enabled only while active |
-| Reset | `forgetPlaylist`; enabled only while the playlist is idle and remembers where it will resume (§8.1) |
-| Customize | opens the playlist's Customize dialog (§9.7) |
-| Metadata | opens the metadata dialog for every track of the playlist (§9.13) |
+| Item | Icon | Behavior |
+|---|---|---|
+| Play | `play` | `playPlaylist('default')`; disabled while active |
+| Play (Instant) | `bolt` | `playPlaylist('instant')`; disabled while active |
+| Next | `forward-step` | `nextTrack('default')`; enabled only while active |
+| Next (Instant) | `bolt` | `nextTrack('instant')`; enabled only while active |
+| Stop | `stop` | `stopPlaylist('default')`; enabled only while active |
+| Stop (Instant) | `bolt` | `stopPlaylist('instant')`; enabled only while active |
+| Reset | `rotate-left` | `forgetPlaylist`; enabled only while the playlist is idle and remembers where it will resume (§8.1) |
+| Customize | `sliders` | opens the playlist's Customize dialog (§9.7) |
+| Metadata | `file-lines` | opens the metadata dialog for every track of the playlist (§9.13) |
 
 Tracks are added from the Tracks tab of the playlist dialog (§9.9), so the menu doesn't offer it.
 
 **App menu**, opened by the ☰ button at the left of the header (§9.1), below it:
 
-| Item | Behavior |
-|---|---|
-| Become host / Stop hosting | `becomeHost` / `stopHosting` (§6.10) |
-| Connect a phone | opens the QR code dialog (§9.16); only while the page hosts |
-| Options | opens the Options dialog (§9.20) |
-| Info | opens the Info dialog (§9.17) |
-| Licenses | opens the Licenses dialog (§9.22) |
-| Debug | opens the Debug dialog (§9.8) |
-| Change soundboard | `closeSoundboard` (§6.1) |
+| Item | Icon | Behavior |
+|---|---|---|
+| Become host / Stop hosting | `tower-broadcast` / `link-slash` | `becomeHost` / `stopHosting` (§6.10) |
+| Connect a phone | `mobile-screen` | opens the QR code dialog (§9.16); only while the page hosts |
+| Options | `gear` | opens the Options dialog (§9.20) |
+| Info | `circle-info` | opens the Info dialog (§9.17) |
+| Licenses | `scale-balanced` | opens the Licenses dialog (§9.22) |
+| Debug | `bug` | opens the Debug dialog (§9.8) |
+| Change soundboard | `folder-open` | `closeSoundboard` (§6.1) |
 
 "Active" means `loading`, `playing` or `paused`. The plain items follow the playlist's fades and crossfade; with those off, each behaves like its "(Instant)" twin, except for cutting voices already fading out. Separators divide the groups.
 
@@ -1538,7 +1539,7 @@ Under yt-dlp's version, a small line (`data-update-state`) says what `yt-dlp -U`
   - after the folders, the audio files (`data-audio-file`), 🎵 and the file name in muted text, only to show what the folder holds: they can't be clicked and aren't highlighted. With neither, the list says "No folders or audio files inside."
 - **A folder that can't be shown**, typed in or reached with Up, shows its reason in the corner toast (§9.8) in red (`danger`) for a second; the path field goes back to the folder shown, even when the same path is refused twice.
 - **Header** (`ui/startup-parts.js`), styled like the Soundboard page's and staying at the top while the page scrolls: the ☰ button (`ui/app-menu-button.js`, the board's, §9.3), then "TTRPG Soundboard" with the app's version from `tools.app` beside it in smaller grey text, "v1.0.0" (`data-app-version`); on the right yt-dlp and ffmpeg (`data-tool`), each "checking…", its version, or "not installed, so downloads are off" in yellow. yt-dlp's adds ✓ when up to date (tooltip "Up to date"), or "updated", "update failed" or "could not check for updates", with the error as its tooltip.
-- **☰ menu** (`selectorMenuItems`, in the shared `Overlay`): **Language…** and **Licenses**. Licenses opens the Licenses dialog (§9.22) over `StartupFlow.fetchLicenses()`, which isn't an action: it neither waits for nor blocks one, and the dialog shows its failure itself.
+- **☰ menu** (`selectorMenuItems`, in the shared `Overlay`, with icons as in §9.3): **Language…** (`language`) and **Licenses** (`scale-balanced`). Licenses opens the Licenses dialog (§9.22) over `StartupFlow.fetchLicenses()`, which isn't an action: it neither waits for nor blocks one, and the dialog shows its failure itself.
 - **Language dialog** (`data-language-dialog`), from **Language…**, in a `Dialog` (§9.7) titled "Language": a card (§9.7) titled "Language" holding the **language menu** (`data-language`, a full-width `<select>`): "Automatic", then each language file's language by its own name ("English", "Polski"), showing the current setting. Choosing one saves it (`PUT /api/startup/language`) and reloads the page; when saving fails, a red line under the card says why (the page's error line too) and the menu goes back. This is the only place the language is chosen (§9.21).
 - Parts are drawn again only when what they show changed, so polling never resets a hover or a typed path. A folder shown while a path is being typed into the field (typed, not yet sent, and the field still focused) leaves the typed path alone.
 - **Extension point**: startup settings, such as LAN access, would go into a section of their own here.

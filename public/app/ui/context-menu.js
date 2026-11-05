@@ -1,4 +1,5 @@
 import { h } from './dom.js';
+import { icon } from './icons.js';
 
 /** @typedef {import('./menus.js').MenuItem} MenuItem */
 /** @typedef {import('./overlay.js').Overlay} Overlay */
@@ -20,12 +21,12 @@ export function openContextMenu(overlay, items, point, onSelect) {
 			'role': 'menuitem',
 			'disabled': !item.enabled,
 			'data-menu-item': item.id,
-			'class': 'block w-full px-3 py-1.5 text-left text-sm text-text outline-none enabled:cursor-pointer enabled:hover:bg-raised-hover enabled:focus-visible:bg-raised-hover disabled:text-muted/50',
+			'class': 'group flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm text-text outline-none enabled:cursor-pointer enabled:hover:bg-raised-hover enabled:focus-visible:bg-raised-hover disabled:text-muted/50',
 			'onClick': () => {
 				overlay.close();
 				onSelect(item.id);
 			},
-		}, item.label),
+		}, [icon(item.icon, 'size-4 text-muted group-disabled:text-muted/50'), item.label]),
 	]);
 	const panel = h('div', { role: 'menu', class: 'min-w-48 rounded-lg border border-line bg-panel py-1 shadow-xl shadow-black/50' }, rows);
 	overlay.open(panel, point);

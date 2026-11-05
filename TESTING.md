@@ -373,6 +373,7 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 **Interface**
 - [ ] Clicking outside a context menu doesn't trigger the tile underneath; Esc closes it.
 - [ ] Context menus and the track list open fully on screen, also near the window edges and the first time.
+- [ ] Every item of the tile menus and both ☰ menus shows a gray icon before its label, lined up in one column; on a disabled item the icon is greyed out with the label, and the "(Instant)" items show a bolt.
 - [ ] The footer shows "No playlist playing" when idle and keeps the same height once music starts; it wraps at 3 bars and scrolls after 6.
 - [ ] Give a sound, a playlist and a track long titles without spaces, and a sound a long file name without spaces. In a narrow and a wide window, tile titles break mid-word and end in an ellipsis after 3 lines; the player bar, the track list, the dialog title, the Tracks tab's rows and the `File: …` hint end in an ellipsis on one line, the hint with the full name as a tooltip.
 

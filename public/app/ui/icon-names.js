@@ -16,6 +16,18 @@ export const ICON_NAMES = /** @type {const} */ ([
 	'trash-can',
 	'triangle-exclamation',
 	'check',
+	'tower-broadcast',
+	'link-slash',
+	'mobile-screen',
+	'gear',
+	'circle-info',
+	'scale-balanced',
+	'folder-open',
+	'language',
+	'bolt',
+	'rotate-left',
+	'sliders',
+	'file-lines',
 ]);
 
 /** @typedef {typeof ICON_NAMES[number]} IconName */
