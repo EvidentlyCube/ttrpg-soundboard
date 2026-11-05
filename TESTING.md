@@ -151,6 +151,10 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] Ogg tiles play, or are disabled with an explanation where the browser can't play Ogg.
 - [ ] An `.opus` file (`ffmpeg -i x.ogg -c:a libopus test.opus`) shows its title and duration, plays and gets a waveform; in Safari too.
 
+**Icons**
+- [ ] Every icon shows, centered and in its button's color, changing color on hover where the button does: the player bar's previous, play/pause, next, stop and track chevron; the header's volume, ☰ and the debug view's bug; the problems and trash buttons; a playlist tile's turned-down volume bubble; the Tracks tab's play and stop and its chevrons; the Customize dialogs' Play and the spinning save status and checkmark; the Selector's Places chevron; the remote page's stop and next on a phone.
+- [ ] ☰ → Licenses lists Font Awesome Free with its version, and Show license unfolds its text.
+
 **Other web pages**
 - [ ] Open the board as `http://127.0.0.1:13872` and as `http://localhost:13872`: both load and work. Without `--lan`, opening it by the machine's LAN address or any other name shows an error page (`403`).
 - [ ] With the board running, serve another page from a different port (`python3 -m http.server 8000` in an empty folder) and open it. In its console, `fetch('http://127.0.0.1:13872/api/refresh', { method: 'POST', mode: 'no-cors', body: 'x' })`, the same for `/api/trash/delete`, and for `/api/startup/close` fail or answer `403` in the Network tab, and nothing changes in the board or the folder.

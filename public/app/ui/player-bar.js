@@ -68,7 +68,7 @@ export class PlayerBar extends Component {
 					onSelect: (index) => soundboard.jumpToTrack(id, index),
 				});
 			},
-		}, trackTitle, icon('chevronDown', 'size-4 shrink-0 text-muted'));
+		}, trackTitle, icon('chevron-down', 'size-4 shrink-0 text-muted'));
 
 		const playIcon = icon('play');
 		const pauseIcon = icon('pause');
@@ -164,9 +164,9 @@ export class PlayerBar extends Component {
 			h('div', { class: 'flex items-center justify-between gap-2' }, playlistTitle, levelHolder, time),
 			trackButton,
 			h('div', { class: 'flex items-center gap-1' },
-				this.#control('previous', [icon('previous')], () => soundboard.previousTrack(id)),
+				this.#control('previous', [icon('backward-step')], () => soundboard.previousTrack(id)),
 				playPause,
-				this.#control('next', [icon('next')], () => soundboard.nextTrack(id)),
+				this.#control('next', [icon('forward-step')], () => soundboard.nextTrack(id)),
 				this.#control('stop', [icon('stop')], () => soundboard.stopPlaylist(id)),
 				progress));
 
@@ -225,7 +225,7 @@ export class PlayerBar extends Component {
 
 	/**
 	 * @param {'previous' | 'pause' | 'next' | 'stop'} name
-	 * @param {SVGSVGElement[]} icons
+	 * @param {HTMLElement[]} icons
 	 * @param {() => void} onClick
 	 */
 	#control(name, icons, onClick) {

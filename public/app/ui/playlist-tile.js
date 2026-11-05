@@ -111,7 +111,7 @@ export class PlaylistTile extends Component {
 			'class': 'absolute right-3 bottom-2.5 grid size-5 place-items-center rounded-full bg-boost text-gray-700',
 			'data-level-icon': true,
 			'onDblclick': () => this.#soundboard.setPlaylistLevel(id, 1),
-		}, icon('volume', 'size-4'));
+		}, icon('volume-high', 'size-4'));
 		const showLevel = (/** @type {number} */ value) => {
 			levelIcon.hidden = value >= 1;
 			levelIcon.title = t('playlist.levelDown', { percent: Math.round(value * 100) });

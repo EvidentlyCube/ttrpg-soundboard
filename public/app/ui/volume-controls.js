@@ -43,6 +43,6 @@ export class VolumeControls extends Component {
 		});
 
 		this.own(this.#soundboard.on('volume.changed', ({ bus, value }) => controls.get(bus)?.update(value)));
-		return h('div', { class: 'flex items-center gap-5' }, icon('volume', 'size-5 text-muted'), groups);
+		return h('div', { class: 'flex items-center gap-5' }, icon('volume-high', 'size-5 text-muted'), groups);
 	}
 }

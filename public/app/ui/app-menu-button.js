@@ -23,6 +23,6 @@ export function appMenuButton(overlay, items, onSelect) {
 			const { left, bottom } = button.getBoundingClientRect();
 			openContextMenu(overlay, items(), { x: left, y: bottom + 4 }, onSelect);
 		},
-	}, icon('menu', 'size-5'));
+	}, icon('bars', 'size-5'));
 	return button;
 }

@@ -29,7 +29,7 @@ export class TrashButton extends Component {
 			'class': 'flex cursor-pointer items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5 text-sm whitespace-nowrap text-muted hover:bg-raised-hover hover:text-text',
 			'title': t('trash.buttonTooltip'),
 			'data-trash-button': true,
-		}, icon('trash', 'size-4'), label);
+		}, icon('trash-can', 'size-4'), label);
 		/** @param {import('../logic/ports.js').TrashSummary} summary */
 		const show = ({ size, count }) => {
 			button.hidden = count === 0;

@@ -121,7 +121,7 @@ export class TrackAccordion extends Component {
 			title,
 			cropped,
 			volume,
-			icon('chevronDown', 'size-4 shrink-0 text-muted transition-transform group-aria-expanded:rotate-180'));
+			icon('chevron-down', 'size-4 shrink-0 text-muted transition-transform group-aria-expanded:rotate-180'));
 
 			// The points are chosen over the whole file; a track whose length is unknown has no such control.
 			const durationMs = track.duration === null ? null : Math.round(track.duration * 1000);

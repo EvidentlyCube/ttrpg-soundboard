@@ -61,7 +61,7 @@ const placesButton = h('button', {
 	'aria-haspopup': 'menu',
 	'data-places-button': true,
 	'onClick': () => showPlaces(places.hidden !== false),
-}, t('selector.places'), icon('chevronDown', 'size-4'));
+}, t('selector.places'), icon('chevron-down', 'size-4'));
 const upButton = h('button', {
 	'type': 'button',
 	'class': `${BAR_BUTTON} border-r`,

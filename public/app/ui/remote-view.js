@@ -248,7 +248,7 @@ export class RemoteView extends Component {
 					h('div', { 'class': 'truncate text-xs text-muted', 'data-player-playlist': true }, player.title),
 					h('div', { 'class': 'truncate font-medium', 'data-player-track': true }, player.trackTitle ?? '…')),
 				control('stop', t('player.stop'), 'stop', () => remote.stopPlaylist(player.id)),
-				control('next', t('player.next'), 'next', () => remote.nextTrack(player.id)));
+				control('next', t('player.next'), 'forward-step', () => remote.nextTrack(player.id)));
 		}));
 	}
 }

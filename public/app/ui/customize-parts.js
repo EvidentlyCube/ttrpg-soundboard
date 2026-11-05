@@ -305,7 +305,7 @@ export function saveStatus() {
 			return;
 		}
 		element.replaceChildren(state === 'saving'
-			? icon('spinner', 'size-5 animate-spin text-muted')
+			? icon('circle-notch', 'size-5 animate-spin text-muted')
 			: icon('check', 'size-5 text-emerald-400'));
 		element.setAttribute('aria-label', state === 'saving' ? t('customize.saving') : t('customize.saved'));
 	};

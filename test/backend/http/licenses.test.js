@@ -43,11 +43,20 @@ describe('detectRuntime', () => {
 });
 
 describe('readLicenses', () => {
-	it('lists the app, the vendored Tailwind with the version in its file name, the runtime and the programs it runs', async () => {
+	it('lists the app, the vendored Tailwind and Font Awesome with their versions, the runtime and the programs it runs', async () => {
 		const root = await tree({
 			app: {
 				LICENSE: 'Unlicense text',
-				public: { vendor: { 'tailwindcss-browser-4.3.3.js': '', 'tailwindcss-browser.LICENSE': 'MIT text' } },
+				public: {
+					vendor: {
+						'tailwindcss-browser-4.3.3.js': '',
+						'tailwindcss-browser.LICENSE': 'MIT text',
+						'fontawesome': {
+							'LICENSE.txt': 'Font Awesome license text',
+							'svgs-full': { solid: { 'play.svg': '<svg><!--! Font Awesome Free 7.3.1 by @fontawesome --></svg>' } },
+						},
+					},
+				},
 			},
 			runtime: { node: '', LICENSE: 'Node license text' },
 		});
@@ -62,8 +71,10 @@ describe('readLicenses', () => {
 		assert.deepEqual(licenses.included.map(({ id, version, text }) => [id, version, text]), [
 			['app', '1.2.3', 'Unlicense text'],
 			['tailwind', '4.3.3', 'MIT text'],
+			['fontawesome', '7.3.1', 'Font Awesome license text'],
 			['node', '24.22.2', 'Node license text'],
 		]);
+		assert.equal(licenses.included[2].url, 'https://fontawesome.com/license/free');
 		assert.deepEqual(licenses.external.map(({ id }) => id), ['yt-dlp', 'ffmpeg']);
 	});
 
@@ -75,9 +86,10 @@ describe('readLicenses', () => {
 		assert.deepEqual(included.map(({ id, version, text }) => [id, version, text]), [
 			['app', '1.2.3', null],
 			['tailwind', null, null],
+			['fontawesome', null, null],
 			['node', '24.22.2', null],
 		]);
-		assert.equal(included[2].url, NODE.url);
+		assert.equal(included[3].url, NODE.url);
 	});
 
 	it('reads no license file for Bun or Deno', async () => {
@@ -86,7 +98,7 @@ describe('readLicenses', () => {
 
 		const { included } = await readLicenses({ appVersion: '1.2.3', publicDir: join(root, 'public'), runtime: bun, execPath: join(root, 'bin', 'bun') });
 
-		assert.deepEqual(included[2], { ...bun, text: null });
+		assert.deepEqual(included[3], { ...bun, text: null });
 	});
 
 	it('leaves out a runtime it can’t tell', async () => {
@@ -94,6 +106,6 @@ describe('readLicenses', () => {
 
 		const { included } = await readLicenses({ appVersion: '1.2.3', publicDir: join(root, 'public'), runtime: null });
 
-		assert.deepEqual(included.map(({ id }) => id), ['app', 'tailwind']);
+		assert.deepEqual(included.map(({ id }) => id), ['app', 'tailwind', 'fontawesome']);
 	});
 });

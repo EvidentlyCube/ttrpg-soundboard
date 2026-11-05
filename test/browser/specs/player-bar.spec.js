@@ -1,4 +1,4 @@
-import { test } from '../support/fixtures.js';
+import { expect, test } from '../support/fixtures.js';
 
 test.beforeEach(async ({ soundboard, playlists, audio }) => {
 	await test.step('Make the first track long, then start the playlist', async () => {
@@ -131,5 +131,26 @@ test('the tile menu stops and skips a playlist too', async ({ playlists, footer,
 	await test.step('The bar is gone and nothing plays', async () => {
 		await footer.expectEmpty();
 		await audio.expectNothingPlaying();
+	});
+});
+
+test('the controls draw their Font Awesome icons in the text color', async ({ page }) => {
+	const stopIcon = page.locator('[data-player-bar] [data-control=stop] span').first();
+
+	await test.step('The stop icon is a sized mask of the vendored file, filled with the button’s color', async () => {
+		await expect(stopIcon).toHaveCSS('mask-image', /\/vendor\/fontawesome\/svgs-full\/solid\/stop\.svg/);
+		const box = await stopIcon.boundingBox();
+		expect(box?.width).toBeGreaterThan(0);
+		const style = await stopIcon.evaluate((element) => {
+			const computed = element.ownerDocument.defaultView?.getComputedStyle(element);
+			return { fill: computed?.backgroundColor, color: computed?.color };
+		});
+		expect(style.fill).toBe(style.color);
+	});
+
+	await test.step('The server answers the icon file', async () => {
+		const response = await page.request.get(new URL('/vendor/fontawesome/svgs-full/solid/stop.svg', page.url()).href);
+		expect(response.ok()).toBe(true);
+		expect(await response.text()).toContain('Font Awesome Free');
 	});
 });

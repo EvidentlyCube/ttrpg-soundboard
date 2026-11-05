@@ -15,10 +15,12 @@ async function openLicenses(page) {
  */
 async function expectLicenses(page) {
 	const licenses = page.locator('[data-licenses]');
-	await expect(licenses.locator('[data-license-row]')).toHaveCount(3);
+	await expect(licenses.locator('[data-license-row]')).toHaveCount(4);
 	await expect(licenses.locator('[data-license-row=app]')).toContainText(/TTRPG Soundboard\s*\d+\.\d+\.\d+/);
 	await expect(licenses.locator('[data-license-row=app]')).toContainText('The Unlicense');
 	await expect(licenses.locator('[data-license-row=tailwind]')).toContainText(/Tailwind CSS\s*\d+\.\d+\.\d+/);
+	await expect(licenses.locator('[data-license-row=fontawesome]')).toContainText(/Font Awesome Free\s*\d+\.\d+\.\d+/);
+	await expect(licenses.locator('[data-license-row=fontawesome]')).toContainText('CC BY 4.0 (icons)');
 	const node = licenses.locator('[data-license-row=node]');
 	await expect(node).toContainText(process.versions.node);
 	await expect(node.locator('[data-license-toggle]')).toHaveCount(0);

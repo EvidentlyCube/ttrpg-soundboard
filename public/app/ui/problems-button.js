@@ -31,7 +31,7 @@ export class ProblemsButton extends Component {
 			'class': 'flex cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm font-semibold whitespace-nowrap hover:brightness-125 data-[severity=error]:border-danger data-[severity=error]:text-danger data-[severity=warning]:border-notice data-[severity=warning]:text-notice',
 			'title': t('problems.buttonTooltip'),
 			'data-problems-button': true,
-		}, icon('alert', 'size-4'), label);
+		}, icon('triangle-exclamation', 'size-4'), label);
 		const show = () => {
 			const problems = this.#soundboard.getProblems();
 			button.hidden = problems.length === 0;

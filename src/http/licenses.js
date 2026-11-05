@@ -30,6 +30,8 @@ import { dirname, join } from 'node:path';
  */
 
 const TAILWIND_FILE = /^tailwindcss-browser-(.+)\.js$/;
+/** Font Awesome's version is only in the comment every icon file starts with. */
+const FONT_AWESOME_VERSION = /Font Awesome Free (\S+)/;
 
 /** Programs the app runs when they are installed but never ships (DESIGN.md §5.4). */
 const EXTERNAL = Object.freeze([
@@ -73,6 +75,8 @@ export async function readLicenses({ appVersion, publicDir, runtime = detectRunt
 		(names) => names.map((name) => TAILWIND_FILE.exec(name)?.[1]).find((version) => version !== undefined) ?? null,
 		() => null,
 	);
+	const fontAwesome = join(vendor, 'fontawesome');
+	const fontAwesomeVersion = FONT_AWESOME_VERSION.exec(await readText(join(fontAwesome, 'svgs-full', 'solid', 'play.svg')) ?? '')?.[1] ?? null;
 	/** @type {IncludedPart[]} */
 	const included = [
 		{
@@ -90,6 +94,14 @@ export async function readLicenses({ appVersion, publicDir, runtime = detectRunt
 			license: 'MIT',
 			text: await readText(join(vendor, 'tailwindcss-browser.LICENSE')),
 			url: 'https://github.com/tailwindlabs/tailwindcss/blob/main/LICENSE',
+		},
+		{
+			id: 'fontawesome',
+			name: 'Font Awesome Free',
+			version: fontAwesomeVersion,
+			license: 'CC BY 4.0 (icons)',
+			text: await readText(join(fontAwesome, 'LICENSE.txt')),
+			url: 'https://fontawesome.com/license/free',
 		},
 	];
 	if (runtime) {
