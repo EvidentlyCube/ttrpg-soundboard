@@ -1,4 +1,5 @@
 import { extname } from 'node:path';
+import { backgroundOwnerOf } from './backgrounds.js';
 
 /** @typedef {'mp3' | 'ogg' | 'opus'} AudioFormat */
 /** @typedef {{ name: string, kind: 'file' | 'directory' | 'symlink' | 'other' }} DirectoryEntry */
@@ -9,6 +10,8 @@ import { extname } from 'node:path';
  * @property {string[]} directories
  * @property {Set<string>} audioWithOptions names of audio files that have a `<name>.json` next to them
  * @property {Set<string>} directoriesWithOptions names of directories that have a `<name>.json` next to them (root only)
+ * @property {Map<string, string[]>} directoryBackgrounds `<name>.bg.<image extension>` files by the directory they
+ * 	belong to (root only); usually one each
  * @property {string[]} orphanOptions `.json` files that belong to nothing
  * @property {string[]} unsupportedAudio
  * @property {string[]} symlinks
@@ -63,11 +66,23 @@ export function classifyDirectory(entries, { isRoot }) {
 		}
 	}
 
+	/** @type {Map<string, string[]>} */
+	const directoryBackgrounds = new Map();
+	if (isRoot) {
+		for (const name of files) {
+			const owner = backgroundOwnerOf(name);
+			if (owner !== null && directoryNames.has(owner)) {
+				directoryBackgrounds.set(owner, [...(directoryBackgrounds.get(owner) ?? []), name]);
+			}
+		}
+	}
+
 	return {
 		audioFiles,
 		directories,
 		audioWithOptions,
 		directoriesWithOptions,
+		directoryBackgrounds,
 		orphanOptions,
 		unsupportedAudio: files.filter((name) => UNSUPPORTED_AUDIO_EXTENSIONS.has(extname(name).toLowerCase())),
 		symlinks: namesOf('symlink'),

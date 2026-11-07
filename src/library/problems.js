@@ -1,3 +1,6 @@
+import { backgroundOwnerOf } from './backgrounds.js';
+import { isLargerThanFullHd } from './image-info.js';
+
 /** @typedef {import('./scanner.js').ScanWarning} ScanWarning */
 
 /**
@@ -11,13 +14,34 @@
  * @property {Record<string, string | number>} [params]
  */
 
-/** @type {Record<ScanWarning['kind'], string>} */
+/** @type {Record<ScanWarning['kind'], (params: Record<string, string | number>) => string>} */
 const WARNING_MESSAGES = {
-	'unsupported-audio': 'Not a supported audio format, so it is ignored.',
-	'orphan-options': 'This options file has no audio file next to it.',
-	'symlink': 'Symbolic links are ignored.',
-	'empty-playlist': 'This playlist has no audio files, so it is hidden.',
+	'unsupported-audio': () => 'Not a supported audio format, so it is ignored.',
+	'orphan-options': () => 'This options file has no audio file next to it.',
+	'symlink': () => 'Symbolic links are ignored.',
+	'empty-playlist': () => 'This playlist has no audio files, so it is hidden.',
+	'invalid-background': ({ reason }) => `This image can't be shown: ${reason}`,
+	'duplicate-background': () => 'This playlist has more than one image, so none is shown. Delete all but one.',
+	'large-background': ({ width, height }) => `This image is ${width} × ${height} px. 1920 × 1080 is plenty; larger images use more memory.`,
 };
+
+/**
+ * The warning a background larger than 1080p leaves (DESIGN.md §5.1), or null for one that isn't.
+ * @param {string} path root-relative
+ * @param {{ width: number, height: number }} size
+ * @returns {ScanWarning | null}
+ */
+export function largeBackgroundWarning(path, size) {
+	return isLargerThanFullHd(size) ? { kind: 'large-background', path, params: { width: size.width, height: size.height } } : null;
+}
+
+/**
+ * @param {ScanWarning} warning
+ * @returns {Problem}
+ */
+export function problemOfWarning({ kind, path, params = {} }) {
+	return problemOf(kind, 'warning', path, WARNING_MESSAGES[kind](params), params);
+}
 
 /**
  * What bootstrap found wrong with the directory (DESIGN.md §3.1): the scan's warnings, and the files whose duration
@@ -28,7 +52,7 @@ const WARNING_MESSAGES = {
  */
 export function startupProblems(warnings, library) {
 	/** @type {Problem[]} */
-	const problems = warnings.map(({ kind, path }) => problemOf(kind, 'warning', path, WARNING_MESSAGES[kind]));
+	const problems = warnings.map(problemOfWarning);
 	const files = [...library.sounds, ...library.playlists.flatMap((playlist) => playlist.tracks)];
 	for (const file of files) {
 		if (file.duration === null) {
@@ -43,10 +67,11 @@ export function startupProblems(warnings, library) {
  * @param {Problem['severity']} severity
  * @param {string} path
  * @param {string} message
+ * @param {Record<string, string | number>} [params]
  * @returns {Problem}
  */
-function problemOf(kind, severity, path, message) {
-	return { id: `${kind}:${path}`, kind, severity, path, message, code: `problem.${kind}`, params: {} };
+function problemOf(kind, severity, path, message, params = {}) {
+	return { id: `${kind}:${path}`, kind, severity, path, message, code: `problem.${kind}`, params };
 }
 
 /**
@@ -88,6 +113,15 @@ export class Problems {
 	}
 
 	/**
+	 * Adds a problem about the library found while the app runs, such as a large image just set; the next refresh
+	 * finds it again if it still applies.
+	 * @param {Problem} problem
+	 */
+	add(problem) {
+		this.#set([...this.#list.filter((known) => known.id !== problem.id), problem]);
+	}
+
+	/**
 	 * @param {string} id
 	 * @returns {boolean} whether there was such a problem
 	 */
@@ -114,6 +148,14 @@ export class Problems {
 			this.#lasting.includes(problem)
 			|| (problem.path !== path && !problem.path.startsWith(`${path}/`))
 		)));
+	}
+
+	/**
+	 * Forgets the problems of an item's images, which sit beside it rather than inside it (DESIGN.md §2.1).
+	 * @param {string} ownerPath root-relative path of the playlist
+	 */
+	removeBackgroundsOf(ownerPath) {
+		this.#set(this.#list.filter((problem) => this.#lasting.includes(problem) || backgroundOwnerOf(problem.path) !== ownerPath));
 	}
 
 	/**

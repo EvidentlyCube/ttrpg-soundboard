@@ -13,15 +13,16 @@ import { describeError, t } from './text.js';
 
 /** Card colors, written out in full so Tailwind generates them (DESIGN.md §9.6). */
 const CARD_ACCENTS = {
-	music: 'group-hover:bg-music group-focus-within:bg-music',
-	sfx: 'group-hover:bg-sfx group-focus-within:bg-sfx',
-	neutral: 'group-hover:bg-muted group-focus-within:bg-muted',
+	music: 'group-hover:group-not-data-disabled:bg-music group-focus-within:bg-music',
+	sfx: 'group-hover:group-not-data-disabled:bg-sfx group-focus-within:bg-sfx',
+	neutral: 'group-hover:group-not-data-disabled:bg-muted group-focus-within:bg-muted',
 };
 
 /**
  * A raised section with its title as a pill on the top border. It is dimmed, and the pill drawn in the border's color,
  * until the section is pointed at or something in it has focus; then it lights up and the pill takes the accent color,
- * so it is clear which part of the dialog is being worked with.
+ * so it is clear which part of the dialog is being worked with. A section marked `data-disabled` does not light up on
+ * hover, since nothing in it can be used.
  * @param {string} title
  * @param {keyof typeof CARD_ACCENTS} accent
  * @param {...Child} children
@@ -29,12 +30,12 @@ const CARD_ACCENTS = {
 export function card(title, accent, ...children) {
 	return h('section', {
 		class: 'group relative rounded-xl border border-line-dim bg-raised-dim px-4 pt-6 pb-4 shadow-md shadow-black/30 transition-colors '
-			+ 'hover:border-line hover:bg-raised focus-within:border-line focus-within:bg-raised',
+			+ 'hover:not-data-disabled:border-line hover:not-data-disabled:bg-raised focus-within:border-line focus-within:bg-raised',
 	},
 	// The pill stays on one line within the card, so a long title, such as a track's, ends in "…" with a tooltip.
 	h('h3', {
 		class: 'absolute -top-3 left-4 max-w-[calc(100%-2rem)] truncate rounded-full bg-line-dim px-3 py-0.5 text-xs font-semibold uppercase tracking-widest text-muted transition-colors '
-			+ `group-hover:text-surface group-focus-within:text-surface ${CARD_ACCENTS[accent]}`,
+			+ `group-hover:group-not-data-disabled:text-surface group-focus-within:text-surface ${CARD_ACCENTS[accent]}`,
 		title,
 	}, title),
 	...children);

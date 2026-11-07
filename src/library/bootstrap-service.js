@@ -1,4 +1,8 @@
+import { relative } from 'node:path';
 import { readSourceLink, readTitle } from '../metadata/index.js';
+import { readBackground } from './backgrounds.js';
+import { InvalidImageError } from './image-info.js';
+import { largeBackgroundWarning } from './problems.js';
 import { ValidationError } from './errors.js';
 import { isMeasured, measureIfNeeded } from './durations.js';
 import { buildLibrary } from './library.js';
@@ -205,10 +209,11 @@ export class BootstrapService {
 			await writeJsonAtomic(scan.settingsPath, INITIAL_SETTINGS_FILE);
 		}
 
-		const library = buildLibrary(scan, optionsByPath);
+		const { backgrounds, warnings: backgroundWarnings } = await readBackgrounds(scan.root, playlists);
+		const library = buildLibrary(scan, optionsByPath, backgrounds);
 		this.#reporter.libraryLoaded(library);
 		const settings = await SettingsStore.load(scan.settingsPath, { updateFile: this.#updateSettingsFile });
-		return { status: 'ready', library, settings, scan, problems: startupProblems(scan.warnings, library) };
+		return { status: 'ready', library, settings, scan, problems: startupProblems([...scan.warnings, ...backgroundWarnings], library) };
 	}
 
 	/**
@@ -296,6 +301,44 @@ async function loadOptions(scan) {
 		}
 	}
 	return { optionsByPath, errors };
+}
+
+/**
+ * Checks each playlist's image as an upload would be (DESIGN.md §2.1). One that fails, or two for one playlist, is
+ * only a warning: the app didn't make these files, so it never deletes them.
+ * @param {string} root
+ * @param {ScannedPlaylist[]} playlists
+ */
+async function readBackgrounds(root, playlists) {
+	/** @type {Map<string, import('./backgrounds.js').Background>} */
+	const backgrounds = new Map();
+	/** @type {ScanWarning[]} */
+	const warnings = [];
+	for (const playlist of playlists) {
+		const paths = playlist.backgroundPaths;
+		if (paths.length > 1) {
+			warnings.push(...paths.map((path) => ({ kind: /** @type {const} */ ('duplicate-background'), path: relative(root, path) })));
+			continue;
+		}
+		if (paths.length === 0) {
+			continue;
+		}
+		const path = relative(root, paths[0]);
+		try {
+			const background = await readBackground(paths[0]);
+			backgrounds.set(playlist.id, background);
+			const warning = largeBackgroundWarning(path, background);
+			if (warning) {
+				warnings.push(warning);
+			}
+		} catch (error) {
+			if (!(error instanceof InvalidImageError)) {
+				throw error;
+			}
+			warnings.push({ kind: 'invalid-background', path, params: { reason: error.message } });
+		}
+	}
+	return { backgrounds, warnings };
 }
 
 /**

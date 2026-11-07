@@ -1,14 +1,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { RemoteController } from '../../public/app/logic/remote-controller.js';
-import { FakeBackendApi } from '../helpers/fake-backend-api.js';
+import { FakeBackendApi, NO_BACKGROUND } from '../helpers/fake-backend-api.js';
 
 /** @typedef {import('../../public/app/logic/ports.js').ServerMessage} ServerMessage */
 
 /** @type {import('../../public/app/logic/remote-state.js').RemoteState} */
 const STATE = {
 	panic: 'fade',
-	playlists: [{ id: 'Combat', title: 'Combat', playable: true }],
+	playlists: [{ id: 'Combat', title: 'Combat', playable: true, ...NO_BACKGROUND }],
 	sounds: [{ id: 'Boom.mp3', title: 'Boom', playable: true }],
 	players: [{ id: 'Combat', title: 'Combat', state: 'playing', trackTitle: 'Battle' }],
 	activeSounds: [],

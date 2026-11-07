@@ -1,3 +1,4 @@
+import { BACKGROUND_STYLE_KEYS, backgroundStyleOf } from './background-style.js';
 import { BufferCache } from './buffer-cache.js';
 import { validateCommand } from './commands.js';
 import { codedTextOf, InvalidCommandError, NotReadyError, ServerError } from './errors.js';
@@ -730,7 +731,14 @@ export class Soundboard {
 			}
 			case 'playlist.customize': {
 				const { title, gain, crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode } = command;
-				const playlist = loaded.library.updatePlaylist(player.id, { title, gain, crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode });
+				/** @type {Partial<import('./background-style.js').BackgroundStyle>} */
+				const style = {};
+				for (const key of BACKGROUND_STYLE_KEYS) {
+					style[key] = command[key];
+				}
+				const playlist = loaded.library.updatePlaylist(player.id, {
+					title, gain, crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode, ...style,
+				});
 				if (gain !== undefined) {
 					player.setGain(playlist.gain);
 				}
@@ -747,6 +755,7 @@ export class Soundboard {
 					playlistLooping: playlist.playlistLooping,
 					trackLooping: playlist.trackLooping,
 					stopMode: playlist.stopMode,
+					...backgroundStyleOf(playlist),
 				});
 				this.#events.emit({ type: 'playlist.changed', playlist });
 				return;
@@ -945,8 +954,54 @@ export class Soundboard {
 	 * @param {ItemOptions} changes `crossfade`, `fadeIn` and `fadeOut` in seconds, from 0 to MAX_CROSSFADE; `order` one of
 	 * 	PLAYBACK_ORDERS; `stopMode` one of STOP_MODES
 	 */
-	customizePlaylist(playlistId, { title, gain, crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode }) {
-		this.dispatch({ type: 'playlist.customize', playlistId, title, gain, crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode });
+	customizePlaylist(playlistId, { title, gain, crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode, ...rest }) {
+		const style = Object.fromEntries(BACKGROUND_STYLE_KEYS.map((key) => [key, rest[key]]));
+		this.dispatch({ type: 'playlist.customize', playlistId, title, gain, crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode, ...style });
+	}
+
+	/**
+	 * Uploads an image as the playlist's background (DESIGN.md §2.1), replacing the one it had. The server checks it;
+	 * once stored it is announced as `playlist.changed`.
+	 * @param {string} playlistId
+	 * @param {ArrayBuffer} bytes the file's content
+	 * @param {string} type the file's type, which the browser took from its extension
+	 * @returns {Promise<void>} rejects with a message for the user
+	 */
+	uploadPlaylistBackground(playlistId, bytes, type) {
+		return this.#changeBackground(playlistId, () => this.#api.uploadPlaylistBackground(playlistId, bytes, type));
+	}
+
+	/**
+	 * Like `uploadPlaylistBackground`, with an image the server downloads from a link.
+	 * @param {string} playlistId
+	 * @param {string} url
+	 * @returns {Promise<void>} rejects with a message for the user
+	 */
+	downloadPlaylistBackground(playlistId, url) {
+		return this.#changeBackground(playlistId, () => this.#api.downloadPlaylistBackground(playlistId, url));
+	}
+
+	/**
+	 * Deletes the playlist's background for good.
+	 * @param {string} playlistId
+	 * @returns {Promise<void>} rejects with a message for the user
+	 */
+	removePlaylistBackground(playlistId) {
+		return this.#changeBackground(playlistId, () => this.#api.removePlaylistBackground(playlistId));
+	}
+
+	/**
+	 * @param {string} playlistId
+	 * @param {() => Promise<import('./ports.js').PlaylistJson>} request
+	 */
+	async #changeBackground(playlistId, request) {
+		const { background } = await request();
+		const loaded = this.#loaded;
+		// The playlist may have been deleted meanwhile.
+		if (loaded?.library.hasPlaylist(playlistId)) {
+			const playlist = loaded.library.setBackground(playlistId, background);
+			this.#events.emit({ type: 'playlist.changed', playlist });
+		}
 	}
 
 	/**

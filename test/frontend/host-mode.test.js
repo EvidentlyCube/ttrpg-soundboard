@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Soundboard } from '../../public/app/logic/soundboard.js';
 import { FakeAudioEngine } from '../helpers/fake-audio-engine.js';
-import { FakeBackendApi } from '../helpers/fake-backend-api.js';
+import { FakeBackendApi, NO_BACKGROUND } from '../helpers/fake-backend-api.js';
 import { FakeClock } from '../helpers/fake-clock.js';
 import { FakeWaveformDecoder } from '../helpers/fake-waveform-decoder.js';
 
@@ -251,8 +251,8 @@ describe('telling the remotes', () => {
 		const { pageId, state } = api.remoteStates[0];
 		assert.equal(pageId, 'page-1');
 		assert.deepEqual(state.playlists, [
-			{ id: 'Combat', title: 'Combat', playable: true },
-			{ id: 'Tavern', title: 'Tavern', playable: true },
+			{ id: 'Combat', title: 'Combat', playable: true, ...NO_BACKGROUND },
+			{ id: 'Tavern', title: 'Tavern', playable: true, ...NO_BACKGROUND },
 		]);
 		assert.deepEqual(state.sounds, [{ id: 'Boom.mp3', title: 'Boom', playable: true }, { id: 'Rain.ogg', title: 'Rain', playable: true }]);
 		assert.deepEqual(state.players, []);
@@ -307,6 +307,17 @@ describe('telling the remotes', () => {
 		await advance(60_000);
 		await advance(0);
 		assert.deepEqual(api.remoteStates.at(-1)?.state.activeSounds, []);
+	});
+
+	it("sends a playlist's image version and settings, and again when they change", async () => {
+		const { soundboard, api, advance } = await hosting();
+		api.backgroundResult = { url: '/api/playlists/Combat/background?v=a-b', version: 'a-b', width: 10, height: 10 };
+		await soundboard.uploadPlaylistBackground('Combat', new ArrayBuffer(4), 'image/png');
+		await advance(0);
+		assert.deepEqual(api.remoteStates.at(-1)?.state.playlists[0].background, { version: 'a-b' });
+		soundboard.customizePlaylist('Combat', { imageBlur: 7 });
+		await advance(0);
+		assert.equal(api.remoteStates.at(-1)?.state.playlists[0].imageBlur, 7);
 	});
 
 	it('follows Panic Stop and renamed titles', async () => {

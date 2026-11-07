@@ -3,6 +3,7 @@ import { h, on } from './dom.js';
 import { icon } from './icons.js';
 import { PanicButton } from './panic-button.js';
 import { t } from './text.js';
+import { TileBackground, showTitleShadow } from './tile-background.js';
 
 /** @typedef {import('../logic/remote-controller.js').RemoteController} RemoteController */
 /** @typedef {import('../logic/remote-state.js').RemoteState} RemoteState */
@@ -10,6 +11,12 @@ import { t } from './text.js';
 const PLAYER_BUTTON = 'grid size-8 shrink-0 cursor-pointer place-items-center rounded-md border border-line bg-raised-hover text-text enabled:active:bg-line disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-music';
 
 const TILE = 'flex aspect-[4/3] w-full flex-col items-start justify-start overflow-hidden rounded-md border border-l-4 border-line bg-raised p-2 text-left leading-tight text-text transition-colors enabled:cursor-pointer enabled:active:bg-raised-hover disabled:cursor-not-allowed disabled:opacity-40';
+
+/** A playlist's button keeps its colors on a layer of its own, which can sit over its image (DESIGN.md §9.15). */
+const REMOTE_PLAYLIST_TILE = 'group relative isolate flex aspect-[4/3] w-full flex-col items-start justify-start overflow-hidden rounded-md border border-l-4 '
+	+ 'border-line border-l-music p-2 text-left leading-tight text-text enabled:cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 '
+	+ 'data-[active=true]:border-music';
+const REMOTE_PLAYLIST_COLOR = 'bg-raised transition-colors group-enabled:group-active:bg-raised-hover group-data-[active=true]:bg-raised-music';
 
 const MIN_COLUMNS = 1;
 const MAX_COLUMNS = 8;
@@ -182,21 +189,28 @@ export class RemoteView extends Component {
 	 */
 	#showState(state, { playlistGrid, soundGrid, players }) {
 		const remote = this.#remote;
-		// The buttons are built again only when titles or the lists change, so a press is never lost to an update.
+		// The buttons are built again only when titles, images or the lists change, so a press is never lost to an update.
 		const signature = JSON.stringify([state.playlists, state.sounds]);
 		if (signature !== this.#signature) {
 			this.#signature = signature;
 			this.#playlistButtons.clear();
 			this.#soundButtons.clear();
 			playlistGrid.replaceChildren(...state.playlists.map((playlist) => {
+				// The image comes from the remote's own route, since a phone may reach no other (DESIGN.md §9.15).
+				const url = playlist.background && `/api/remote/backgrounds/${encodeURIComponent(playlist.id)}?v=${encodeURIComponent(playlist.background.version)}`;
+				const background = new TileBackground(REMOTE_PLAYLIST_COLOR);
+				const title = h('span', { class: 'block' }, h('span', { class: 'line-clamp-3 font-medium wrap-anywhere group-data-[image=true]:text-white' }, playlist.title));
 				const button = h('button', {
 					'type': 'button',
-					'class': `${TILE} border-l-music data-[active=true]:border-music data-[active=true]:bg-music/20`,
+					'class': REMOTE_PLAYLIST_TILE,
 					'data-remote-action': 'playlist',
 					'data-playlist-id': playlist.id,
 					'data-active': 'false',
+					'data-image': String(url !== null),
 					'onClick': () => remote.togglePlaylist(playlist.id),
-				}, h('span', { class: 'line-clamp-3 font-medium wrap-anywhere' }, playlist.title));
+				}, ...background.layers, title);
+				background.show(url, playlist);
+				showTitleShadow(title, url === null ? null : playlist);
 				if (!playlist.playable) {
 					button.setAttribute('data-unplayable', '');
 				}

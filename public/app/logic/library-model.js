@@ -1,3 +1,4 @@
+import { BACKGROUND_STYLE_KEYS, BACKGROUND_STYLE_LIMITS } from './background-style.js';
 import { checkClip, roundToMilliseconds } from './clip.js';
 import { InvalidCommandError } from './errors.js';
 import { PLAYBACK_ORDERS } from './order-strategies.js';
@@ -203,6 +204,20 @@ export class LibraryModel {
 	}
 
 	/**
+	 * Takes a playlist's new image from the server into a copy of the playlist here. Its settings stay as they are
+	 * here, so a change not saved yet isn't undone.
+	 * @param {string} id
+	 * @param {import('./ports.js').BackgroundJson | null} background
+	 * @returns {PlaylistJson}
+	 */
+	setBackground(id, background) {
+		const playlist = { ...this.playlist(id), background };
+		this.#playlists.set(id, playlist);
+		this.#json = { ...this.#json, playlists: this.#json.playlists.map((entry) => (entry.id === id ? playlist : entry)) };
+		return playlist;
+	}
+
+	/**
 	 * Like `updateSound`, for a playlist; its tracks are unchanged.
 	 * @param {string} id
 	 * @param {ItemOptions} changes
@@ -228,6 +243,15 @@ export class LibraryModel {
 				throw new InvalidCommandError(`The stop mode must be one of ${STOP_MODES.join(', ')}, got ${changes.stopMode}`);
 			}
 			playlist.stopMode = changes.stopMode;
+		}
+		for (const key of BACKGROUND_STYLE_KEYS) {
+			const value = changes[key];
+			if (value !== undefined) {
+				if (!(value >= 0 && value <= BACKGROUND_STYLE_LIMITS[key])) {
+					throw new InvalidCommandError(`${key} must be a number from 0 to ${BACKGROUND_STYLE_LIMITS[key]}, got ${value}`);
+				}
+				playlist[key] = value;
+			}
 		}
 		this.#playlists.set(id, playlist);
 		this.#json = {

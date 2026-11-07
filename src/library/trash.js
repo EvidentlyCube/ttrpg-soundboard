@@ -1,5 +1,6 @@
 import { lstat, readdir, readFile, rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
+import { findBackgroundFiles } from './backgrounds.js';
 import { audioFormatOf } from './classify.js';
 import { TRASH_DIRECTORY } from './file-moves.js';
 import { isPlainObject } from './validate.js';
@@ -81,10 +82,14 @@ export async function readTrash(root) {
 			}
 			const optionsPath = join(trash, `${entry.name}.json`);
 			const options = await readOptions(optionsPath);
+			let imageSize = 0;
+			for (const image of await findBackgroundFiles(trash, entry.name)) {
+				imageSize += (await lstat(image)).size;
+			}
 			playlists.push({
 				id: entry.name,
 				title: titleOf(options, entry.name),
-				size: folderSize + (options === null ? 0 : options.size),
+				size: folderSize + (options === null ? 0 : options.size) + imageSize,
 				tracks: sortBy(tracks, (track) => track.id),
 				absolutePath: path,
 				optionsPath,
@@ -141,12 +146,15 @@ export async function purgeAudioFile(path) {
 }
 
 /**
- * Deletes a trashed playlist for good: its folder, with everything in it, and its options file.
+ * Deletes a trashed playlist for good: its folder, with everything in it, its options file and its image.
  * @param {Pick<TrashedPlaylist, 'absolutePath' | 'optionsPath'>} playlist
  */
 export async function purgePlaylistFolder({ absolutePath, optionsPath }) {
 	await rm(absolutePath, { recursive: true, force: true });
 	await rm(optionsPath, { force: true });
+	for (const path of await findBackgroundFiles(dirname(absolutePath), basename(absolutePath))) {
+		await rm(path, { force: true });
+	}
 }
 
 /**

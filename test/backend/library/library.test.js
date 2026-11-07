@@ -33,6 +33,7 @@ function playlist(id, tracks, hasOptions = false) {
 		absolutePath: `/music/${id}`,
 		optionsPath: `/music/${id}.json`,
 		hasOptions,
+		backgroundPaths: [],
 		tracks,
 		subdirectories: [],
 	};

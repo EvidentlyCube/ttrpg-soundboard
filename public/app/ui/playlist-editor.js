@@ -1,9 +1,11 @@
 import { PLAYBACK_ORDERS } from '../logic/order-strategies.js';
 import { MAX_CROSSFADE, STOP_MODES } from '../logic/playback-rules.js';
+import { BackgroundEditor } from './background-editor.js';
 import { Component } from './component.js';
 import { card, checkbox, labeledRow, moveOrDeleteCard, playFooter, playToggle, radioGroup, saveStatus, tabs, titleField } from './customize-parts.js';
 import { h } from './dom.js';
 import { GainControl } from './gain-control.js';
+import { PlaylistTile } from './playlist-tile.js';
 import { SecondsControl } from './seconds-control.js';
 import { crossfadeLimits, formatSeconds, SECONDS_LIMITS } from './seconds-scale.js';
 import { t } from './text.js';
@@ -250,10 +252,36 @@ export class PlaylistEditor extends Component {
 			card(t('customize.whenStopped'), 'music', stopMode.element),
 			card(t('customize.fades'), 'music', h('div', { class: 'space-y-3' }, timings.fadeIn.element, timings.crossfade.element, timings.fadeOut.element)),
 			removal.element);
+		const preview = new PlaylistTile({ soundboard, overlay: null, playlist: this.#playlist, playable: true, preview: true });
+		const previewSlot = h('div');
+		preview.mount(previewSlot);
+		this.own(() => preview.destroy());
+		const image = new BackgroundEditor({
+			item: this.#playlist,
+			preview: previewSlot,
+			accent: 'music',
+			onStyle: (changes) => {
+				status.show('saving');
+				soundboard.customizePlaylist(id, changes);
+			},
+			onUpload: async (file) => soundboard.uploadPlaylistBackground(id, await file.arrayBuffer(), file.type),
+			onDownload: (url) => soundboard.downloadPlaylistBackground(id, url),
+			onRemove: () => soundboard.removePlaylistBackground(id),
+		});
+		const imagePanel = h('div');
+		image.mount(imagePanel);
+		this.own(() => image.destroy());
+		this.own(soundboard.on('playlist.changed', (event) => {
+			if (event.playlist.id === id) {
+				image.update(event.playlist);
+			}
+		}));
+
 		const tracksLabel = (/** @type {number} */ count) => t('customize.tracksTab', { count });
 		const { bar, panels } = tabs([
 			{ id: 'playlist', label: t('customize.playlistTab'), panel: settingsPanel },
 			{ id: 'tracks', label: tracksLabel(this.#playlist.tracks.length), panel: tracksPanel },
+			{ id: 'image', label: t('customize.imageTab'), panel: imagePanel },
 		], this.#initialTab);
 		// Tracks moved or deleted from the open dialog leave it.
 		this.own(soundboard.on('playlist.changed', (event) => {

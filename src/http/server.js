@@ -146,6 +146,7 @@ export async function createBoard({ library, settings, problems = [], port, publ
 		problems: new Problems(problems),
 		info: info ?? { app: await appVersion(), checking: false, tools: { ytDlp: null, ffmpeg: null }, update: null },
 		streams: new Set(),
+		backgroundDownloads: new Set(),
 		refreshing: null,
 		refresh: refresh && (async () => {
 			const outcome = await refresh();

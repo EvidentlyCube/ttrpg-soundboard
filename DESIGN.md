@@ -64,6 +64,7 @@ node index.js [<audio-directory>…] [--port <number>] [--lan [<address>]] [--UN
 ├── Door creak.ogg
 ├── Door creak.ogg.json
 ├── Combat.json                 ← options for the playlist "Combat/"
+├── Combat.bg.png               ← the playlist's image (§2.1)
 ├── Combat/                     ← playlist
 │   ├── 01 Battle.mp3
 │   ├── 01 Battle.mp3.json
@@ -84,6 +85,7 @@ The scanner applies these rules in order:
    - A file with a supported audio extension is a **sound effect**.
    - `<name>.<ext>.json`, where `<name>.<ext>` is an audio file in the root, is that **sound's options file**. The name must match exactly, including case.
    - `<dir>.json`, where `<dir>/` is a directory in the root, is that **playlist's options file**.
+   - `<dir>.bg.<ext>`, where `<dir>/` is a directory in the root and `<ext>` one of `jpg`, `jpeg`, `png`, `gif`, `webp` and `avif` in any case, is that **playlist's image**, shown on its tile (§9.1). Bootstrap checks it as an upload is checked (§5.1): one that fails is a warning (`invalid-background`) and isn't shown, and more than one for the same playlist is a warning for each (`duplicate-background`) and none is shown. One larger than 1080p is shown, with a `large-background` warning. The app never deletes a file it finds this way. A `.bg.*` file whose directory doesn't exist is ignored silently, as other files are.
    - Any other `.json` file is an **orphan options file**: warning, then ignored.
 4. Inside a playlist directory, at any depth:
    - A supported audio file is a **track**. Its ID is its path relative to the root, using `/`.
@@ -157,6 +159,11 @@ Playlist options (`Combat.json`)
 	"playlistLooping": true,
 	"trackLooping": false,
 	"stopMode": "pause",
+	"imageColorOpacity": 0.6,
+	"imageBlur": 4,
+	"titleShadowOpacity": 0.8,
+	"titleShadowBlur": 4,
+	"titleShadowOffset": 1,
 	"includedSubdirectories": ["Boss", "Boss/Phase 2"]
 }
 ```
@@ -166,10 +173,11 @@ Playlist options (`Combat.json`)
 - `playlistLooping` makes the playlist start over after its last track (§8.1); `true` by default. When `false` it stops there instead, for one-shot sequences.
 - `trackLooping` makes the current track repeat until the user moves on (§8.1); `false` by default.
 - `stopMode` is what stopping the playlist remembers (§8.1): `"pause"` (the track and its position), `"resetTrack"` (the track, to start over) or `"resetPlaylist"` (nothing, the default).
+- The five image settings say how the tile's color and title sit over its image (§9.1): `imageColorOpacity`, how opaque the tile's color is over it (`0`–`1`, default `0.6`); `imageBlur`, how much the image is blurred behind the color (px, `0`–`20`, default `4`); and the title's shadow, `titleShadowOpacity` (`0`–`1`, default `0.8`, `0` turns it off), `titleShadowBlur` (px, `0`–`10`, default `4`) and `titleShadowOffset` (px, `0`–`5`, default `1`, the same for X and Y). Each is optional and written rounded to 2 decimals. They are kept, but unused, while the playlist has no image. The image itself isn't named here: the file system says whether there is one.
 - `includedSubdirectories` lists paths relative to the playlist directory, using `/`. Every depth is listed explicitly.
 - Listed directories that no longer exist are ignored. They are not removed.
 
-**Validation (fatal).** Any options file or `.soundboard` that fails `JSON.parse`, is not an object, or has the wrong type for a known key (`title` must be a non-empty string, `gain` must be a number from `0` to `4`, `crossfade`, `fadeIn` and `fadeOut` numbers from `0` to `30`, `order` one of `"ordered"`, `"random"` and `"shuffle"`, `playlistLooping` and `trackLooping` `true` or `false`, `stopMode` one of `"pause"`, `"resetTrack"` and `"resetPlaylist"`, `startAt` a non-negative number, `endAt` a non-negative number or `null` and, when both points are numbers, at least 10 ms (`MIN_CLIP_MS`) after `startAt`, `duration` a non-negative number or `null` and present together with a well-formed `measuredFrom`, `includedSubdirectories` must be an array of strings, `source` an object whose `origin` is one of the five above, whose `url`, `extractor`, `videoId` and `playlistId` are strings, whose `chapter` is a positive integer and whose `chapterStart` is a non-negative number (other keys inside it are kept), `version` must be a positive integer, `volumes.*` must be numbers in `0..1`) is an error. Bootstrap gathers **all** such errors, prints them in red with their paths, and exits with code `1` **before asking any questions or writing anything**. The user must fix or delete those files. Options files of empty playlists are validated too.
+**Validation (fatal).** Any options file or `.soundboard` that fails `JSON.parse`, is not an object, or has the wrong type for a known key (`title` must be a non-empty string, `gain` must be a number from `0` to `4`, `crossfade`, `fadeIn` and `fadeOut` numbers from `0` to `30`, `order` one of `"ordered"`, `"random"` and `"shuffle"`, `playlistLooping` and `trackLooping` `true` or `false`, `stopMode` one of `"pause"`, `"resetTrack"` and `"resetPlaylist"`, the five image settings numbers within their ranges, `startAt` a non-negative number, `endAt` a non-negative number or `null` and, when both points are numbers, at least 10 ms (`MIN_CLIP_MS`) after `startAt`, `duration` a non-negative number or `null` and present together with a well-formed `measuredFrom`, `includedSubdirectories` must be an array of strings, `source` an object whose `origin` is one of the five above, whose `url`, `extractor`, `videoId` and `playlistId` are strings, whose `chapter` is a positive integer and whose `chapterStart` is a non-negative number (other keys inside it are kept), `version` must be a positive integer, `volumes.*` must be numbers in `0..1`) is an error. Bootstrap gathers **all** such errors, prints them in red with their paths, and exits with code `1` **before asking any questions or writing anything**. The user must fix or delete those files. Options files of empty playlists are validated too.
 
 **Unknown keys are preserved.** Whenever the app rewrites a file, it reads it again, merges, and writes back the whole object, so keys from future versions survive.
 
@@ -187,23 +195,23 @@ Playlist options (`Combat.json`)
 Deleting from the board never removes a file. Everything deleted goes into `.trash/` in the root, which its dot hides from the scanner, the change watcher and refreshes (§2.1). The trash dialog (§9.12) restores it, or deletes it for good.
 
 - **A sound or a track** keeps its path relative to the root inside the trash, and its options file and waveform go with it: `Boom.mp3` becomes `.trash/Boom.mp3` (+ `.json`, `.wf`), and `Combat/Boss/1.mp3` becomes `.trash/Combat/Boss/1.mp3`. Missing folders are created.
-- **A playlist** moves as a whole: its folder with everything in it, including subdirectories that aren't included and files the app doesn't show, and its options file. `Combat/` becomes `.trash/Combat/` and `Combat.json` becomes `.trash/Combat.json`.
+- **A playlist** moves as a whole: its folder with everything in it, including subdirectories that aren't included and files the app doesn't show, its options file and its image. `Combat/` becomes `.trash/Combat/`, `Combat.json` becomes `.trash/Combat.json` and `Combat.bg.png` becomes `.trash/Combat.bg.png`. An image already in the trash for that name is replaced, whatever its extension.
 - **A playlist's only track** can't leave it alone: deleting it deletes the playlist, and moving it away moves the track and then puts what is left of the playlist in the trash. An empty playlist never exists.
 - **Clashes.** Folders are merged into one of the same name already in the trash, so a playlist "Duck" deleted twice, and tracks deleted from it one by one, all end up in `.trash/Duck/`. A playlist's options file replaces the one already there. Any other file whose name is taken gets ` (2)`, ` (3)`… before its extension, and its options file and waveform take the same new name, so they stay paired.
 - **Moves.** A sound can become a track of any playlist, and a track can move to another playlist or out to the sounds. A playlist can't be moved. The file keeps its name, with ` (2)` added when it, its options file or its waveform is taken, and lands in the top level of the target: a track from a nested subdirectory doesn't take the subdirectory along. The options file moves unchanged, since sounds and tracks accept the same keys (§2.3), so the title, gain, points and fades carry over. The waveform stays valid, because a rename keeps the size and modified time.
 
-**Reading the trash** (`src/library/trash.js`). Audio files at the top of `.trash/` are **sounds**. Each folder there is a **playlist**, and the audio files inside it, at any depth, are its **tracks**. Titles come from the trashed options files, else the default titles (§2.4): a playlist's from `.trash/<folder>.json`, which a folder left by deleting single tracks doesn't have, so it is named after the folder. Options files in the trash are read leniently: a broken one only loses its title. Dot files and folders without audio are not listed. The **size** counts every file under `.trash/`, listed or not.
+**Reading the trash** (`src/library/trash.js`). Audio files at the top of `.trash/` are **sounds**. Each folder there is a **playlist**, and the audio files inside it, at any depth, are its **tracks**. Titles come from the trashed options files, else the default titles (§2.4): a playlist's from `.trash/<folder>.json`, which a folder left by deleting single tracks doesn't have, so it is named after the folder. Options files in the trash are read leniently: a broken one only loses its title. Dot files and folders without audio are not listed. A trashed playlist's size includes its image. The **size** of the whole trash counts every file under `.trash/`, listed or not.
 
 **The trash is not watched.** The server reads it at startup and after each of its own deletions, moves, restores and purges. Changes made to it by hand show up at the next start.
 
 **Restoring.** Every options file involved is validated first (§2.3), so a broken one refuses the restore before anything moves.
 - **A sound** goes back into the root with its options file and waveform. A taken name gets ` (2)`, as moves do; the title stays as it was.
-- **A track** goes into the **top level** of the playlist named after its trashed folder, wherever it sat inside that folder, with ` (2)` on a clash. When that playlist is gone, a new one is created: its folder, and a **copy** of `.trash/<folder>.json`, so the tracks still in the trash keep it. Without one, the new options file has the folder's name as its title. A name taken by a folder or options file the library doesn't show gets ` (2)`.
-- **A playlist** whose name is free moves back as it is: the folder with everything in it, subfolders included, and its options file. When a playlist of that name exists, each track is restored into it as above, its options stay as they are, and the trashed options file is dropped.
+- **A track** goes into the **top level** of the playlist named after its trashed folder, wherever it sat inside that folder, with ` (2)` on a clash. When that playlist is gone, a new one is created: its folder, and a **copy** of `.trash/<folder>.json` and of its image, so the tracks still in the trash keep them. Without one, the new options file has the folder's name as its title. A name taken by a folder or options file the library doesn't show gets ` (2)`.
+- **A playlist** whose name is free moves back as it is: the folder with everything in it, subfolders included, its options file and its image. When a playlist of that name exists, each track is restored into it as above, its options stay as they are, and the trashed options file is dropped.
 - **Restore all** restores every playlist, then every sound.
 - A restored file is measured when its options file has no current duration, as at startup (§3.5).
 
-**Deleting for good** removes an audio file with its options file and waveform, or a playlist's folder with everything in it and its options file. **Delete all** removes `.trash/` itself. A trashed playlist that has no audio files left, after its last track was restored or deleted, leaves the trash completely, with whatever else is still in its folder and its options file.
+**Deleting for good** removes an audio file with its options file and waveform, or a playlist's folder with everything in it, its options file and its image. **Delete all** removes `.trash/` itself. A trashed playlist that has no audio files left, after its last track was restored or deleted, leaves the trash completely, with whatever else is still in its folder and its options file.
 
 ---
 
@@ -228,6 +236,7 @@ The decision logic of loading a folder is the domain service `BootstrapService` 
 2. **Scan** the tree (§2.1). Scanning reads directory listings and file sizes and modification times only, never file contents.
 3. **Validate** every existing options file and `.soundboard` (§2.3). Any error stops the load: the Initializer shows each file and its problems (§3.7).
 4. **Report warnings**: unsupported audio files, orphan options files, symlinks, empty playlists. These never stop the app; they become problems (§5.1).
+5. **Read the playlist images** (§2.1): each one's header, checked as an upload is (§5.1), never decoding it. Failing, duplicate and large images are warnings too.
 
 Playlists without tracks take no further part: no question is asked about their nested directories and no options file is created for them.
 
@@ -282,7 +291,7 @@ While the server runs, `BootstrapService.refresh(root)` builds the library again
 - **No `.soundboard`** would make it a first run, which has questions to ask. The refresh stops at once with `noSettings`, writing nothing, and the page asks for a restart (§9.0).
 - **Validation errors** (§2.3) don't end the process. The refresh returns them (`invalid`), writes nothing, and the server keeps the library it has.
 - **New nested subdirectories** are merged into their playlists without asking, but **not recorded** in `includedSubdirectories`. A playlist options file the refresh creates lists none either. The next time the folder is opened, the Initializer therefore still asks about them and records the answer (§3.3 step 5).
-- **Orphaned files** only get the usual warnings (§3.1 step 4).
+- **Orphaned files** only get the usual warnings (§3.1 step 4), and the playlist images are read again (§3.1 step 5).
 
 On success the server replaces its library and settings store with the new ones (§5.2), and the change watcher takes a new baseline (§5.3).
 
@@ -334,7 +343,9 @@ On success the server replaces its library and settings store with the new ones 
 
 ```js
 Library   { root, playlists: Playlist[], sounds: AudioFile[], files: Map<id, AudioFile> }
-Playlist  { id, title, gain, crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode, tracks: AudioFile[], includedSubdirectories: string[] }
+Playlist  { id, title, gain, crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode, tracks: AudioFile[], includedSubdirectories: string[],
+            background: Background | null, imageColorOpacity, imageBlur, titleShadowOpacity, titleShadowBlur, titleShadowOffset }
+Background { absolutePath, format: 'jpeg'|'png'|'gif'|'webp'|'avif', size, modified /* ISO 8601 */, width, height }
 AudioFile { id /* root-relative POSIX path */, title, format: 'mp3'|'ogg'|'opus', size, gain, duration /* seconds or null */,
             startAt, endAt /* seconds or null */, fadeIn, fadeOut, source /* §2.3, origin filled in, or null */, absolutePath }
 Settings  { volumes: { master, music, sfx }, name }   // held by SettingsStore, saved to .soundboard; name null without one
@@ -343,7 +354,12 @@ Settings  { volumes: { master, music, sfx }, name }   // held by SettingsStore, 
 - `playlists` contains only non-empty playlists, sorted by title; `sounds` are sorted by title; tracks keep path order (§2.2).
 - `files` indexes every sound and track by id. It is the only list of files the server may stream.
 - `LibraryEditor` changes the library while the app runs. `updateSound(id, { title?, gain?, startAt?, endAt?, fadeIn?, fadeOut? })` validates the change with the options file rules (§2.3), rejects unknown keys, trims the title, and rounds the numbers. The points are checked again after merging with the sound's current ones, so a change to one point must still fit the other. It then merges the change into the sound's options file (read, merge, atomic write, unknown keys kept), and only once that succeeded updates the `AudioFile` in place and sorts `sounds` again. Writes to one options file run one after another in the order they were requested, so the file always ends with the newest values; a failed write doesn't block later ones. An id that isn't a sound (including a track id) is an `UnknownSoundError`.
-- `updatePlaylist(id, { title?, gain?, crossfade?, fadeIn?, fadeOut?, order?, playlistLooping?, trackLooping?, stopMode? })` does the same for a playlist's options file (`<directory>.json` in the root), leaving its `includedSubdirectories` alone, and sorts `playlists` again after a rename. The crossfade, the order, track looping and the stop mode are accepted only here, and the points only for sounds. An unknown id is an `UnknownPlaylistError`.
+- `updatePlaylist(id, { title?, gain?, crossfade?, fadeIn?, fadeOut?, order?, playlistLooping?, trackLooping?, stopMode?, imageColorOpacity?, imageBlur?, titleShadowOpacity?, titleShadowBlur?, titleShadowOffset? })` does the same for a playlist's options file (`<directory>.json` in the root), leaving its `includedSubdirectories` alone, and sorts `playlists` again after a rename. The crossfade, the order, track looping, the stop mode and the image settings are accepted only here, and the points only for sounds. An unknown id is an `UnknownPlaylistError`.
+- **Playlist images** (§2.1). `background` is `null` when the playlist has no usable image.
+  - `image-info.js` checks images from their first 256 KB alone (`IMAGE_HEADER_BYTES`), never decoding them, with every read checked against the buffer. `inspectImage(bytes)` returns `{ format, width, height }` by the format's signature: JPEG (`FF D8 FF`, the size from the first frame header, walking at most 1024 segments), PNG (its 8-byte signature, then `IHDR`), GIF (`GIF87a` or `GIF89a`), WebP (`RIFF…WEBP`, then a `VP8 `, `VP8L` or `VP8X` chunk) and AVIF (an `ftyp` box whose major or compatible brands include `avif` or `avis`, the size from the **largest** `ispe` in `meta` → `iprp` → `ipco`, so a small thumbnail can't hide a huge image; at most 64 boxes are walked). Anything else, SVG included, is refused.
+  - The failures are `InvalidImageError`s with a code: `image.format` (none of the five), `image.unreadable` (a header too short or broken to give a size), `image.dimensions` (wider or higher than 8192 px, `MAX_IMAGE_SIDE`), `image.tooLarge` (over 16 MB, `MAX_IMAGE_BYTES`) and `image.mismatch` (the bytes are another format than the file claims, "This file says it is a PNG but is a JPEG."). An image larger than 1080p, meaning more than 1920 px on its longer side or 1080 px on its shorter one (`isLargerThanFullHd`), is accepted.
+  - `backgrounds.js` names the files (`backgroundNameFor`, `backgroundOwnerOf`) and reads one as bootstrap does (`readBackground`: the size, the header, and an extension that must name the format the bytes have).
+  - `setPlaylistBackground(id, from, format)` moves an image already checked into place as `<directory>.bg.<extension>` (`jpg` for JPEG), deletes any other image of the playlist whatever its extension, and reads it into `background`. `removePlaylistBackground(id)` deletes every image of the playlist for good, not into the trash. Both run through `writeFiles` and return `{ playlist, removed, added }`, the root-relative names for the problems list. A playlist deleted while its image downloaded is an `UnknownPlaylistError`.
 - `updateTrack(id, { title?, gain?, startAt?, endAt? })` does the same for a track's options file (`<file>.json` next to it), with the same checks and rounding as for sounds. Only those four are accepted. Tracks keep their path order (§2.2), so nothing is sorted again. An id that isn't a track (including a sound id) is an `UnknownTrackError`.
 - **Additions** (§5.4). `addSound(from, name, { title, source })`, `addTrack(playlistId, from, name, options)` and `createPlaylist(title, from, name, options)` take a finished download, which sits on the same file system as the root.
   - Each one moves the file into place, in the root or the playlist's directory, under `name`. When that name, or its options file's name, is taken, ` (2)`, ` (3)`… is added before the extension, so nothing is overwritten and no old options file is taken over.
@@ -365,9 +381,9 @@ Settings  { volumes: { master, music, sfx }, name }   // held by SettingsStore, 
   - The bytes are 1024 pairs: the lowest and the highest sample of each of 1024 equal slices of the audio, across all channels, scaled to −127..127.
   - A waveform is **stale** when the audio file's size or modified time no longer matches its header, and a file with a bad magic, count or length is unusable. Both count as missing and are overwritten when made again. Writes go through a temporary file and a rename.
   - `missing()` lists the ids that have no current waveform: sounds in library order, then tracks in playlist order. `read(id)` returns the peaks or `null`; `write(id, peaks)` takes exactly 2048 bytes (`InvalidWaveformError` otherwise). An id that is not a sound or track is an `UnknownWaveformFileError`. Deleting a `.wf` file is harmless: it is made again.
-- **Problems** (`problems.js`). `startupProblems(warnings, library)` turns what bootstrap found into a list of `{ id, kind, severity, path, message }`: the scan's warnings (§3.1 step 4: `unsupported-audio`, `orphan-options`, `symlink`, `empty-playlist`) as `warning`s, and every sound or track whose `duration` is `null` (§3.5, kind `unknown-duration`) as an `error`. The `id` is `<kind>:<path>`, so the same problem keeps its id. A `ready` outcome of bootstrap and of a refresh carries the list (`problems`); the terminal output is unchanged.
+- **Problems** (`problems.js`). `startupProblems(warnings, library)` turns what bootstrap found into a list of `{ id, kind, severity, path, message }`: the scan's warnings (§3.1 step 4: `unsupported-audio`, `orphan-options`, `symlink`, `empty-playlist`) and the images' (§3.1 step 5: `invalid-background` with the reason, `duplicate-background`, and `large-background` with the image's size, "This image is 6000 × 4000 px. 1920 × 1080 is plenty; larger images use more memory.") as `warning`s, and every sound or track whose `duration` is `null` (§3.5, kind `unknown-duration`) as an `error`. The `id` is `<kind>:<path>`, so the same problem keeps its id. A `ready` outcome of bootstrap and of a refresh carries the list (`problems`); the terminal output is unchanged.
   - A failed yt-dlp update (§3.4, §5.4) is a `warning` of kind `ytdlp-outdated` with the path `yt-dlp` and the terminal's message. It is added with `addLasting`, since it isn't about the library.
-  - `Problems` holds the list in the server, replaced by every refresh except for its lasting problems, which stay first. `dismiss(id)` reports whether it knew the problem, `dismissAll()` empties it, `removeFor(path)` forgets a deleted or moved file's problems, and a directory's with everything in it. `onChange` fires only when the list really changed. Nothing is saved to disk: dismissed problems come back at the next start or refresh if the files are still wrong.
+  - `Problems` holds the list in the server, replaced by every refresh except for its lasting problems, which stay first. `dismiss(id)` reports whether it knew the problem, `dismissAll()` empties it, `removeFor(path)` forgets a deleted or moved file's problems, and a directory's with everything in it, and `removeBackgroundsOf(playlistId)` a deleted playlist's image problems, which sit beside it. `add(problem)` adds one found while the app runs, as setting a large image does. `onChange` fires only when the list really changed. Nothing is saved to disk: dismissed problems come back at the next start or refresh if the files are still wrong.
   - Invalid options files are not problems: they stop a start (§3.1 step 3) or a refresh (§3.6), which has its own dialog (§9.1).
 - `SettingsStore` keeps the settings in memory and writes them back to `.soundboard` with the same read-merge-write and atomic rename as the options files (§2.3). Writes are **serialized**: one in flight at a time, and changes made meanwhile are written together by one follow-up write, so the file always ends with the newest values. `updateVolumes` and `updateName` share that writer; `folderName` is the soundboard folder's name.
 
@@ -409,7 +425,12 @@ The server knows nothing about playback state.
 | GET | `/api/trash` | `{ size, playlists: [{ id, title, size, tracks: [{ id, title, size }] }], sounds: [{ id, title, size }] }`: what the trash holds (§2.5), playlists and sounds by title, tracks by path, sizes in bytes. |
 | POST | `/api/trash/restore` | Body `{ kind: "sound" \| "track" \| "playlist", id }` or `{ all: true }`. Restores it (§2.5) and answers `200 { changes }`, the `library.added` messages, which every event stream gets too. `400` for another body or a broken options file, `404` for what the trash doesn't hold. |
 | POST | `/api/trash/delete` | The same body. Deletes it for good and answers `200 { changes: [] }`, with the same errors. |
-| PATCH | `/api/playlists/<encoded id>` | The same for a playlist, with body `{ title?, gain?, crossfade?, fadeIn?, fadeOut?, order?, playlistLooping?, trackLooping?, stopMode? }` (`LibraryEditor.updatePlaylist`); returns the playlist with its tracks in the `/api/library` format. |
+| PATCH | `/api/playlists/<encoded id>` | The same for a playlist, with body `{ title?, gain?, crossfade?, fadeIn?, fadeOut?, order?, playlistLooping?, trackLooping?, stopMode?, imageColorOpacity?, imageBlur?, titleShadowOpacity?, titleShadowBlur?, titleShadowOffset? }` (`LibraryEditor.updatePlaylist`); returns the playlist with its tracks in the `/api/library` format. |
+| PUT | `/api/playlists/<encoded id>/background` | Body: the image file itself, with its type as `Content-Type`, which the browser takes from the file's extension, so it must name the format the bytes have. Stored as the playlist's image (below); returns the playlist. `415` for any type but `image/jpeg`, `image/png`, `image/gif`, `image/webp` and `image/avif`; `413` for a `Content-Length` or a body past 16 MB, stopped at the first byte past it, so it is never held whole in memory; `422 { error, code }` for a refused image (§5.1); `404` for an unknown playlist. |
+| POST | `/api/playlists/<encoded id>/background/download` | Body `{ url }`. Downloads the link (§5.4), checks it and stores it as the upload does, and answers the same way once it is done. The bytes decide the format. A link whose path ends in one of the five extensions must match it, but only when the server's `Content-Type` agrees with that extension, so a CDN that sends `image/webp` for `photo.jpg` still works. `409` while one runs for that playlist, `422 { error, code }` for a link that can't be fetched or a refused image, `413` past 16 MB. |
+| DELETE | `/api/playlists/<encoded id>/background` | Deletes the image for good (§5.1); returns the playlist. |
+| GET, HEAD | `/api/playlists/<encoded id>/background` | The image, with the `Content-Type` of its format, `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'; sandbox`, `Cache-Control: no-cache` and an `ETag` (`304` for a match). `404` without one. |
+| GET, HEAD | `/api/remote/backgrounds/<encoded id>` | The same image, on a path a paired device may reach (below). Only playlist images can be named, looked up in the library, so a phone still never reaches audio or options files. |
 | PATCH | `/api/tracks/<encoded id>` | The same for a track, with body `{ title?, gain?, startAt?, endAt? }` (`LibraryEditor.updateTrack`); returns the track. The id contains `/`: the rest of the path is decoded as a whole, which keeps literal slashes, so `Combat%2F1.mp3` and `Combat/1.mp3` both work. The browser sends the first. |
 | GET | `/api/waveforms` | `{ "missing": ["Boom.mp3", "Combat/1.mp3", …] }`: the ids with no current waveform, sounds first (`WaveformStore.missing`) |
 | GET | `/api/waveforms/<encoded id>` | The 2048 peak bytes as `application/octet-stream` (the header stays on the server). `404` when there is no current waveform or the id is not a sound or track. |
@@ -432,9 +453,11 @@ The server knows nothing about playback state.
 | POST | `/api/access/requests/answer` | With `--lan` only, and for this machine only. Body `{ address, decision: 'allow' \| 'deny' }`; `200 {}`. `400` for anything else, `404` when that address has no pending request. |
 | GET | `/api/access/links` | With `--lan` only, and for this machine only. `{ links: ['http://192.168.1.20:13872/'] }`: the addresses that open the app from another device, for the QR code (§9.16). |
 
-- API responses are JSON with `Cache-Control: no-store`. Errors are `{ "error": "message" }`, in English. One the user may see also has `"code"` and `"params"`, by which the page shows it in its language (§9.21): a domain error that sets `messageCode` and `messageParams` passes them on through `HttpError.from(status, error)`. These have codes: folder refusals (§5.7) and the other startup refusals, a missing `.soundboard` on refresh, unavailable or busy downloads, links that can't be used (not the reasons yt-dlp gives), invalid download requests, and unknown sounds, tracks, playlists and trash items. Errors for requests the pages never make malformed, and the validation details of options files, which quote their keys, have none.
+- API responses are JSON with `Cache-Control: no-store`. Errors are `{ "error": "message" }`, in English. One the user may see also has `"code"` and `"params"`, by which the page shows it in its language (§9.21): a domain error that sets `messageCode` and `messageParams` passes them on through `HttpError.from(status, error)`. These have codes: folder refusals (§5.7) and the other startup refusals, a missing `.soundboard` on refresh, unavailable or busy downloads, links that can't be used (not the reasons yt-dlp gives), refused images and image links (§5.1, §5.4), invalid download requests, and unknown sounds, tracks, playlists and trash items. Errors for requests the pages never make malformed, and the validation details of options files, which quote their keys, have none.
 - A known path with the wrong method gets `405` with an `Allow` header. Unknown `/api/…` paths get a JSON `404`.
-- Every route that reads a JSON body (`PUT`, `PATCH` and `POST` above) answers `415 { "error": "Send application/json" }` for any other `Content-Type` (parameters and case are ignored). The waveform `PUT` needs `application/octet-stream` the same way.
+- Every route that reads a JSON body (`PUT`, `PATCH` and `POST` above) answers `415 { "error": "Send application/json" }` for any other `Content-Type` (parameters and case are ignored). The waveform `PUT` needs `application/octet-stream` the same way, and the image `PUT` one of the five image types.
+
+**Playlist images** (`background-routes.js`). An upload or a download goes to a file of its own in `.soundboard-downloads/images/`, which the scanner never reads, is checked there (`inspectImageFile`: the size, then the header, §5.1), and only then moves into place through `LibraryEditor.setPlaylistBackground`. The work file is deleted however it ends, so a refused image leaves nothing. Nothing from the request or the link names the file on disk. Afterwards the problems list follows: the replaced or removed image's problems go (`removeFor`), and an image larger than 1080p adds a `large-background` warning (`add`). The image is never served from `public/` and the page only uses it as a CSS background, so a file that is also a page or a script (a polyglot) can run nothing; data appended after the image is left alone.
 
 **Request guard** (`request-guard.js`). Any web page open in the same browser can send requests to `127.0.0.1`, and a page that rebinds its DNS name to it can even read the answers. `checkRequest` runs first for every request, whatever its path (API, media and static files alike), and answers `403 { "error": "Request not allowed" }` when:
 - **`Host`** is missing or is not `127.0.0.1`, `localhost` or `[::1]` with the server's own port. This stops DNS rebinding, because the rebound page still sends its own name. The names come from one list (`LOOPBACK_HOSTS`, passed to the router in its context), so LAN access can extend it.
@@ -445,7 +468,7 @@ The `415` rule above is the second line of defense: a page on another site can't
 **LAN access** (`lan-access.js`). Without `--lan` the server listens on loopback and none of this applies. With it, the `Host` names above also include the addresses and the host name of this machine, and `checkAccess` runs after the guard for every request that does not come from a loopback address:
 - A **banned** address (§5.6) gets `403 { "error": "This address is blocked" }` for everything. The connect page tells this refusal from the others by its text.
 - A device needs the cookie **`soundboard-device`** (`HttpOnly`, `SameSite=Lax`) that it got when it was allowed (§5.6). `Lax` and not `Strict`, because a link opened from another app, such as a camera scanning a QR code, is a cross-site navigation, and the cookie would be left out of it.
-- A device **with** the cookie may only reach: `GET` and `HEAD` of the static files, `/api/remote…`, and `/api/events?role=remote`. Everything else (the library, settings, media, deletions, downloads, the pairing routes, a page's own event stream) answers `403`, so a phone can see titles and send play commands, and never touches the files or hears the audio.
+- A device **with** the cookie may only reach: `GET` and `HEAD` of the static files, `/api/remote…` (which includes the playlist images on `/api/remote/backgrounds/…`), and `/api/events?role=remote`. Everything else (the library, settings, media, deletions, downloads, the pairing routes, a page's own event stream) answers `403`, so a phone can see titles and send play commands, and never touches the files or hears the audio.
 - A device **without** it may only reach the connect page, which is what `GET /` and `GET /index.html` answer instead of the app (`public/connect.html`), the files the connect page loads (`/favicon.svg`, the Tailwind file, `/app/connect.js`, `/app/browser-clock.js`, `/app/logic/access-requester.js`, `/app/ui/dom.js`, and what loads the language: `/app/language.js`, `/app/ui/text.js`, `/app/logic/i18n.js` and `/app/i18n/…`), `POST /api/access/requests` and `GET /api/access/requests/mine`. Everything else answers `403`.
 - The remote page learns the titles from the host's state (§6.10), so it needs no `/api/library`.
 
@@ -454,7 +477,9 @@ The `415` rule above is the second line of defense: a page on another site can't
 {
 	"version": 1,
 	"playlists": [
-		{ "id": "Combat", "title": "Combat", "gain": 0.8, "crossfade": 2.5, "fadeIn": 1, "fadeOut": 3, "order": "shuffle", "playlistLooping": true, "trackLooping": false, "stopMode": "resetPlaylist", "tracks": [
+		{ "id": "Combat", "title": "Combat", "gain": 0.8, "crossfade": 2.5, "fadeIn": 1, "fadeOut": 3, "order": "shuffle", "playlistLooping": true, "trackLooping": false, "stopMode": "resetPlaylist",
+		  "background": { "url": "/api/playlists/Combat/background?v=2f1a3-19a5c3e8f40", "version": "2f1a3-19a5c3e8f40", "width": 1920, "height": 1080 },
+		  "imageColorOpacity": 0.6, "imageBlur": 4, "titleShadowOpacity": 0.8, "titleShadowBlur": 4, "titleShadowOffset": 1, "tracks": [
 			{ "id": "Combat/01 Battle.mp3", "title": "Battle", "format": "mp3", "size": 4194304, "gain": 1, "duration": 213.47,
 			  "startAt": 0, "endAt": null, "fadeIn": 0, "fadeOut": 0, "url": "/media/Combat/01%20Battle.mp3",
 			  "source": { "origin": "fileName", "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "extractor": "Youtube", "videoId": "dQw4w9WgXcQ" } }
@@ -466,7 +491,7 @@ The `415` rule above is the second line of defense: a page on another site can't
 	]
 }
 ```
-Each path segment of a media URL is percent-encoded separately. `source` is the stored one (§2.3) with `origin` filled in, or `null` for a file bootstrap hasn't given one. The library reflects changes made through `PATCH`, downloads, deletions and moves, so a reload shows them.
+Each path segment of a media URL is percent-encoded separately. A playlist's `background` is `null` without an image; its `version` is the file's size and modified time in hex, so a replaced image gets a new URL and is fetched again. `source` is the stored one (§2.3) with `origin` filled in, or `null` for a file bootstrap hasn't given one. The library reflects changes made through `PATCH`, downloads, deletions and moves, so a reload shows them.
 
 **Event stream messages** (`src/http/events.js`). Every connection from a page starts with `externalChanges`, `problems`, `trash` and, when downloads are available, a `download` message carrying the whole log, so a page that was away misses nothing.
 
@@ -477,7 +502,7 @@ Each path segment of a media URL is percent-encoded separately. `source` is the 
 | `download.log` | `{ lines, replaceLast }` | new log lines, batched at most every 250 ms; with `replaceLast`, the first line replaces the last one already sent (§5.4) |
 | `library.added` | `{ sound }` or `{ playlist }`, in the `/api/library` format, a playlist with all its tracks | once a download has added a file, a move has put one in its new place, or a restore has brought one back |
 | `trash` | `{ size, count }`: bytes, and the listed playlists plus sounds | on connect, then whenever a deletion, move, restore or purge changed it; each of those routes reloads `Trash` (§5.1) before it answers |
-| `problems` | `{ problems }`: the whole list (§5.1) | on connect, then whenever a dismissal, a deletion, a move or a refresh changed it |
+| `problems` | `{ problems }`: the whole list (§5.1) | on connect, then whenever a dismissal, a deletion, a move, a refresh or a playlist image changed it |
 | `library.removed` | `{ soundId }`, `{ trackId, playlistId }` or `{ playlistId }` | once a deletion or a move has taken an item away; `LibraryChanges` (`library-changes.js`) hands them from the routes to every stream |
 | `access.requests` | `{ requests: [{ address, code }] }`: all the pairing requests waiting for an answer (§5.6) | with `--lan`, to a page stream on connect and whenever the list changes; never to a remote |
 | `remote.role` | `{ host, reason? }` | to a page stream on connect, then whenever it becomes the host or stops being it; `reason: 'replaced'` when another page took the role (§5.5) |
@@ -507,7 +532,7 @@ Each path segment of a media URL is percent-encoded separately. `source` is the 
 
 `src/library/change-watcher.js` tells whether the directory still holds what the app last loaded. It never loads anything itself; a refresh does (§3.6). `src/cli/main.js` creates it before bootstrap and starts it once bootstrap has finished writing.
 
-- **Baseline.** `takeBaseline` in `tree-snapshot.js` records every file the app reads (§2.1): audio files, their options files, playlist options files and `.soundboard`, each with its size, modified time and SHA-1. Options files and `.soundboard` are hashed; audio files take the SHA-1 their options file recorded with the duration (§3.5) when its size and time still match, so no audio is read. The snapshot comes from the scanner, so it skips exactly what the scanner skips: dot files, waveforms (`.wf`), `.tmp` files, unsupported audio, orphan `.json` files and symlinks.
+- **Baseline.** `takeBaseline` in `tree-snapshot.js` records every file the app reads (§2.1): audio files, their options files, playlist options files and images, and `.soundboard`, each with its size, modified time and SHA-1. Options files, images (at most 16 MB) and `.soundboard` are hashed; audio files take the SHA-1 their options file recorded with the duration (§3.5) when its size and time still match, so no audio is read. The snapshot comes from the scanner, so it skips exactly what the scanner skips: dot files, waveforms (`.wf`), `.tmp` files, unsupported audio, orphan `.json` files and symlinks.
 - **While bootstrap ran.** The baseline is taken after bootstrap, and its audio files are compared with the scan bootstrap used. Any difference means files changed meanwhile, and counts as an external change straight away.
 - **Watching.** `fs.watch(root, { recursive: true })` only says that something changed. After 1 s without further events (`QUIET_MS`), so a copy in progress is looked at once it stops, the watcher snapshots the directory and compares it with the baseline:
   - a file that is new or gone is a **change**;
@@ -561,6 +586,12 @@ Each path segment of a media URL is percent-encoded separately. `source` is the 
 **The log.** Each step starts with its command line, quoted as a shell would need it (`$ yt-dlp -f bestaudio/best …`), followed by everything the program prints. Then come lines of the service's own: `Added "Battle Theme" to Combat (Combat/Battle Theme [id].ogg)`, `Failed: …`, and finally `Finished: 6 added, 1 failed.` or `Cancelled.`. A transient line is replaced by the next one, as a terminal shows progress, so yt-dlp's and ffmpeg's progress updates in place. The job keeps the last 1000 lines (`MAX_LOG_LINES`). Lines are sent in batches at most every 250 ms (`download.log`), and the batch waiting is always sent before the next `download` message, so the page sees them in order.
 
 **Cancelling** aborts the running step: the program is killed, or the fetch is aborted. The items not finished are marked `cancelled`, and files already added stay. **Dismissing** a running job cancels it; dismissing a finished one forgets it (`download` with `job: null`).
+
+**Image downloads** (`image-download.js`) are separate from all of the above: no `DownloadService`, job, log or yt-dlp. `imageLinkOf` accepts only `http:` and `https:` links (`imageLink.notHttp`). `fetchImage` saves the body to the work file the route gives it (§5.2) with Node's `fetch`, which follows redirects only to http and https, and sends no cookies or credentials:
+- It asks for `Accept-Encoding: identity` and an `Accept` listing the five types, and counts the bytes that really arrive, after any decompression `fetch` does. A `Content-Length` over 16 MB is refused at once; otherwise the download stops at the first byte past 16 MB (`image.tooLarge`), whatever the headers said, so a lying server or a gzip bomb gets no further.
+- The whole download may take 30 s (`IMAGE_DOWNLOAD_TIMEOUT_MS`, `imageLink.timeout`). A server that answers with an error is `imageLink.failed` with its status, and one that can't be reached, or redirects to another scheme, `imageLink.unreachable`.
+- The answer is never shown, only accepted or refused, so nothing from an address on the local network leaks back. It is the same power the direct-link downloads have.
+- It returns the server's `Content-Type`, which the route compares with the link's extension (§5.2).
 
 **Updating yt-dlp** (`yt-dlp-update.js`). `updateYtDlp(run)` runs `yt-dlp -U` once at startup (§3.4), before any download can start. yt-dlp updates itself when it may write its own file; installed by a package manager or with `pip`, it can't, and says so. It never rejects, and resolves with `{ state, current, latest, error }`, read from every line yt-dlp printed except transient ones (`readUpdateOutput`):
 - `current`: a line contains `is up to date`.
@@ -705,10 +736,18 @@ jumpToTrack(playlistId, trackIndex, { transition })
 seek(playlistId, seconds)
 pausePlaylist(playlistId)
 resumePlaylist(playlistId)
-customizePlaylist(playlistId, { title?, gain?, crossfade?, fadeIn?, fadeOut?, order?, playlistLooping?, trackLooping?, stopMode? })  // applies at once;
+customizePlaylist(playlistId, { title?, gain?, crossfade?, fadeIn?, fadeOut?, order?, playlistLooping?, trackLooping?, stopMode?,
+                  imageColorOpacity?, imageBlur?, titleShadowOpacity?, titleShadowBlur?, titleShadowOffset? })  // applies at once;
                                           // saves 500 ms later; a new order refills the history around the current
                                           // track, track looping reaches the current track at once, and a new stop
                                           // mode trims what a stopped playlist remembers (§8.1)
+uploadPlaylistBackground(playlistId, bytes, type)  // Promise; the image file's ArrayBuffer and its type (§5.2)
+downloadPlaylistBackground(playlistId, url)        // Promise; the server downloads the link
+removePlaylistBackground(playlistId)               // Promise; deletes the image for good
+                                          // each waits for the server, then takes the playlist's new background into
+                                          // the library and announces playlist.changed; the settings stay as they are
+                                          // here, so a change not saved yet isn't undone. A refusal rejects with the
+                                          // server's message, and nothing changes. Not commands: a remote can't send them
 forgetPlaylist(playlistId)                // a stopped playlist forgets where it would resume; the next play starts afresh
 flushPlaylistOptions(playlistId)          // save that playlist's pending change now (its dialog closed)
 customizeTrack(trackId, { title?, gain?, startAt?, endAt? })  // renames a track or changes its volume or points (endAt null: the
@@ -796,7 +835,7 @@ on(type, handler) → unsubscribe, off(type, handler)
 | `sound.changed` | `{ sound }`, the sound with its new title, gain, points or fades, right after `customizeSound` |
 | `sound.saved` | `{ soundId }`, once every change to that sound has been saved |
 | `sound.saveFailed` | `{ soundId, message }`; the change stays in effect and is saved again with the next one |
-| `playlist.changed` | `{ playlist }`, the playlist (with its tracks) with its new title, gain, timings, order, track looping or stop mode, right after `customizePlaylist`, or with a renamed or retrimmed track, right after `customizeTrack` |
+| `playlist.changed` | `{ playlist }`, the playlist (with its tracks) with its new title, gain, timings, order, track looping, stop mode or image settings, right after `customizePlaylist`, with its new image once the server has stored or removed it, or with a renamed or retrimmed track, right after `customizeTrack` |
 | `playlist.saved` | `{ playlistId }`, once every change to that playlist has been saved |
 | `playlist.saveFailed` | `{ playlistId, message }`, as for sounds |
 | `track.saved` | `{ trackId }`, once every change to that track has been saved. A rename itself is announced as `playlist.changed`, with the playlist holding the renamed track, so every view of the playlist follows from one event. |
@@ -884,7 +923,7 @@ Volumes are saved in `.soundboard` (§2.3), so they survive reloads and restarts
 - **Range and display.** Gain runs from `0` (silent) to `MAX_GAIN = 4` (+12.04 dB); the server enforces the same limit. People see decibels: `dB = 20 · log10(gain)`, `gain = 10^(dB / 20)`, and gain 0 is shown as `−∞ dB`. Above gain 1 a loud file can clip; that is allowed, and the widget shows it in orange.
 - **Sounds.** Every instance plays at the sound's gain.
 - **Playlists.** Every playlist voice plays at `playlist gain × track gain × live volume`, through the voice's own gain stage (§6.3), so no extra node per playlist is needed.
-- **Applying.** `customizeSound`, `customizePlaylist` and `customizeTrack` change the browser's library at once (`LibraryModel.updateSound` / `updatePlaylist` / `updateTrack`, which keep the items sorted with the same order as the server, §2.2). `SoundPlayer.setGain` applies a sound's gain to every playing instance and to later ones; `PlaylistPlayer.setGain` applies a playlist's gain to its current voice, to voices still fading out, and to later ones. A track's new gain reaches the playlist through `PlaylistPlayer.setPlaylist` (§8.1), which applies it to the same voices at once. An empty title, a gain out of range or an unknown order is an `InvalidCommandError`.
+- **Applying.** `customizeSound`, `customizePlaylist` and `customizeTrack` change the browser's library at once (`LibraryModel.updateSound` / `updatePlaylist` / `updateTrack`, which keep the items sorted with the same order as the server, §2.2). `SoundPlayer.setGain` applies a sound's gain to every playing instance and to later ones; `PlaylistPlayer.setGain` applies a playlist's gain to its current voice, to voices still fading out, and to later ones. A track's new gain reaches the playlist through `PlaylistPlayer.setPlaylist` (§8.1), which applies it to the same voices at once. An empty title, a gain out of range, an image setting out of its range (§2.3) or an unknown order is an `InvalidCommandError`.
 - **Saving.** `OptionsSync` saves per item like the volume save: 500 ms after the last change, one request per item in flight, always the item's full editable options, so a failed save is repaired by the next one. Its queues are keyed by kind (`sound`, `playlist`, `track`) and id, so items of different kinds with the same id never share one. `flushSoundOptions`, `flushPlaylistOptions` and `flushTrackOptions` send one item's pending change now (after any save of it in flight); `flushSettings` sends everything pending with `keepalive`. `SettingsSync.settle()` and `OptionsSync.settleAll()` send everything pending without `keepalive` and resolve once nothing is waiting or in flight, follow-up saves included; a failed save is reported as usual and doesn't reject. A refresh waits for them (§6.7).
 
 **Live volume.** Each playlist also has a temporary volume for the session, set from its player bar (§9.2). Sound effects have none.
@@ -974,7 +1013,7 @@ A page runs in one of three modes, chosen on the splash (§9.0): **standalone** 
 **Host mode** is part of `Soundboard`, because a host is a player.
 - `becomeHost({ replace })` calls `claimHost` and then waits up to 5 s for the first `remote.role` message of its stream. It resolves `'hosting'`, `'taken'` (another host and `replace` false; nothing was changed) or `'failed`' (the server did not answer or refused). On `'failed'` the page stays standalone and records `host-failed` (§6.9).
 - While hosting, the facade sends a `RemoteState` after every change that matters: `panic.changed`, `playlist.stateChanged`, `sound.activeChanged` and library changes (`playlist.changed`, `sound.changed`, `sound.added`, `playlist.added`, `sound.removed`, `playlist.removed`). Several changes in one tick are sent as one, and only one request is in flight at a time: if more changed meanwhile, the newest state follows as soon as it ends, so a slow answer never leaves a remote with an old state.
-- `RemoteState` (`remote-state.js`, `buildRemoteState`) is `{ panic, playlists: [{ id, title, playable }], sounds: [{ id, title, playable }], players: [{ id, title, state, trackTitle }], activeSounds }`: the titles and ids of the board, the playlists that load, play or are paused in start order, and what Panic Stop would do. It has no progress, volumes or audio details, so it changes only when someone does something.
+- `RemoteState` (`remote-state.js`, `buildRemoteState`) is `{ panic, playlists: [{ id, title, playable, background, imageColorOpacity, imageBlur, titleShadowOpacity, titleShadowBlur, titleShadowOffset }], sounds: [{ id, title, playable }], players: [{ id, title, state, trackTitle }], activeSounds }`: the titles and ids of the board, each playlist's image as `{ version }` (the same as the board's URL, §5.2) or `null` with its five settings, so a new image or setting sends a new state, the playlists that load, play or are paused in start order, and what Panic Stop would do. It has no progress, volumes or audio details, so it changes only when someone does something.
 - A `command` message from the server (§5.5) goes to `dispatch` like any command from the UI. It is never run when the page is not the host.
 - `remote.role { host: false }` while hosting ends the role: the page is standalone, `host.changed { hosting: false }` is announced and `host-lost` is recorded if the reason was `replaced`. `stopHosting` does the same by request and tells the server; on `pagehide` the page calls it with `keepalive`, so a reload does not leave the next load facing a host that is already gone.
 
@@ -1179,8 +1218,14 @@ Browsers only allow audio to start inside a user gesture, so the app starts behi
 - The page is a full-height column: header (green-tinted with a green border while the page is the host) (the ☰ app menu button and the title, §9.3: the soundboard's `displayName()` (`data-app-title`), cut short with "…" when too long, which the tab title repeats as "<name> · TTRPG Soundboard" (the app's name, `app.name` in the language file); then the role label "Host" while the page is the host (§9.15), then the Problems button while there are any (§9.14), the external changes button while there are any, the waveform progress while there is any, the Trash button while the trash holds anything, volume controls and the debug button while the debug view is shown, §9.8), a scrolling main area, then the footer.
 - The main area has a "Playlists" section above a "Sound Effects" section. Both are always shown, even empty, because their titles carry the add buttons: **+ Add playlist** in blue and **+ Add sound** in amber (`tileGrid`, §9.9). With no playlists and no sounds, a line above them says none were found in this folder, until a download adds one.
 - Tiles for sounds and playlists added by a download or a move (`sound.added`, `playlist.added`) appear at once in their sorted place. Tiles of sounds and playlists deleted or moved away (`sound.removed`, `playlist.removed`), in this tab or another, disappear at once, and a Customize dialog open for that item closes.
-- Tiles are `<button>`s in a grid of columns at least 10rem (160 px) wide, with titles clamped to 3 lines. The full title shows as a tooltip.
+- Tiles are `<button>`s in a grid of columns at least 10rem (160 px) wide. Sound titles are clamped to 3 lines. The full title shows as a tooltip.
 - Playlist tiles have a blue accent and sound tiles an amber one.
+- **Playlist tiles** all have the same height (`h-28`, 7 rem), with or without an image. The title is clamped to 2 lines, ending in "…", and the status line sits below it on a band of its own, with a little space between. The tile's colors (its background, hover and playing tints) are on a layer of their own, so they can sit over an image (`TileBackground`, `ui/tile-background.js`). From the bottom up:
+  1. the image, filling the tile (`cover`, centered);
+  2. a layer that blurs it with `backdrop-filter: blur(<imageBlur>px)`, on its own so the blur doesn't fade with the color;
+  3. the color, at `imageColorOpacity`, with its hover and playing colors from the same `data-*` variants as before;
+  4. the content. The status band is the same color, 50 percentage points more opaque (`STATUS_BAND_EXTRA_OPACITY`, at most 100 %), with no shadow.
+- Over an image the title and status are white, and the title has a shadow: a `drop-shadow` filter on an element around the clamped title, at `titleShadowOpacity`, offset `titleShadowOffset` px down and right, blurred by `titleShadowBlur`. A filter around the title rather than a `text-shadow` on it, because line clamping cuts whatever overflows the title's box, which would cut the shadow at its edges. Opacity `0` turns it off. Every value a slider moves is set inline (§9.6). Without an image, the tile is fully its color, as before.
 - A playlist tile shows its track count when idle, following tracks added by a download, and "Loading…", "Playing" or "Paused" when active, and is highlighted while active.
 - **Turned-down volume.** While a playlist's live volume (§6.4) is below full, its tile shows a small orange (`bg-boost`) bubble with a gray speaker icon at the bottom right, level with the status text, which is cut with an ellipsis (`truncate`) before it reaches the bubble. The tooltip gives the percentage. Double-clicking the bubble sets the volume back to full, and it disappears. The bubble is a sibling of the tile button, so it never toggles the playlist; the tile follows `playlist.levelChanged`. The volume itself is set only from the player bar (§9.2).
 - A stopped playlist that remembers where it will resume (§8.1) keeps its normal idle look, except that its left border is dashed and its status, in the playlist accent, reads "Resumes at 1:23" (`pause`) or "Resumes track 3" (`resetTrack`). The tooltip names the track ("Combat: resumes "Boss Theme" at 1:23" or "… from its start").
@@ -1308,7 +1353,7 @@ UI components extend `Component` (`ui/component.js`): `render()` builds the elem
 **Accent.** Each dialog has one accent color for everything that lights up: amber (`sfx`) in the sound dialog, blue (`music`) in the playlist dialog. The parts below take it as an `accent` option.
 
 **Shared parts** (`ui/customize-parts.js`), from which both dialogs are built:
-- **Card** (`card(title, accent, ...children)`). Settings are grouped in raised cards with rounded corners, a soft shadow and the title as a small uppercase pill on the top border. At rest the card is dimmed (`bg-raised-dim`, `border-line-dim`) and the pill is drawn in the border's color, so it reads as part of the border. While the card is hovered or anything in it has focus, it lights up (`bg-raised`, `border-line`) and the pill takes the accent color, so it is clear which part of the dialog is being worked with. Pills stick out above their cards, so cards are spaced `space-y-8`. A pill stays on one line within its card, ending in "…" with the full title as a tooltip.
+- **Card** (`card(title, accent, ...children)`). Settings are grouped in raised cards with rounded corners, a soft shadow and the title as a small uppercase pill on the top border. At rest the card is dimmed (`bg-raised-dim`, `border-line-dim`) and the pill is drawn in the border's color, so it reads as part of the border. While the card is hovered or anything in it has focus, it lights up (`bg-raised`, `border-line`) and the pill takes the accent color, so it is clear which part of the dialog is being worked with. A card marked `data-disabled`, where nothing can be used, doesn't light up on hover. Pills stick out above their cards, so cards are spaced `space-y-8`. A pill stays on one line within its card, ending in "…" with the full title as a tooltip.
 - **Labeled row** (`labeledRow`). Several settings in one card: a fixed-width label on the left, the control on the right.
 - **Radio group** (`radioGroup({ name, choices, value, accent, onChange })`). Native radio buttons in the accent color (`role="radiogroup"`), each with its name and a one-line description below it. Choosing one reports it at once; `update(value)` follows changes made elsewhere.
 - **Checkbox** (`checkbox({ name, label, description, checked, accent, onChange })`). One on/off setting, laid out like a radio choice: a native checkbox in the accent color, its name, and a description below. `update(checked)` follows changes made elsewhere.
@@ -1364,7 +1409,10 @@ In the footer: Play / Stop (`playSound`, or stopping all instances; it follows `
       - A track without a measured duration has no such card.
     - **Volume** holds the gain widget on `ITEM_SCALE` for the track's own gain, sent with `customizeTrack({ gain })` and following `playlist.changed`. It does not show the playlist's gain, which is on the first tab. A change reaches the track that is playing at once.
     - **Track** holds the title field (hint: `File: <track id>`), sent with `customizeTrack`. Row headers follow `playlist.changed`, while the open field is left alone, so it keeps its focus while typing. Later track settings get their own cards in the open row.
-- **In the footer**, staying in view while either tab scrolls: Play / Stop (`togglePlaylist`, like a tile click; it follows `playlist.stateChanged`) and the status, which follows the playlist's saves (`playlist.saved`, `playlist.saveFailed`) and its tracks' (`track.saved`, `track.saveFailed`).
+- **"Image" tab** (`ui/background-editor.js`, `BackgroundEditor`, built for any item with a tile and handed the preview and the calls by the dialog). It follows `playlist.changed`. Its cards:
+  - **Image**: a **preview** tile, a real `PlaylistTile` built with `preview: true`, so it can't drift from the board's: it follows the playlist but never plays it, opens no menu and takes no focus. Under it, the **source widget**, one row joined into one bordered widget: a link field ("Paste an image link"), then icon buttons as segments, each with a tooltip: download (`cloud-arrow-down`), choose a file (`file-arrow-up`, a hidden file input taking the five formats) and Remove (`trash-can`, red). Enter in the field downloads. While a request runs, the source's controls are disabled and a spinner on a dark circle sits over the middle of the preview, so nothing else on the tab moves. A refusal shows as a red message under the widget, with the server's reason in the page's language. An image larger than 1080p shows the yellow (`notice`) note "This image is W × H px. 1920 × 1080 is plenty; larger images use more memory." under it, whether or not its problem was dismissed. Remove is disabled without an image. A short hint names the formats and limits.
+  - **Color over the image** (opacity, blur) and **Title shadow** (opacity, blur, offset): labeled sliders, each with its value in `%` or `px`, in the dialog's accent. A change goes to `customizePlaylist` at once, so the tile and the preview follow while the slider moves, and saves like the other settings. Without an image the sliders are disabled, their rows dimmed (`has-disabled:opacity-40`), and both cards are marked `data-disabled`, so they don't light up on hover.
+- **In the footer**, staying in view while any tab scrolls: Play / Stop (`togglePlaylist`, like a tile click; it follows `playlist.stateChanged`) and the status, which follows the playlist's saves (`playlist.saved`, `playlist.saveFailed`) and its tracks' (`track.saved`, `track.saveFailed`).
 
 **Fade in, Crossfade and Fade out** in the playlist dialog, in that order, and Fade in and Fade out in the sound dialog, each a seconds control (`ui/seconds-control.js`):
 - A slider in 0.1 s steps, in the dialog's accent, and a readout with three decimals (`Off`, `2.500 s`) that turns into a filled field with the unit `s` when clicked, like the gain widget's. Typed values accept `,` as the decimal point, an `s` suffix and `off`, and are clamped to the control's limit. An optional note sits below.
@@ -1467,7 +1515,7 @@ In the footer: Play / Stop (`playSound`, or stopping all instances; it follows `
 
 `ui/problems-dialog.js`, opened by the Problems button (§9.1), titled "Problems". It lists everything `getProblems()` returns (§6.9), errors first and otherwise in that order.
 
-- **Rows** are cards with a left border in red (error) or yellow (warning), carrying `data-problem` (the id) and `data-severity`. Each shows the kind in small capitals ("Unknown duration", "Unsupported file", "Orphan options file", "Symbolic link", "Empty playlist", "Would not play", "Not saved", "Download failed", "Could not become the host", "Not the host any more", "yt-dlp outdated"), with " ×N" when it happened more than once, then the path (ellipsis, full path as a tooltip), then the message in muted text, and a **Dismiss** button.
+- **Rows** are cards with a left border in red (error) or yellow (warning), carrying `data-problem` (the id) and `data-severity`. Each shows the kind in small capitals ("Unknown duration", "Unsupported file", "Orphan options file", "Symbolic link", "Empty playlist", "Would not play", "Not saved", "Download failed", "Could not become the host", "Not the host any more", "yt-dlp outdated", "Unusable image", "Several images", "Large image"), with " ×N" when it happened more than once, then the path (ellipsis, full path as a tooltip), then the message in muted text, and a **Dismiss** button.
 - **Footer.** **Dismiss all**, at the right, below the scrolling list.
 - **Following changes.** The list is drawn again on every `problems.changed`, and the dialog closes itself once nothing is left.
 
@@ -1496,7 +1544,7 @@ In the footer: Play / Stop (`playSound`, or stopping all instances; it follows `
 
 - **Header.** The label "Remote" on a purple background, then a small round status dot, green while a host is connected and red otherwise (`data-host-status`; the `title` says "Host connected" or "No host"), and Panic Stop (`PanicButton` with a `PanicSource`, which `RemoteController` also implements) in the corner. There is no title.
 - **Players.** A row for each playing playlist (the `players` of the state, §6.10): the playlist title above the track title, both with an ellipsis, and two buttons on the same row: **Stop** (`playlist.stop`) and **Next**. Rows that did not change are not rebuilt, so a press is never lost to an update.
-- **Buttons.** Playlist and sound buttons fill a grid of equal columns; each is a 4:3 box, so its height follows its width. A playlist button toggles its playlist (`playlist.toggle`) and shows only a color for playing; a sound button plays the sound, and stops it when pressed again while it plays (`sound.play` or `sound.stop`). Buttons of what cannot play are disabled. They are built again only when the titles or the lists change.
+- **Buttons.** Playlist and sound buttons fill a grid of equal columns; each is a 4:3 box, so its height follows its width. A playlist button toggles its playlist (`playlist.toggle`) and shows only a color for playing. A playlist with an image shows it as the board's tile does (§9.1), with the same layers, settings and white title with its shadow, but with no status band, since the button has no status line. The remote builds the image's URL itself, `/api/remote/backgrounds/<id>?v=<version>` from the state (§6.10), since a phone may reach no other route (§5.2). A sound button plays the sound, and stops it when pressed again while it plays (`sound.play` or `sound.stop`). Buttons of what cannot play are disabled. They are built again only when the titles, the images, their settings or the lists change.
 - **Size.** At the end of the scrolling area, so they take no room while the page scrolls and sit at the bottom of the screen when the page is short: **−** and **+** set the number of columns (1 to 8, 3 at first), **A−** and **A+** set the text size (10 to 28 px, 14 at first). Both are remembered in `localStorage`. After each press the page scrolls to the end, so the buttons stay under the finger. Clicks less than 60 ms apart count once, because Firefox's touch emulation sends a double tap as three.
 - **No host.** A notice says no host is connected and every button is disabled; the page follows when one appears. It shows nothing from before the host left.
 - Everything changes only through the host's `remote.state` messages (§5.2), never by guessing.
@@ -1606,13 +1654,14 @@ src/
 	startup/    startup-session.js  folder-rules.js  folders.js  recent-folders.js  app-settings.js  errors.js
 	library/    bootstrap-service.js  scanner.js  classify.js  sort.js  validate.js  errors.js
 	            options-store.js  settings-store.js  library.js  library-editor.js  durations.js  waveform-store.js
-	            change-watcher.js  tree-snapshot.js  file-moves.js  trash.js  sources.js  problems.js
+	            change-watcher.js  tree-snapshot.js  file-moves.js  trash.js  sources.js  problems.js  image-info.js  backgrounds.js
 	downloads/  download-service.js  probe.js  yt-dlp.js  ffmpeg.js  link-fetcher.js  process-runner.js  line-splitter.js
-	            tools.js  yt-dlp-update.js  file-names.js  workspace.js  errors.js
+	            tools.js  yt-dlp-update.js  file-names.js  workspace.js  errors.js  image-download.js
 	metadata/   index.js  id3.js  ogg.js  mpeg.js  binary-reader.js
 	remote/     remote-relay.js
 	http/       app-server.js  server.js  router.js  responses.js  static-files.js  media.js  range.js  mime.js  request-log.js  events.js
 	            library-json.js  library-changes.js  lan-access.js  remote-routes.js  access-control.js  access-routes.js  licenses.js
+	            background-routes.js
 public/
 	index.html  selector.html  initializer.html  waiting.html  connect.html  favicon.svg
 	vendor/     tailwindcss-browser-<version>.js  tailwindcss-browser.LICENSE   (excluded from lint and type-checking)
@@ -1628,7 +1677,7 @@ public/
 			playlist-player.js  playback-rules.js  transitions.js  order-strategies.js  play-history.js  problem-list.js
 			sound-player.js  buffer-cache.js  clip.js  volume.js  settings-sync.js  options-sync.js  sort.js
 			voice-monitor.js  fade-ramp.js  peaks.js  waveform-service.js  remote-state.js  remote-controller.js
-			access-requester.js  qr-code.js  startup-flow.js  i18n.js
+			access-requester.js  qr-code.js  startup-flow.js  i18n.js  background-style.js
 		audio/      web-audio-engine.js  web-audio-waveform-decoder.js
 		api/        backend-api.js  server-events.js  startup-api.js
 		ui/         app.js  component.js  dom.js  icons.js  icon-names.js  format.js  menus.js  position.js  external-changes-button.js
@@ -1639,13 +1688,13 @@ public/
 		            seconds-control.js  seconds-scale.js  range-control.js  range-scale.js  add-dialog.js  download-dialog.js
 		            hold-button.js  replace-host-dialog.js  remote-view.js  move-dialog.js  trash-button.js  trash-dialog.js  metadata-dialog.js  source-fields.js  problems-button.js  problems-dialog.js
 		            access-requests-banner.js  connect-phone-dialog.js  info-dialog.js  licenses-dialog.js  app-menu-button.js
-		            options-dialog.js  startup-parts.js  text.js
+		            options-dialog.js  startup-parts.js  text.js  tile-background.js  background-editor.js
 test/
 	backend/    cli/  downloads/  http/  library/  metadata/  remote/  startup/
 	frontend/   logic tests, backend-api.test.js, ui/ (pure UI helpers)
 	browser/    Playwright suite (§11): playwright.config.js, support/ (fixtures, server, test-main, audio, disk, app), pages/, specs/
 	helpers/    fake-audio-engine.js  fake-clock.js  fake-backend-api.js  fake-prompter.js  fake-reporter.js  fake-process-runner.js
-	            tmp-tree.js  tag-builders.js  http-client.js  seeded-random.js  zip-reader.js  tar-builder.js
+	            tmp-tree.js  tag-builders.js  http-client.js  seeded-random.js  zip-reader.js  tar-builder.js  image-bytes.js
 	scripts/    pack/ (§13)
 test_fixtures/
 	example_soundboard/             real MP3/OGG library: 4 playlists, 4 sounds, with and without title tags; "Music Order"
@@ -1696,6 +1745,7 @@ The streaming design keeps resource use well within what this machine can handle
 - A download needs disk space in the root: the downloaded file, plus its converted copy while `ffmpeg` runs. Both go to disk, never into memory, and the work folder is emptied after each job (§5.4).
 - Each streamed track (a media element) buffers only a few MB ahead. With, say, 6 playlists, the 24 streamed-sound cap and a few retiring voices, that is well under 200 MB in the worst case.
 - Decoded sound effects are capped at 64 MB (§7).
+- Each playlist image is decoded by the browser and held for as long as its tile shows, about 8 MB for a 1920 × 1080 image and over 100 MB for an 8192 × 8192 one. That is why images larger than 1080p get a warning (§5.1). The server never decodes them; it reads at most 256 KB of each header.
 - Waveform generation decodes one file at a time at 8 kHz (about 10 MB for a 5-minute stereo track) and drops it before the next (§6.6). Stored waveforms are 2 KB each.
 - The real goal is that the tab never grows over a 4-hour session. That is why voices release their resources on `stop()` (§6.3) and retiring voices have deadlines (§8).
 

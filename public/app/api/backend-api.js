@@ -71,6 +71,29 @@ export class HttpBackendApi {
 		await this.#request('PATCH', `/api/tracks/${encodeURIComponent(trackId)}`, { body: options, keepalive });
 	}
 
+	/** @type {BackendApi['uploadPlaylistBackground']} */
+	async uploadPlaylistBackground(playlistId, bytes, type) {
+		const response = await fetch(`${this.#baseUrl}${backgroundPath(playlistId)}`, {
+			method: 'PUT',
+			headers: { 'Content-Type': type },
+			body: bytes,
+		});
+		if (!response.ok) {
+			throw await serverErrorOf(response);
+		}
+		return /** @type {Promise<import('../logic/ports.js').PlaylistJson>} */ (response.json());
+	}
+
+	/** @type {BackendApi['downloadPlaylistBackground']} */
+	async downloadPlaylistBackground(playlistId, url) {
+		return this.#request('POST', `${backgroundPath(playlistId)}/download`, { body: { url }, plainErrors: true });
+	}
+
+	/** @type {BackendApi['removePlaylistBackground']} */
+	async removePlaylistBackground(playlistId) {
+		return this.#request('DELETE', backgroundPath(playlistId), { plainErrors: true });
+	}
+
 	/** @returns {Promise<string[]>} */
 	async fetchMissingWaveforms() {
 		const { missing } = await this.#request('GET', '/api/waveforms');
@@ -291,6 +314,11 @@ export class HttpBackendApi {
 		}
 		return response.json();
 	}
+}
+
+/** @param {string} playlistId */
+function backgroundPath(playlistId) {
+	return `/api/playlists/${encodeURIComponent(playlistId)}/background`;
 }
 
 /** @param {import('../logic/ports.js').TrashTarget} target */

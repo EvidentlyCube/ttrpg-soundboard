@@ -534,6 +534,75 @@ describe('Soundboard', () => {
 		});
 	});
 
+	describe('playlist images', () => {
+		const IMAGE = { url: '/api/playlists/Combat/background?v=1-2', version: '1-2', width: 640, height: 360 };
+
+		it('uploads an image and announces the playlist with it', async () => {
+			const { soundboard, api, eventsOf } = await started();
+			api.backgroundResult = IMAGE;
+			await soundboard.uploadPlaylistBackground('Combat', new ArrayBuffer(4), 'image/png');
+			assert.deepEqual(api.backgroundRequests, [{ upload: { playlistId: 'Combat', type: 'image/png' } }]);
+			const [changed] = eventsOf('playlist.changed');
+			assert.deepEqual(changed.type === 'playlist.changed' && changed.playlist.background, IMAGE);
+			assert.deepEqual(soundboard.getLibrary()?.playlists.find((playlist) => playlist.id === 'Combat')?.background, IMAGE);
+		});
+
+		it('downloads an image from a link and removes it again', async () => {
+			const { soundboard, api, eventsOf } = await started();
+			api.backgroundResult = IMAGE;
+			await soundboard.downloadPlaylistBackground('Combat', 'https://example.com/a.png');
+			api.backgroundResult = null;
+			await soundboard.removePlaylistBackground('Combat');
+			assert.deepEqual(api.backgroundRequests, [{ download: { playlistId: 'Combat', url: 'https://example.com/a.png' } }, { remove: 'Combat' }]);
+			const changes = eventsOf('playlist.changed').map((event) => event.type === 'playlist.changed' && event.playlist.background);
+			assert.deepEqual(changes, [IMAGE, null]);
+		});
+
+		it('keeps a setting changed while the image was on its way', async () => {
+			const { soundboard, api } = await started();
+			api.backgroundResult = IMAGE;
+			const uploading = soundboard.uploadPlaylistBackground('Combat', new ArrayBuffer(4), 'image/png');
+			soundboard.customizePlaylist('Combat', { imageBlur: 9 });
+			await uploading;
+			const combat = soundboard.getLibrary()?.playlists.find((playlist) => playlist.id === 'Combat');
+			assert.equal(combat?.imageBlur, 9);
+			assert.deepEqual(combat?.background, IMAGE);
+		});
+
+		it('passes a refusal on and changes nothing', async () => {
+			const { soundboard, api, eventsOf } = await started();
+			api.backgroundResult = new Error('This file says it is a PNG but is a JPEG.');
+			await assert.rejects(soundboard.uploadPlaylistBackground('Combat', new ArrayBuffer(4), 'image/png'), /but is a JPEG/);
+			assert.deepEqual(eventsOf('playlist.changed'), []);
+		});
+
+		it('ignores the answer for a playlist deleted meanwhile', async () => {
+			const { soundboard, api, serverEvents, eventsOf, settle } = await started();
+			api.backgroundResult = IMAGE;
+			const uploading = soundboard.uploadPlaylistBackground('Combat', new ArrayBuffer(4), 'image/png');
+			serverEvents.send({ type: 'library.removed', playlistId: 'Combat' });
+			await settle();
+			assert.equal(soundboard.getLibrary()?.playlists.some((playlist) => playlist.id === 'Combat'), false);
+			await uploading;
+			assert.deepEqual(eventsOf('playlist.changed'), []);
+		});
+
+		it('changes the image settings live and saves them', async () => {
+			const { soundboard, api, clock, eventsOf } = await started();
+			soundboard.customizePlaylist('Combat', { imageColorOpacity: 0.3, titleShadowOffset: 2.5 });
+			const [changed] = eventsOf('playlist.changed');
+			assert.equal(changed.type === 'playlist.changed' && changed.playlist.imageColorOpacity, 0.3);
+			clock.advance(500);
+			assert.equal(api.playlistSaves[0].options.titleShadowOffset, 2.5);
+		});
+
+		it('rejects image settings out of range', async () => {
+			const { soundboard } = await started();
+			assert.throws(() => soundboard.customizePlaylist('Combat', { imageBlur: 21 }), InvalidCommandError);
+			assert.throws(() => soundboard.customizePlaylist('Combat', { titleShadowOpacity: -0.1 }), InvalidCommandError);
+		});
+	});
+
 	describe('customizing playlists', () => {
 		it('applies a gain at once to the playing track and to later ones', async () => {
 			const { soundboard, engine } = await started();
@@ -640,7 +709,10 @@ describe('Soundboard', () => {
 			clock.advance(500);
 			assert.deepEqual(api.playlistSaves, [{
 				playlistId: 'Tavern',
-				options: { title: 'Tavern', gain: 2, crossfade: 0, fadeIn: 0, fadeOut: 0, order: 'ordered', playlistLooping: true, trackLooping: false, stopMode: 'resetPlaylist' },
+				options: {
+					title: 'Tavern', gain: 2, crossfade: 0, fadeIn: 0, fadeOut: 0, order: 'ordered', playlistLooping: true, trackLooping: false, stopMode: 'resetPlaylist',
+					imageColorOpacity: 0.6, imageBlur: 4, titleShadowOpacity: 0.8, titleShadowBlur: 4, titleShadowOffset: 1,
+				},
 				keepalive: false,
 			}]);
 			await settle();

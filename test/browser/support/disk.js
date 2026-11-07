@@ -65,4 +65,14 @@ export class Disk {
 	async expectFile(name) {
 		await expect.poll(() => stat(join(this.#root, name)).then(() => true, () => false)).toBe(true);
 	}
+
+	/** Waits for a file to be gone. @param {string} name */
+	async expectNoFile(name) {
+		await expect.poll(() => stat(join(this.#root, name)).then(() => true, () => false)).toBe(false);
+	}
+
+	/** Writes a file with these bytes, as if copied in by hand. @param {string} name @param {Uint8Array} bytes */
+	async writeBytes(name, bytes) {
+		await writeFile(join(this.#root, name), bytes);
+	}
 }

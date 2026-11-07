@@ -1,4 +1,5 @@
 import { sortBy } from './sort.js';
+import { BACKGROUND_STYLE_KEYS, DEFAULT_BACKGROUND_STYLE } from './validate.js';
 
 /** @typedef {import('./scanner.js').ScanResult} ScanResult */
 /** @typedef {import('./scanner.js').ScannedAudio} ScannedAudio */
@@ -36,6 +37,12 @@ import { sortBy } from './sort.js';
  * @property {import('./validate.js').StopMode} stopMode what stopping it remembers
  * @property {AudioFile[]} tracks in path order
  * @property {string[]} includedSubdirectories
+ * @property {import('./backgrounds.js').Background | null} background its image (DESIGN.md §2.1), when it has a usable one
+ * @property {number} imageColorOpacity
+ * @property {number} imageBlur
+ * @property {number} titleShadowOpacity
+ * @property {number} titleShadowBlur
+ * @property {number} titleShadowOffset
  */
 
 /**
@@ -50,9 +57,10 @@ import { sortBy } from './sort.js';
  * Combines a scan with the parsed options files into the library the app serves.
  * @param {ScanResult} scan
  * @param {Map<string, AudioOptions | PlaylistOptions>} optionsByPath already-validated options, keyed by options file path
+ * @param {Map<string, import('./backgrounds.js').Background>} [backgrounds] usable images, by playlist id
  * @returns {Library}
  */
-export function buildLibrary(scan, optionsByPath) {
+export function buildLibrary(scan, optionsByPath, backgrounds = new Map()) {
 	/** @param {ScannedAudio} scanned */
 	const toAudioFile = (scanned) => audioFileOf(scanned, /** @type {AudioOptions | undefined} */ (optionsByPath.get(scanned.optionsPath)));
 
@@ -64,6 +72,7 @@ export function buildLibrary(scan, optionsByPath) {
 				playlist.id,
 				/** @type {PlaylistOptions | undefined} */ (optionsByPath.get(playlist.optionsPath)),
 				playlist.tracks.map(toAudioFile),
+				backgrounds.get(playlist.id) ?? null,
 			)),
 		(playlist) => playlist.title,
 	);
@@ -76,10 +85,12 @@ export function buildLibrary(scan, optionsByPath) {
  * @param {string} id the directory name
  * @param {PlaylistOptions | undefined} options
  * @param {AudioFile[]} tracks in path order
+ * @param {import('./backgrounds.js').Background | null} [background]
  * @returns {Playlist}
  */
-export function playlistOf(id, options, tracks) {
+export function playlistOf(id, options, tracks, background = null) {
 	return {
+		...backgroundStyleOf(options),
 		id,
 		title: options?.title ?? id,
 		gain: options?.gain ?? 1,
@@ -92,7 +103,21 @@ export function playlistOf(id, options, tracks) {
 		stopMode: options?.stopMode ?? 'resetPlaylist',
 		tracks,
 		includedSubdirectories: options?.includedSubdirectories ?? [],
+		background,
 	};
+}
+
+/**
+ * @param {Partial<import('./validate.js').BackgroundStyle> | undefined} options
+ * @returns {import('./validate.js').BackgroundStyle}
+ */
+function backgroundStyleOf(options) {
+	/** @type {import('./validate.js').BackgroundStyle} */
+	const style = { ...DEFAULT_BACKGROUND_STYLE };
+	for (const key of BACKGROUND_STYLE_KEYS) {
+		style[key] = options?.[key] ?? style[key];
+	}
+	return style;
 }
 
 /**

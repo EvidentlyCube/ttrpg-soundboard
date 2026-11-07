@@ -25,11 +25,16 @@ import { compareNatural, sortBy } from './sort.js';
  * @property {string} absolutePath
  * @property {string} optionsPath `<root>/<id>.json`
  * @property {boolean} hasOptions
+ * @property {string[]} backgroundPaths its `<id>.bg.<extension>` files in the root, sorted; more than one is a mistake
  * @property {ScannedAudio[]} tracks from every depth, sorted by path
  * @property {string[]} subdirectories nested directories at every depth, relative to the playlist, using `/`
  */
 
-/** @typedef {{ kind: 'unsupported-audio' | 'orphan-options' | 'symlink' | 'empty-playlist', path: string }} ScanWarning */
+/**
+ * @typedef {{ kind: 'unsupported-audio' | 'orphan-options' | 'symlink' | 'empty-playlist' | 'invalid-background'
+ * 	| 'duplicate-background' | 'large-background', path: string, params?: Record<string, string | number> }} ScanWarning
+ * 	the background kinds come from bootstrap, which reads the images
+ */
 
 /**
  * @typedef {object} ScanResult
@@ -60,6 +65,7 @@ export async function scanAudioDirectory(root) {
 	const playlists = [];
 	for (const id of classification.directories) {
 		const playlist = await scanPlaylist(root, id, classification.directoriesWithOptions.has(id), warnings);
+		playlist.backgroundPaths = (classification.directoryBackgrounds.get(id) ?? []).toSorted(compareNatural).map((name) => join(root, name));
 		if (playlist.tracks.length === 0) {
 			warnings.push({ kind: 'empty-playlist', path: id });
 		}
@@ -108,6 +114,7 @@ async function scanPlaylist(root, id, hasOptions, warnings) {
 		absolutePath,
 		optionsPath: `${absolutePath}.json`,
 		hasOptions,
+		backgroundPaths: [],
 		tracks: sortBy(tracks, (track) => track.id),
 		subdirectories: subdirectories.toSorted(compareNatural),
 	};

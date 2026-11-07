@@ -5,7 +5,17 @@ import { formatTime } from './format.js';
 import { icon } from './icons.js';
 import { playlistMenuItems } from './menus.js';
 import { t } from './text.js';
-import { flashError, TILE_CLASS } from './tile-grid.js';
+import { TileBackground, showTitleShadow } from './tile-background.js';
+import { flashError } from './tile-grid.js';
+
+/**
+ * Every playlist tile has the same height, with room for two lines of title (DESIGN.md §9.1). Its colors are on a layer
+ * of their own, so they can sit over an image.
+ */
+const PLAYLIST_TILE_CLASS = 'group relative isolate flex h-28 w-full flex-col items-stretch justify-between gap-2 overflow-hidden rounded-lg '
+	+ 'border border-l-4 border-line border-l-music text-left text-text enabled:cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 '
+	+ 'data-[active=true]:border-music data-[resume=true]:border-dashed data-[error=true]:ring-2 data-[error=true]:ring-danger';
+const TILE_COLOR_CLASS = 'bg-raised transition-colors group-enabled:group-hover:bg-raised-hover group-data-[active=true]:bg-raised-music';
 
 /** @typedef {import('../logic/ports.js').PlaylistJson} PlaylistJson */
 /** @typedef {import('../logic/playlist-player.js').PlaylistState} PlaylistState */
@@ -21,17 +31,20 @@ export class PlaylistTile extends Component {
 	#playable;
 	#onCustomize;
 	#onMetadata;
+	#preview;
 
 	/**
 	 * @param {object} options
 	 * @param {Soundboard} options.soundboard
-	 * @param {Overlay} options.overlay
+	 * @param {Overlay | null} options.overlay null only for a preview, which opens no menu
 	 * @param {PlaylistJson} options.playlist
 	 * @param {boolean} options.playable false when this browser can play none of its tracks
-	 * @param {(playlistId: string) => void} options.onCustomize
-	 * @param {(playlistId: string) => void} options.onMetadata
+	 * @param {(playlistId: string) => void} [options.onCustomize]
+	 * @param {(playlistId: string) => void} [options.onMetadata]
+	 * @param {boolean} [options.preview] a copy that only shows the playlist, as the Image tab does: it follows the
+	 * 	playlist but never plays it or opens a menu
 	 */
-	constructor({ soundboard, overlay, playlist, playable, onCustomize, onMetadata }) {
+	constructor({ soundboard, overlay, playlist, playable, onCustomize = () => {}, onMetadata = () => {}, preview = false }) {
 		super();
 		this.#soundboard = soundboard;
 		this.#overlay = overlay;
@@ -39,6 +52,7 @@ export class PlaylistTile extends Component {
 		this.#playable = playable;
 		this.#onCustomize = onCustomize;
 		this.#onMetadata = onMetadata;
+		this.#preview = preview;
 	}
 
 	/** @override */
@@ -47,7 +61,11 @@ export class PlaylistTile extends Component {
 		const trackCount = (/** @type {number} */ count) => t('playlist.trackCount', { count });
 		let idleStatus = trackCount(tracks.length);
 		let state = this.#soundboard.getPlaylistSnapshot(id).state;
-		const status = h('span', { class: 'max-w-full truncate pr-7 text-xs text-muted group-data-[resume=true]:text-music' }, idleStatus);
+		const background = new TileBackground(TILE_COLOR_CLASS);
+		const status = h('span', {
+			class: 'block truncate pr-7 text-xs text-muted group-data-[resume=true]:text-music group-data-[image=true]:text-white',
+		}, idleStatus);
+		const band = h('span', { class: 'relative isolate block w-full px-3 py-1.5' }, background.band(), status);
 		let currentTitle = title;
 		/** @type {ResumePoint | null} */
 		let resume = this.#soundboard.getPlaylistSnapshot(id).resume;
@@ -55,18 +73,28 @@ export class PlaylistTile extends Component {
 			const text = resume ? resumeTooltip(currentTitle, resume) : currentTitle;
 			return this.#playable ? text : t('playlist.unplayable', { text });
 		};
-		const label = h('span', { class: 'line-clamp-3 font-medium wrap-anywhere' }, title);
+		const label = h('span', { class: 'line-clamp-2 font-medium wrap-anywhere group-data-[image=true]:text-white' }, title);
+		const shadow = h('span', { class: 'block px-3 pt-3' }, label);
+		const preview = this.#preview;
 		const button = h('button', {
 			'type': 'button',
-			'class': `${TILE_CLASS} group border-l-music data-[active=true]:border-music data-[active=true]:bg-music/20 data-[resume=true]:border-dashed`,
+			'class': PLAYLIST_TILE_CLASS,
 			'title': tooltip(),
 			'disabled': !this.#playable,
-			'data-playlist-id': id,
+			'tabindex': preview ? -1 : undefined,
+			'data-playlist-id': preview ? undefined : id,
 			'data-active': 'false',
 			'data-resume': String(resume !== null),
-			'onClick': () => this.#soundboard.togglePlaylist(id),
+			'onClick': () => {
+				if (!preview) {
+					this.#soundboard.togglePlaylist(id);
+				}
+			},
 			'onContextmenu': (/** @type {MouseEvent} */ event) => {
 				event.preventDefault();
+				if (preview || !this.#overlay) {
+					return;
+				}
 				openContextMenu(
 					this.#overlay,
 					playlistMenuItems(this.#soundboard.getPlaylistSnapshot(id)),
@@ -74,7 +102,7 @@ export class PlaylistTile extends Component {
 					(item) => this.#runMenuItem(item),
 				);
 			},
-		}, label, status);
+		}, ...background.layers, shadow, band);
 
 		const show = () => {
 			button.dataset.active = String(state !== 'idle');
@@ -83,6 +111,14 @@ export class PlaylistTile extends Component {
 			status.textContent = state !== 'idle' ? t(`playlist.state.${state}`) : resume ? resumeStatus(resume) : idleStatus;
 		};
 		show();
+		/** @param {PlaylistJson} playlist */
+		const showImage = (playlist) => {
+			const url = playlist.background?.url ?? null;
+			button.dataset.image = String(url !== null);
+			background.show(url, playlist);
+			showTitleShadow(shadow, url === null ? null : playlist);
+		};
+		showImage(this.#playlist);
 
 		this.own(this.#soundboard.on('playlist.changed', ({ playlist }) => {
 			if (playlist.id === id) {
@@ -91,6 +127,7 @@ export class PlaylistTile extends Component {
 				// Downloads can add tracks.
 				idleStatus = trackCount(playlist.tracks.length);
 				show();
+				showImage(playlist);
 			}
 		}));
 		this.own(this.#soundboard.on('playlist.stateChanged', (event) => {
@@ -105,10 +142,13 @@ export class PlaylistTile extends Component {
 				flashError(button);
 			}
 		}));
+		if (preview) {
+			return h('div', { class: 'relative' }, button);
+		}
 		// Shown while the live volume (DESIGN.md §6.4) is turned down, which is set from the player bar. A sibling of the
 		// button, so double-clicking it never also toggles the playlist.
 		const levelIcon = h('span', {
-			'class': 'absolute right-3 bottom-2.5 grid size-5 place-items-center rounded-full bg-boost text-gray-700',
+			'class': 'absolute right-3 bottom-1 grid size-5 place-items-center rounded-full bg-boost text-gray-700',
 			'data-level-icon': true,
 			'onDblclick': () => this.#soundboard.setPlaylistLevel(id, 1),
 		}, icon('volume-high', 'size-4'));

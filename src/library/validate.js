@@ -15,7 +15,12 @@
 /** @typedef {typeof SOURCE_ORIGINS[number]} SourceOrigin */
 /**
  * @typedef {{ title?: string, gain?: number, crossfade?: number, fadeIn?: number, fadeOut?: number,
- * 	order?: PlaybackOrder, playlistLooping?: boolean, trackLooping?: boolean, stopMode?: StopMode, includedSubdirectories?: string[] }} PlaylistOptions
+ * 	order?: PlaybackOrder, playlistLooping?: boolean, trackLooping?: boolean, stopMode?: StopMode, includedSubdirectories?: string[] }
+ * 	& Partial<BackgroundStyle>} PlaylistOptions
+ */
+/**
+ * @typedef {{ imageColorOpacity: number, imageBlur: number, titleShadowOpacity: number, titleShadowBlur: number,
+ * 	titleShadowOffset: number }} BackgroundStyle how a tile's color and title sit over its image (DESIGN.md §2.3)
  */
 /** @typedef {typeof PLAYBACK_ORDERS[number]} PlaybackOrder */
 /** @typedef {typeof STOP_MODES[number]} StopMode */
@@ -39,6 +44,27 @@ export const PLAYBACK_ORDERS = /** @type {const} */ (['ordered', 'random', 'shuf
 
 /** What stopping a playlist remembers; `resetPlaylist`, remembering nothing, is the default. */
 export const STOP_MODES = /** @type {const} */ (['pause', 'resetTrack', 'resetPlaylist']);
+
+/** The largest value of each background setting; each goes down to 0. Opacities are shares, the rest pixels. */
+export const BACKGROUND_STYLE_LIMITS = /** @type {const} */ ({
+	imageColorOpacity: 1,
+	imageBlur: 20,
+	titleShadowOpacity: 1,
+	titleShadowBlur: 10,
+	titleShadowOffset: 5,
+});
+
+/** @type {BackgroundStyle} */
+export const DEFAULT_BACKGROUND_STYLE = {
+	imageColorOpacity: 0.6,
+	imageBlur: 4,
+	titleShadowOpacity: 0.8,
+	titleShadowBlur: 4,
+	titleShadowOffset: 1,
+};
+
+/** @type {(keyof BackgroundStyle)[]} */
+export const BACKGROUND_STYLE_KEYS = /** @type {(keyof BackgroundStyle)[]} */ (Object.keys(BACKGROUND_STYLE_LIMITS));
 
 /** How much of a sound must stay between its start and end points, in milliseconds. */
 export const MIN_CLIP_MS = 10;
@@ -129,7 +155,12 @@ export function validatePlaylistOptions(value) {
 	if (!isPlainObject(value)) {
 		return [NOT_AN_OBJECT];
 	}
-	const problems = [...checkTitle(value), ...checkGain(value), ...checkSeconds(value, ['crossfade', 'fadeIn', 'fadeOut'])];
+	const problems = [
+		...checkTitle(value),
+		...checkGain(value),
+		...checkSeconds(value, ['crossfade', 'fadeIn', 'fadeOut']),
+		...checkBackgroundStyle(value),
+	];
 	if ('order' in value && !(/** @type {readonly unknown[]} */ (PLAYBACK_ORDERS)).includes(value.order)) {
 		problems.push('"order" must be "ordered", "random" or "shuffle"');
 	}
@@ -149,6 +180,17 @@ export function validatePlaylistOptions(value) {
 		problems.push('"includedSubdirectories" must be an array of strings');
 	}
 	return problems;
+}
+
+/**
+ * The background settings, for any kind of item that has a tile.
+ * @param {Record<string, unknown>} value
+ * @returns {string[]}
+ */
+export function checkBackgroundStyle(value) {
+	return BACKGROUND_STYLE_KEYS
+		.filter((key) => key in value && !(typeof value[key] === 'number' && value[key] >= 0 && value[key] <= BACKGROUND_STYLE_LIMITS[key]))
+		.map((key) => `"${key}" must be a number from 0 to ${BACKGROUND_STYLE_LIMITS[key]}`);
 }
 
 /**

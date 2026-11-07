@@ -5,6 +5,7 @@ import { request } from 'node:http';
 import { join } from 'node:path';
 import { BootstrapService } from '../../../src/library/bootstrap-service.js';
 import { startServer } from '../../../src/http/server.js';
+import { DEFAULT_BACKGROUND_STYLE } from '../../../src/library/validate.js';
 import { FakePrompter } from '../../helpers/fake-prompter.js';
 import { FakeReporter } from '../../helpers/fake-reporter.js';
 import { rawRequest } from '../../helpers/http-client.js';
@@ -172,6 +173,8 @@ describe('server', () => {
 					playlistLooping: true,
 					trackLooping: false,
 					stopMode: 'resetPlaylist',
+					background: null,
+					...DEFAULT_BACKGROUND_STYLE,
 					tracks: [{
 						id: 'Combat/Zażółć ♪ #1.ogg',
 						title: 'Zażółć ♪ #1.ogg',
@@ -371,6 +374,7 @@ describe('server', () => {
 			const playlist = await json(response);
 			assert.deepEqual({ ...playlist, tracks: playlist.tracks.length }, {
 				id: 'Combat', title: 'Fight', gain: 1.5, crossfade: 3, fadeIn: 1, fadeOut: 2, order: 'shuffle', playlistLooping: false, trackLooping: true, stopMode: 'pause', tracks: 1,
+				background: null, ...DEFAULT_BACKGROUND_STYLE,
 			});
 			assert.deepEqual(JSON.parse(await readFile(join(musicRoot, 'Combat.json'), 'utf8')), {
 				title: 'Fight', includedSubdirectories: [], gain: 1.5, crossfade: 3, fadeIn: 1, fadeOut: 2, order: 'shuffle', playlistLooping: false, trackLooping: true, stopMode: 'pause',

@@ -52,6 +52,13 @@ export class PlaylistsPage {
 	}
 
 	/** @param {string} title */
+	/** Whether the tile shows its image. @param {string} title @param {boolean} shown */
+	async expectImage(title, shown) {
+		await expect(this.#tile(title)).toHaveAttribute('data-image', String(shown));
+		await expect(this.#tile(title).locator('[data-tile-image]')).toBeVisible({ visible: shown });
+	}
+
+	/** @param {string} title */
 	async expectPlaying(title) {
 		await expect(this.#tile(title)).toHaveAttribute('data-active', 'true');
 	}

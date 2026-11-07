@@ -1,3 +1,4 @@
+import { backgroundUrl, backgroundVersion } from './background-routes.js';
 import { mediaUrl } from './media.js';
 
 /** @typedef {import('../library/library.js').Library} Library */
@@ -17,8 +18,33 @@ export function toLibraryJson(library) {
 }
 
 /** @param {import('../library/library.js').Playlist} playlist */
-export function toPlaylistJson({ id, title, gain, crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode, tracks }) {
-	return { id, title, gain, crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode, tracks: tracks.map(toFileJson) };
+export function toPlaylistJson(playlist) {
+	const { id, title, gain, crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode, tracks, background } = playlist;
+	const { imageColorOpacity, imageBlur, titleShadowOpacity, titleShadowBlur, titleShadowOffset } = playlist;
+	return {
+		id,
+		title,
+		gain,
+		crossfade,
+		fadeIn,
+		fadeOut,
+		order,
+		playlistLooping,
+		trackLooping,
+		stopMode,
+		background: background && {
+			url: backgroundUrl(id, background),
+			version: backgroundVersion(background),
+			width: background.width,
+			height: background.height,
+		},
+		imageColorOpacity,
+		imageBlur,
+		titleShadowOpacity,
+		titleShadowBlur,
+		titleShadowOffset,
+		tracks: tracks.map(toFileJson),
+	};
 }
 
 /** @param {import('../library/library.js').AudioFile} file */

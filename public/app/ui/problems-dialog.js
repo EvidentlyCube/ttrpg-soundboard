@@ -5,7 +5,7 @@ import { describe, t } from './text.js';
 /** @typedef {import('../logic/soundboard.js').Soundboard} Soundboard */
 
 /** The kinds the language files name; any other shows as it is. */
-const KINDS = ['unsupported-audio', 'orphan-options', 'symlink', 'empty-playlist', 'unknown-duration', 'play-failed', 'save-failed', 'download-failed', 'host-failed', 'host-lost', 'ytdlp-outdated'];
+const KINDS = ['unsupported-audio', 'orphan-options', 'symlink', 'empty-playlist', 'unknown-duration', 'play-failed', 'save-failed', 'download-failed', 'host-failed', 'host-lost', 'ytdlp-outdated', 'invalid-background', 'duplicate-background', 'large-background'];
 
 /** @param {string} kind */
 const kindLabel = (kind) => (KINDS.includes(kind) ? t(`problems.kind.${/** @type {'symlink'} */ (kind)}`) : kind);

@@ -28,6 +28,8 @@ export const ICON_NAMES = /** @type {const} */ ([
 	'rotate-left',
 	'sliders',
 	'file-lines',
+	'cloud-arrow-down',
+	'file-arrow-up',
 ]);
 
 /** @typedef {typeof ICON_NAMES[number]} IconName */

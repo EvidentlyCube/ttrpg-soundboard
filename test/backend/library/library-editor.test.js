@@ -39,7 +39,7 @@ function sound(name) {
 /** @param {string} id */
 function playlist(id) {
 	const track = { ...sound('1.mp3'), id: `${id}/1.mp3`, absolutePath: join(tree.root, id, '1.mp3'), optionsPath: join(tree.root, id, '1.mp3.json') };
-	return { id, absolutePath: join(tree.root, id), optionsPath: join(tree.root, `${id}.json`), hasOptions: true, tracks: [track], subdirectories: [] };
+	return { id, absolutePath: join(tree.root, id), optionsPath: join(tree.root, `${id}.json`), hasOptions: true, backgroundPaths: [], tracks: [track], subdirectories: [] };
 }
 
 function library() {

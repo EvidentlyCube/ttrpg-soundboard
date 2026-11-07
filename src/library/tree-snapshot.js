@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
+import { basename } from 'node:path';
+import { backgroundOwnerOf } from './backgrounds.js';
 import { sha1File } from './durations.js';
 import { scanAudioDirectory } from './scanner.js';
 import { isPlainObject } from './validate.js';
@@ -12,7 +14,7 @@ import { isPlainObject } from './validate.js';
 
 /**
  * The size and modified time of every file the app reads (DESIGN.md §2.1): audio files, their options files, playlist
- * options files and `.soundboard`. Like the scanner, it reads directory listings and file dates only.
+ * options files and images, and `.soundboard`. Like the scanner, it reads directory listings and file dates only.
  * @param {string} root
  * @returns {Promise<Snapshot>}
  */
@@ -117,6 +119,7 @@ async function snapshotOf(scan) {
 		}
 	}
 	others.push(...scan.playlists.filter((playlist) => playlist.hasOptions).map((playlist) => playlist.optionsPath));
+	others.push(...scan.playlists.flatMap((playlist) => playlist.backgroundPaths));
 	const stamps = await Promise.all(others.map((path) => stat(path).catch(() => null)));
 	others.forEach((path, index) => {
 		const stats = stamps[index];
@@ -128,9 +131,13 @@ async function snapshotOf(scan) {
 	return snapshot;
 }
 
-/** @param {string} path */
+/**
+ * Files hashed whole for the baseline: options files, `.soundboard` and images, which are at most 16 MB. Everything
+ * else in a snapshot is audio.
+ * @param {string} path
+ */
 function isSmallFile(path) {
-	return path.endsWith('.json') || path.endsWith('.soundboard');
+	return path.endsWith('.json') || path.endsWith('.soundboard') || backgroundOwnerOf(basename(path)) !== null;
 }
 
 /**

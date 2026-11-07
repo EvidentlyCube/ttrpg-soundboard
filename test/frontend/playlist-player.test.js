@@ -4,6 +4,7 @@ import { InvalidCommandError } from '../../public/app/logic/errors.js';
 import { DEFAULT_PLAYBACK_RULES } from '../../public/app/logic/playback-rules.js';
 import { PlaylistPlayer } from '../../public/app/logic/playlist-player.js';
 import { FakeAudioEngine } from '../helpers/fake-audio-engine.js';
+import { NO_BACKGROUND } from '../helpers/fake-backend-api.js';
 import { FakeClock } from '../helpers/fake-clock.js';
 import { seededRandom } from '../helpers/seeded-random.js';
 
@@ -27,6 +28,7 @@ function playlistOf(count, { gain = 1, trackGains = [], points = [] } = {}) {
 		playlistLooping: true,
 		trackLooping: false,
 		stopMode: 'resetPlaylist',
+		...NO_BACKGROUND,
 		tracks: Array.from({ length: count }, (_, i) => ({ id: `Combat/${i}.mp3`, title: `Track ${i}`, format: 'mp3', size: 1000, gain: trackGains[i] ?? 1, duration: 10, startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0, ...points[i], url: `/t${i}` })),
 	};
 }

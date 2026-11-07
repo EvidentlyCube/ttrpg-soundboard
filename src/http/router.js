@@ -15,6 +15,7 @@ import { serveStaticFile } from './static-files.js';
 import { serveAccess } from './access-routes.js';
 import { checkAccess } from './lan-access.js';
 import { serveRemote } from './remote-routes.js';
+import { REMOTE_BACKGROUNDS_PREFIX, serveBackgroundImage, serveBackgroundRoute } from './background-routes.js';
 
 /** @typedef {import('node:http').IncomingMessage} Request */
 /** @typedef {import('node:http').ServerResponse} Response */
@@ -50,6 +51,7 @@ import { serveRemote } from './remote-routes.js';
  * @property {DownloadService} [downloads] without it, downloads are not available
  * @property {AppInfo} info the versions `GET /api/info` reports
  * @property {Set<() => void>} streams ends each open event stream, for when the soundboard closes
+ * @property {Set<string>} backgroundDownloads the playlists downloading an image now, one at a time each
  */
 
 /**
@@ -120,6 +122,12 @@ async function route(request, response, context) {
 		await serveAccess(request, response, pathname, context.access, readJsonBody);
 		return;
 	}
+	if (pathname.startsWith(REMOTE_BACKGROUNDS_PREFIX)) {
+		// Paired phones may reach the remote routes only; this one names playlist images, nothing else on disk.
+		allowMethods(request, ['GET', 'HEAD']);
+		await serveBackgroundImage(request, response, context, decodeId(pathname.slice(REMOTE_BACKGROUNDS_PREFIX.length)));
+		return;
+	}
 	if (pathname === '/api/remote' || pathname.startsWith('/api/remote/')) {
 		if (!context.relay) {
 			throw new HttpError(404, 'Not found');
@@ -173,6 +181,11 @@ async function route(request, response, context) {
 		}
 		const body = /** @type {OptionChanges} */ (await readJsonBody(request));
 		sendJson(response, 200, toFileJson(await editItem(pathname, SOUNDS_PREFIX, (id) => editor.updateSound(id, body))));
+	} else if (pathname.startsWith(PLAYLISTS_PREFIX) && pathname.indexOf('/', PLAYLISTS_PREFIX.length) !== -1) {
+		// A playlist id is a directory name, sent encoded, so the first slash after it starts the sub-route.
+		const rest = pathname.slice(PLAYLISTS_PREFIX.length);
+		const slash = rest.indexOf('/');
+		await serveBackgroundRoute(request, response, decodeId(rest.slice(0, slash)), rest.slice(slash + 1), context, readJsonBody);
 	} else if (pathname.startsWith(PLAYLISTS_PREFIX)) {
 		allowMethods(request, ['PATCH', 'DELETE']);
 		if (request.method === 'DELETE') {
@@ -237,6 +250,15 @@ async function route(request, response, context) {
 	} else {
 		allowMethods(request, ['GET', 'HEAD']);
 		await serveStaticFile(request, response, publicDir, pathname);
+	}
+}
+
+/** @param {string} encoded */
+function decodeId(encoded) {
+	try {
+		return decodeURIComponent(encoded);
+	} catch {
+		throw new HttpError(404, 'Not found');
 	}
 }
 
@@ -418,6 +440,9 @@ async function sendChanges(response, context, { changes }) {
 	for (const change of changes) {
 		if (change.type === 'library.removed') {
 			context.problems?.removeFor('soundId' in change ? change.soundId : 'trackId' in change ? change.trackId : change.playlistId);
+			if (!('soundId' in change) && !('trackId' in change)) {
+				context.problems?.removeBackgroundsOf(change.playlistId);
+			}
 		}
 	}
 	context.libraryChanges?.emit(changes);

@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_PLAYBACK_RULES, planTrack, resolvePlaybackRules } from '../../public/app/logic/playback-rules.js';
 import { isTransition, resolveTransition } from '../../public/app/logic/transitions.js';
+import { NO_BACKGROUND } from '../helpers/fake-backend-api.js';
 
 const FADING_RULES = { ...DEFAULT_PLAYBACK_RULES, fadeIn: 2, fadeOut: 3, crossfade: 4 };
 
@@ -10,6 +11,7 @@ describe('playback rules', () => {
 		assert.deepEqual(DEFAULT_PLAYBACK_RULES, { order: 'ordered', playlistLooping: true, trackLooping: false, stopMode: 'resetPlaylist', fadeIn: 0, fadeOut: 0, crossfade: 0 });
 		const playlist = {
 			id: 'Combat', title: 'Combat', gain: 1, crossfade: 0, fadeIn: 0, fadeOut: 0, order: /** @type {const} */ ('ordered'), playlistLooping: true, trackLooping: false, stopMode: /** @type {const} */ ('resetPlaylist'), tracks: [],
+			...NO_BACKGROUND,
 		};
 		assert.deepEqual(resolvePlaybackRules(playlist), DEFAULT_PLAYBACK_RULES);
 	});
@@ -17,6 +19,7 @@ describe('playback rules', () => {
 	it('takes the crossfade, the fades, the order and track looping from the playlist', () => {
 		const playlist = {
 			id: 'Combat', title: 'Combat', gain: 1, crossfade: 2.5, fadeIn: 1, fadeOut: 3, order: /** @type {const} */ ('shuffle'), playlistLooping: true, trackLooping: true, stopMode: /** @type {const} */ ('pause'), tracks: [],
+			...NO_BACKGROUND,
 		};
 		assert.deepEqual(resolvePlaybackRules(playlist), {
 			...DEFAULT_PLAYBACK_RULES, crossfade: 2.5, fadeIn: 1, fadeOut: 3, order: 'shuffle', trackLooping: true, stopMode: 'pause',

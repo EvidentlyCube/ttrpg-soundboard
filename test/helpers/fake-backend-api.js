@@ -6,6 +6,8 @@
 
 /** What every sound and track has without start and end points or fades. */
 const NO_CLIP = { startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0 };
+/** What every playlist has without an image. */
+export const NO_BACKGROUND = { background: null, imageColorOpacity: 0.6, imageBlur: 4, titleShadowOpacity: 0.8, titleShadowBlur: 4, titleShadowOffset: 1 };
 
 /** @returns {LibraryJson} */
 export function exampleLibrary() {
@@ -23,6 +25,7 @@ export function exampleLibrary() {
 				playlistLooping: true,
 				trackLooping: false,
 				stopMode: 'resetPlaylist',
+				...NO_BACKGROUND,
 				tracks: [
 					{ id: 'Combat/1.mp3', title: 'Battle', format: 'mp3', size: 3_000_000, gain: 1, duration: 180, ...NO_CLIP, url: '/media/Combat/1.mp3' },
 					{ id: 'Combat/2.ogg', title: 'Boss', format: 'ogg', size: 3_000_000, gain: 1, duration: 200, ...NO_CLIP, url: '/media/Combat/2.ogg' },
@@ -39,6 +42,7 @@ export function exampleLibrary() {
 				playlistLooping: true,
 				trackLooping: false,
 				stopMode: 'resetPlaylist',
+				...NO_BACKGROUND,
 				tracks: [{ id: 'Tavern/1.mp3', title: 'Song', format: 'mp3', size: 3_000_000, gain: 1, duration: 150, ...NO_CLIP, url: '/media/Tavern/1.mp3' }],
 			},
 		],
@@ -260,6 +264,41 @@ export class FakeBackendApi {
 	/** @type {BackendApi['answerAccessRequest']} */
 	async answerAccessRequest(address, decision) {
 		this.accessAnswers.push({ address, decision });
+	}
+
+	/** What the next image request answers with, or the error it fails with. @type {import('../../public/app/logic/ports.js').BackgroundJson | null | Error} */
+	backgroundResult = null;
+	/** @type {({ upload: { playlistId: string, type: string } } | { download: { playlistId: string, url: string } } | { remove: string })[]} */
+	backgroundRequests = [];
+
+	/** @type {BackendApi['uploadPlaylistBackground']} */
+	async uploadPlaylistBackground(playlistId, _bytes, type) {
+		this.backgroundRequests.push({ upload: { playlistId, type } });
+		return this.#backgroundAnswer(playlistId);
+	}
+
+	/** @type {BackendApi['downloadPlaylistBackground']} */
+	async downloadPlaylistBackground(playlistId, url) {
+		this.backgroundRequests.push({ download: { playlistId, url } });
+		return this.#backgroundAnswer(playlistId);
+	}
+
+	/** @type {BackendApi['removePlaylistBackground']} */
+	async removePlaylistBackground(playlistId) {
+		this.backgroundRequests.push({ remove: playlistId });
+		return this.#backgroundAnswer(playlistId);
+	}
+
+	/** @param {string} playlistId */
+	#backgroundAnswer(playlistId) {
+		if (this.backgroundResult instanceof Error) {
+			throw this.backgroundResult;
+		}
+		const playlist = this.library.playlists.find((entry) => entry.id === playlistId);
+		if (!playlist) {
+			throw new Error(`Unknown playlist "${playlistId}"`);
+		}
+		return { ...structuredClone(playlist), background: structuredClone(this.backgroundResult) };
 	}
 
 	#rearranged() {

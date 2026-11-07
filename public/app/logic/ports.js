@@ -44,8 +44,14 @@
 /**
  * Timings are in seconds; 0 is off.
  * @typedef {{ id: string, title: string, gain: number, crossfade: number, fadeIn: number, fadeOut: number,
- * 	order: PlaybackOrder, playlistLooping: boolean, trackLooping: boolean, stopMode: StopMode, tracks: AudioFileJson[] }} PlaylistJson
+ * 	order: PlaybackOrder, playlistLooping: boolean, trackLooping: boolean, stopMode: StopMode, tracks: AudioFileJson[],
+ * 	background: BackgroundJson | null } & BackgroundStyle} PlaylistJson
  */
+/**
+ * A tile's image (DESIGN.md §5.2). `version` changes whenever the file does.
+ * @typedef {{ url: string, version: string, width: number, height: number }} BackgroundJson
+ */
+/** @typedef {import('./background-style.js').BackgroundStyle} BackgroundStyle */
 /** @typedef {import('./order-strategies.js').PlaybackOrder} PlaybackOrder */
 /** @typedef {import('./playback-rules.js').StopMode} StopMode */
 /** @typedef {{ version: number, playlists: PlaylistJson[], sounds: AudioFileJson[] }} LibraryJson */
@@ -114,6 +120,11 @@
  * @property {(soundId: string, options: ItemOptions, request: { keepalive: boolean }) => Promise<void>} saveSoundOptions
  * @property {(playlistId: string, options: ItemOptions, request: { keepalive: boolean }) => Promise<void>} savePlaylistOptions
  * @property {(trackId: string, options: ItemOptions, request: { keepalive: boolean }) => Promise<void>} saveTrackOptions
+ * @property {(playlistId: string, bytes: ArrayBuffer, type: string) => Promise<PlaylistJson>} uploadPlaylistBackground
+ * 	`type` is the file's, which the browser takes from its extension; rejects with the server's message
+ * @property {(playlistId: string, url: string) => Promise<PlaylistJson>} downloadPlaylistBackground rejects with the
+ * 	server's message
+ * @property {(playlistId: string) => Promise<PlaylistJson>} removePlaylistBackground
  * @property {() => Promise<string[]>} fetchMissingWaveforms ids of the sounds and tracks that have no waveform yet
  * @property {(id: string) => Promise<Int8Array | null>} fetchWaveform null when there is none yet
  * @property {(id: string, peaks: Int8Array) => Promise<void>} saveWaveform
@@ -288,7 +299,8 @@
  * The options a Customize dialog changes, in seconds where they are times. The crossfade is for playlists only, the
  * start and end points for sounds only.
  * @typedef {{ title?: string, gain?: number, crossfade?: number, fadeIn?: number, fadeOut?: number, startAt?: number,
- * 	endAt?: number | null, order?: PlaybackOrder, playlistLooping?: boolean, trackLooping?: boolean, stopMode?: StopMode }} ItemOptions
+ * 	endAt?: number | null, order?: PlaybackOrder, playlistLooping?: boolean, trackLooping?: boolean, stopMode?: StopMode }
+ * 	& Partial<BackgroundStyle>} ItemOptions
  */
 
 /**

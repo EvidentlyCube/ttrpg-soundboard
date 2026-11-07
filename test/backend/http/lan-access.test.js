@@ -101,6 +101,7 @@ describe('checkAccess', () => {
 			['/api/remote', 'GET'],
 			['/api/remote/commands', 'POST'],
 			['/api/remote/host', 'PUT'],
+			['/api/remote/backgrounds/Combat?v=1-2', 'GET'],
 			['/api/events?role=remote', 'GET'],
 		]) {
 			assert.equal(check(control, url, { cookie, method }), null, `${method} ${url}`);
@@ -124,6 +125,9 @@ describe('checkAccess', () => {
 			['/api/access/links', 'GET'],
 			['/api/access/requests/answer', 'POST'],
 			['/media/Boom.mp3', 'GET'],
+			['/api/playlists/Combat/background', 'GET'],
+			['/api/playlists/Combat/background', 'PUT'],
+			['/api/playlists/Combat/background/download', 'POST'],
 			['/', 'POST'],
 			['/', 'DELETE'],
 		]) {

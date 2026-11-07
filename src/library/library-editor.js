@@ -1,4 +1,4 @@
-import { mkdir, rename, rm, stat } from 'node:fs/promises';
+import { copyFile, mkdir, rename, rm, stat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { safeFileName, uniqueName } from '../downloads/file-names.js';
 import { audioFormatOf } from './classify.js';
@@ -9,7 +9,8 @@ import { audioFileOf, playlistOf } from './library.js';
 import { readValidatedJson, updateJsonFile, writeJsonAtomic } from './options-store.js';
 import { sortBy } from './sort.js';
 import { findInTrash, purgeAudioFile, purgeIfEmpty, purgePlaylistFolder, readTrash } from './trash.js';
-import { checkClip, isPlainObject, validateAudioOptions, validatePlaylistOptions } from './validate.js';
+import { backgroundNameFor, findBackgroundFiles, readBackground, readBackgroundLeniently } from './backgrounds.js';
+import { BACKGROUND_STYLE_KEYS, checkClip, isPlainObject, validateAudioOptions, validatePlaylistOptions } from './validate.js';
 
 /** @typedef {import('./library.js').Library} Library */
 /** @typedef {import('./library.js').AudioFile} AudioFile */
@@ -18,7 +19,13 @@ import { checkClip, isPlainObject, validateAudioOptions, validatePlaylistOptions
 /**
  * @typedef {{ title?: string, gain?: number, crossfade?: number, fadeIn?: number, fadeOut?: number, startAt?: number,
  * 	endAt?: number | null, order?: import('./validate.js').PlaybackOrder, playlistLooping?: boolean, trackLooping?: boolean,
- * 	stopMode?: import('./validate.js').StopMode }} OptionChanges
+ * 	stopMode?: import('./validate.js').StopMode } & Partial<import('./validate.js').BackgroundStyle>} OptionChanges
+ */
+/**
+ * @typedef {object} BackgroundChange what setting or removing an image did
+ * @property {Playlist} playlist
+ * @property {string[]} removed root-relative paths of the images that are gone, for the problems list
+ * @property {string | null} added root-relative path of the new image
  */
 
 /** @typedef {{ title: string, source: import('./validate.js').Source }} NewFileOptions */
@@ -47,7 +54,10 @@ const SECONDS_KEYS = ['crossfade', 'fadeIn', 'fadeOut'];
 /** The only options the app itself changes, per kind of item; anything else in a request is rejected. */
 const EDITABLE = {
 	sound: { keys: ['title', 'gain', 'startAt', 'endAt', 'fadeIn', 'fadeOut'], validate: validateAudioOptions },
-	playlist: { keys: ['title', 'gain', ...SECONDS_KEYS, 'order', 'playlistLooping', 'trackLooping', 'stopMode'], validate: validatePlaylistOptions },
+	playlist: {
+		keys: ['title', 'gain', ...SECONDS_KEYS, 'order', 'playlistLooping', 'trackLooping', 'stopMode', ...BACKGROUND_STYLE_KEYS],
+		validate: validatePlaylistOptions,
+	},
 	track: { keys: ['title', 'gain', 'startAt', 'endAt'], validate: validateAudioOptions },
 };
 
@@ -181,6 +191,58 @@ export class LibraryEditor {
 	 */
 	playlist(playlistId) {
 		return this.#library.playlists.find((entry) => entry.id === playlistId);
+	}
+
+	/**
+	 * Moves a checked image into place as the playlist's background, `<directory>.bg.<extension>` in the root
+	 * (DESIGN.md §2.1), and deletes the one it had, whatever its extension. Nothing here checks the image.
+	 * @param {string} playlistId
+	 * @param {string} from the image, already checked, on the same file system as the root
+	 * @param {import('./image-info.js').ImageFormat} format what the check found
+	 * @returns {Promise<BackgroundChange>}
+	 */
+	async setPlaylistBackground(playlistId, from, format) {
+		const playlist = this.#playlist(playlistId);
+		const root = this.#library.root;
+		const target = join(root, backgroundNameFor(playlist.id, format));
+		/** @type {string[]} */
+		let replaced = [];
+		await this.#writeFiles(async () => {
+			// Deleted while the image downloaded: the image would have nothing to belong to.
+			if (this.playlist(playlistId) !== playlist) {
+				throw new UnknownPlaylistError(playlistId);
+			}
+			replaced = await findBackgroundFiles(root, playlist.id);
+			await rename(from, target);
+			const old = replaced.filter((path) => path !== target);
+			for (const path of old) {
+				await rm(path, { force: true });
+			}
+			playlist.background = await readBackground(target);
+			return { written: [target], removed: old };
+		});
+		return { playlist, removed: replaced.map((path) => basename(path)), added: basename(target) };
+	}
+
+	/**
+	 * Deletes the playlist's background for good, and any other file named like one.
+	 * @param {string} playlistId
+	 * @returns {Promise<BackgroundChange>}
+	 */
+	async removePlaylistBackground(playlistId) {
+		const playlist = this.#playlist(playlistId);
+		const root = this.#library.root;
+		/** @type {string[]} */
+		let removed = [];
+		await this.#writeFiles(async () => {
+			removed = await findBackgroundFiles(root, playlist.id);
+			for (const path of removed) {
+				await rm(path, { force: true });
+			}
+			playlist.background = null;
+			return { removed };
+		});
+		return { playlist, removed: removed.map((path) => basename(path)), added: null };
 	}
 
 	/**
@@ -477,6 +539,8 @@ export class LibraryEditor {
 				await rename(trashed.optionsPath, join(root, `${trashed.id}.json`));
 				written.push(join(root, `${trashed.id}.json`));
 			}
+			const restoredImage = await this.#restoreImages(trashed.id, trashed.id, rename);
+			written.push(...restoredImage.written);
 			/** @type {AudioFile[]} */
 			const tracks = [];
 			for (const [index, track] of trashed.tracks.entries()) {
@@ -484,7 +548,7 @@ export class LibraryEditor {
 				tracks.push(adopted.file);
 				written.push(...adopted.written);
 			}
-			const playlist = playlistOf(trashed.id, options, tracks);
+			const playlist = playlistOf(trashed.id, options, tracks, restoredImage.background);
 			this.#putPlaylist(playlist);
 			return { change: /** @type {LibraryChange} */ ({ type: 'library.added', playlist }), written };
 		}
@@ -525,7 +589,31 @@ export class LibraryEditor {
 		/** @type {import('./validate.js').PlaylistOptions} */
 		const options = trashed ?? { title: trashedId, includedSubdirectories: [] };
 		await writeJsonAtomic(optionsPath, options);
-		return { playlist: playlistOf(id, options, []), isNew: true, written: [optionsPath] };
+		// Copied like the options file, so the tracks still in the trash keep it too.
+		const image = await this.#restoreImages(trashedId, id, copyFile);
+		return { playlist: playlistOf(id, options, [], image.background), isNew: true, written: [optionsPath, ...image.written] };
+	}
+
+	/**
+	 * Brings a trashed playlist's image back into the root under a playlist's name. An image whose name is taken there
+	 * stays in the trash; two images give the playlist none, as at startup.
+	 * @param {string} trashedId
+	 * @param {string} id
+	 * @param {(from: string, to: string) => Promise<void>} transfer `rename` or `copyFile`
+	 */
+	async #restoreImages(trashedId, id, transfer) {
+		const root = this.#library.root;
+		/** @type {string[]} */
+		const written = [];
+		for (const image of await findBackgroundFiles(join(root, TRASH_DIRECTORY), trashedId)) {
+			const to = join(root, `${id}${basename(image).slice(trashedId.length)}`);
+			if (!(await exists(to))) {
+				await transfer(image, to);
+				written.push(to);
+			}
+		}
+		const background = written.length === 1 ? await readBackgroundLeniently(written[0]) : null;
+		return { background, written };
 	}
 
 	/**
@@ -625,7 +713,17 @@ export class LibraryEditor {
 		if (await exists(optionsPath)) {
 			await rename(optionsPath, join(trash, `${playlist.id}.json`));
 		}
-		return [...playlist.tracks.flatMap((track) => [track.absolutePath, `${track.absolutePath}.json`]), optionsPath];
+		// Images go where the options file goes: an older one in the trash is replaced, whatever its extension.
+		const images = await findBackgroundFiles(root, playlist.id);
+		if (images.length > 0) {
+			for (const old of await findBackgroundFiles(trash, playlist.id)) {
+				await rm(old, { force: true });
+			}
+			for (const image of images) {
+				await rename(image, join(trash, basename(image)));
+			}
+		}
+		return [...playlist.tracks.flatMap((track) => [track.absolutePath, `${track.absolutePath}.json`]), optionsPath, ...images];
 	}
 
 	/** @param {string} soundId */
@@ -815,6 +913,12 @@ function normalizeChanges(changes, { keys, validate }) {
 	}
 	if (typeof changes.stopMode === 'string') {
 		normalized.stopMode = /** @type {import('./validate.js').StopMode} */ (changes.stopMode);
+	}
+	for (const key of BACKGROUND_STYLE_KEYS) {
+		const value = changes[key];
+		if (typeof value === 'number') {
+			normalized[key] = Math.round(value * 100) / 100;
+		}
 	}
 	if (typeof changes.startAt === 'number') {
 		normalized.startAt = Math.round(changes.startAt * 1000) / 1000;

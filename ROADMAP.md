@@ -49,6 +49,14 @@ In the owner's order: work from the top. Each entry becomes a proposal (above) b
 
 **Decided for all of them.** Customization changes apply immediately and are saved with a 500 ms debounce, as the sound Customize dialog does (DESIGN.md §6.4, §9.7). Re-sorting on screen waits until the dialog closes. Playback state is never remembered across a page reload, so F5 always gives a clean start.
 
+### Sound background images
+
+The playlist images (DESIGN.md §2.1, §9.1, §9.7), with the same settings and Image tab, for sound tiles, in amber. The parts that don't depend on playlists are already shared: `inspectImage`, the image download, the upload limits, the serving headers, the large-image problem, `TileBackground` and `BackgroundEditor`. This proposal decides what differs: the file name next to the sound (such as `Explosion.mp3.bg.png`), moves (an image follows its sound into a playlist, where tracks have no tiles), the sound tile's size, and the trash.
+
+### Scaling images down
+
+For the future: with ImageMagick installed as an optional tool, like yt-dlp and ffmpeg (DESIGN.md §3.4), scale background images larger than 1080p down when they are stored, which would make the `large-background` warning rare.
+
 ### Basic mobile design
 
 Make the page usable on a phone or tablet.

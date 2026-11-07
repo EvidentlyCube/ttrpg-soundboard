@@ -107,6 +107,72 @@ export class PlaylistEditorPage extends CustomizeDialog {
 		await this._dialog.locator('[data-tab="tracks"]').click();
 	}
 
+	async openImageTab() {
+		await this._dialog.locator('[data-tab="image"]').click();
+	}
+
+	/**
+	 * Chooses a file in the Image tab's file picker.
+	 * @param {string} name
+	 * @param {string} mimeType
+	 * @param {Uint8Array} bytes
+	 */
+	async chooseImageFile(name, mimeType, bytes) {
+		await this._dialog.locator('[data-background-file]').setInputFiles({ name, mimeType, buffer: Buffer.from(bytes) });
+	}
+
+	/** Pastes a link and presses Enter. @param {string} url */
+	async downloadImage(url) {
+		await this._dialog.locator('[data-background-link]').fill(url);
+		await this._dialog.locator('[data-background-link]').press('Enter');
+	}
+
+	async removeImage() {
+		await this._dialog.locator('[data-background-remove]').click();
+	}
+
+	/** @param {boolean} enabled */
+	async expectRemoveEnabled(enabled) {
+		await expect(this._dialog.locator('[data-background-remove]')).toBeEnabled({ enabled });
+	}
+
+	/** @param {string | RegExp} text */
+	async expectImageError(text) {
+		await expect(this._dialog.locator('[data-background-error]')).toContainText(text);
+	}
+
+	/** The yellow note about an image larger than 1080p. @param {boolean} shown */
+	async expectLargeImageNote(shown) {
+		await expect(this._dialog.locator('[data-background-large]')).toBeVisible({ visible: shown });
+	}
+
+	/** @param {boolean} enabled */
+	async expectImageSlidersEnabled(enabled) {
+		const sliders = this._dialog.locator('[data-background-slider]');
+		await expect(sliders).toHaveCount(5);
+		for (const slider of await sliders.all()) {
+			await expect(slider).toBeEnabled({ enabled });
+		}
+	}
+
+	/**
+	 * @param {'imageColorOpacity' | 'imageBlur' | 'titleShadowOpacity' | 'titleShadowBlur' | 'titleShadowOffset'} key
+	 * @param {string} value as the slider takes it: a share for opacities, pixels for the rest
+	 */
+	async setImageSlider(key, value) {
+		await this._dialog.locator(`[data-background-slider="${key}"]`).fill(value);
+	}
+
+	/** Whether the preview tile shows an image. @param {boolean} shown */
+	async expectPreviewImage(shown) {
+		await expect(this._dialog.locator('[data-tile-image]')).toBeVisible({ visible: shown });
+	}
+
+	/** The preview tile's color layer, whose opacity the color slider sets. @param {string} opacity */
+	async expectPreviewColorOpacity(opacity) {
+		await expect(this._dialog.locator('[data-tile-color]').first()).toHaveCSS('opacity', opacity);
+	}
+
 	/** @param {string} label as shown on the tab, such as "Tracks (2)" */
 	async expectTracksTab(label) {
 		await expect(this._dialog.locator('[data-tab="tracks"]')).toHaveText(label);
