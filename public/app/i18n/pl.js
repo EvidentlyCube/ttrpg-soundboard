@@ -184,6 +184,7 @@ export const translation = {
 			playlistCard: 'Playlista',
 			trackCard: 'Utwór',
 			playlistTab: 'Playlista',
+			soundTab: 'Dźwięk',
 			tracksTab: 'Utwory ({count})',
 			title: 'Tytuł',
 			emptyTitle: 'Tytuł nie może być pusty; zostaje poprzedni.',
@@ -563,7 +564,7 @@ export const translation = {
 				'unknown-duration': 'Nie udało się zmierzyć czasu trwania, więc punkty początku i końca oraz przenikania są niedostępne.',
 				'ytdlp-outdated': 'Dostępna jest nowa wersja yt-dlp {latest} (zainstalowana: {current}).',
 				'invalid-background': 'Tego obrazu nie można wyświetlić.',
-				'duplicate-background': 'Ta playlista ma więcej niż jeden obraz, więc żaden nie jest wyświetlany. Usuń wszystkie oprócz jednego.',
+				'duplicate-background': 'Ta playlista lub ten dźwięk ma więcej niż jeden obraz, więc żaden nie jest wyświetlany. Usuń wszystkie oprócz jednego.',
 				'large-background': 'Ten obraz ma {width} × {height} px. 1920 × 1080 w zupełności wystarczy; większe obrazy zajmują więcej pamięci.',
 			},
 			image: {

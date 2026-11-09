@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { InvalidCommandError } from '../../public/app/logic/errors.js';
 import { LibraryModel } from '../../public/app/logic/library-model.js';
-import { exampleLibrary } from '../helpers/fake-backend-api.js';
+import { exampleLibrary, NO_BACKGROUND } from '../helpers/fake-backend-api.js';
 
 describe('LibraryModel', () => {
 	const library = new LibraryModel(exampleLibrary(), (format) => format === 'mp3');
@@ -161,7 +161,7 @@ describe('LibraryModel', () => {
 
 	describe('additions from downloads', () => {
 		const track = (/** @type {string} */ id, format = /** @type {'mp3' | 'ogg' | 'opus'} */ ('mp3')) => ({
-			id, title: id, format, size: 1, gain: 1, duration: 1, startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0, url: `/media/${id}`,
+			id, title: id, format, size: 1, gain: 1, duration: 1, startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0, url: `/media/${id}`, ...NO_BACKGROUND,
 		});
 
 		it('adds a sound in title order and checks whether it can play', () => {

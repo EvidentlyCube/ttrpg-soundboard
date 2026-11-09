@@ -1,12 +1,16 @@
 import { lstat, mkdir, readdir, rename, rmdir } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { uniqueName } from '../downloads/file-names.js';
+import { backgroundOwnerOf, findBackgroundFiles } from './backgrounds.js';
 import { audioFormatOf } from './classify.js';
 
 /** Where deleted files go, mirroring their place in the root (DESIGN.md §2.5). Its dot hides it from the scanner. */
 export const TRASH_DIRECTORY = '.trash';
 
-/** The files that belong to an audio file and travel with it: its options file and its waveform (DESIGN.md §2.5). */
+/**
+ * The files that belong to an audio file and travel with it: its options file and its waveform (DESIGN.md §2.5). Its
+ * image, `<name>.bg.<extension>`, travels too, found by `findBackgroundFiles`.
+ */
 const COMPANION_SUFFIXES = ['.json', '.wf'];
 
 /**
@@ -20,9 +24,11 @@ export async function moveAudioFile(from, toDirectory) {
 	await mkdir(toDirectory, { recursive: true });
 	const name = await uniqueName(basename(from), (candidate) => isAnyTaken(toDirectory, candidate));
 	const path = join(toDirectory, name);
+	// Images keep their own extension, so they are found by name rather than by a fixed suffix.
+	const images = (await findBackgroundFiles(dirname(from), basename(from))).map((image) => image.slice(from.length));
 	/** @type {[string, string][]} */
 	const renamed = [];
-	for (const suffix of ['', ...COMPANION_SUFFIXES]) {
+	for (const suffix of ['', ...COMPANION_SUFFIXES, ...images]) {
 		if (suffix === '' || await exists(`${from}${suffix}`)) {
 			await rename(`${from}${suffix}`, `${path}${suffix}`);
 			renamed.push([`${from}${suffix}`, `${path}${suffix}`]);
@@ -48,10 +54,10 @@ export async function mergeDirectory(from, toParent) {
 	const entries = await readdir(from, { withFileTypes: true });
 	const names = new Set(entries.map((entry) => entry.name));
 	// Companions are moved with their audio file, so they are skipped on their own.
-	const isCompanion = (/** @type {string} */ name) => COMPANION_SUFFIXES.some((suffix) => (
+	const isAudio = (/** @type {string | null} */ name) => name !== null && names.has(name) && audioFormatOf(name) !== null;
+	const isCompanion = (/** @type {string} */ name) => isAudio(backgroundOwnerOf(name)) || COMPANION_SUFFIXES.some((suffix) => (
 		name.endsWith(suffix)
-		&& names.has(name.slice(0, -suffix.length))
-		&& audioFormatOf(name.slice(0, -suffix.length)) !== null
+		&& isAudio(name.slice(0, -suffix.length))
 	));
 	for (const entry of entries) {
 		const path = join(from, entry.name);
@@ -86,7 +92,7 @@ async function isAnyTaken(directory, name) {
 			return true;
 		}
 	}
-	return false;
+	return (await findBackgroundFiles(directory, name)).length > 0;
 }
 
 /** @param {string} path */

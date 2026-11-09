@@ -21,6 +21,13 @@ import { BACKGROUND_STYLE_KEYS, DEFAULT_BACKGROUND_STYLE } from './validate.js';
  * @property {(import('./validate.js').Source & { origin: import('./validate.js').SourceOrigin }) | null} source where it
  * 	came from, with a missing `origin` read as a download (DESIGN.md §2.3); null only before bootstrap has given it one
  * @property {string} absolutePath
+ * @property {import('./backgrounds.js').Background | null} background a sound's image (DESIGN.md §2.1), when it has a
+ * 	usable one; always null for a track, which has no tile
+ * @property {number} imageColorOpacity
+ * @property {number} imageBlur
+ * @property {number} titleShadowOpacity
+ * @property {number} titleShadowBlur
+ * @property {number} titleShadowOffset
  */
 
 /**
@@ -57,14 +64,17 @@ import { BACKGROUND_STYLE_KEYS, DEFAULT_BACKGROUND_STYLE } from './validate.js';
  * Combines a scan with the parsed options files into the library the app serves.
  * @param {ScanResult} scan
  * @param {Map<string, AudioOptions | PlaylistOptions>} optionsByPath already-validated options, keyed by options file path
- * @param {Map<string, import('./backgrounds.js').Background>} [backgrounds] usable images, by playlist id
+ * @param {Map<string, import('./backgrounds.js').Background>} [backgrounds] usable images, by playlist or sound id
  * @returns {Library}
  */
 export function buildLibrary(scan, optionsByPath, backgrounds = new Map()) {
 	/** @param {ScannedAudio} scanned */
 	const toAudioFile = (scanned) => audioFileOf(scanned, /** @type {AudioOptions | undefined} */ (optionsByPath.get(scanned.optionsPath)));
 
-	const sounds = sortBy(scan.sounds.map(toAudioFile), (sound) => sound.title);
+	const sounds = sortBy(
+		scan.sounds.map((scanned) => ({ ...toAudioFile(scanned), background: backgrounds.get(scanned.id) ?? null })),
+		(sound) => sound.title,
+	);
 	const playlists = sortBy(
 		scan.playlists
 			.filter((playlist) => playlist.tracks.length > 0)
@@ -140,5 +150,7 @@ export function audioFileOf({ id, name, format, size, absolutePath }, options) {
 		// Only downloads wrote a source before origins existed.
 		source: options?.source ? { origin: 'download', ...options.source } : null,
 		absolutePath,
+		background: null,
+		...backgroundStyleOf(options),
 	};
 }

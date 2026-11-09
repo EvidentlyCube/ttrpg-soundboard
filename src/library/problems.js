@@ -21,7 +21,7 @@ const WARNING_MESSAGES = {
 	'symlink': () => 'Symbolic links are ignored.',
 	'empty-playlist': () => 'This playlist has no audio files, so it is hidden.',
 	'invalid-background': ({ reason }) => `This image can't be shown: ${reason}`,
-	'duplicate-background': () => 'This playlist has more than one image, so none is shown. Delete all but one.',
+	'duplicate-background': () => 'This playlist or sound has more than one image, so none is shown. Delete all but one.',
 	'large-background': ({ width, height }) => `This image is ${width} × ${height} px. 1920 × 1080 is plenty; larger images use more memory.`,
 };
 

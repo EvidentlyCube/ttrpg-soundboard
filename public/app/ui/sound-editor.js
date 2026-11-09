@@ -1,14 +1,16 @@
 import { Component } from './component.js';
-import { card, labeledRow, moveOrDeleteCard, playFooter, playToggle, saveStatus, titleField } from './customize-parts.js';
+import { BackgroundEditor } from './background-editor.js';
+import { card, labeledRow, moveOrDeleteCard, playFooter, playToggle, saveStatus, tabs, titleField } from './customize-parts.js';
 import { h } from './dom.js';
 import { GainControl } from './gain-control.js';
 import { RangeControl } from './range-control.js';
 import { fromStored, toStoredEnd } from './range-scale.js';
 import { SecondsControl } from './seconds-control.js';
 import { SECONDS_LIMITS } from './seconds-scale.js';
+import { SoundTile } from './sound-tile.js';
 import { t } from './text.js';
 
-/** @typedef {import('../logic/ports.js').AudioFileJson} AudioFileJson */
+/** @typedef {import('../logic/ports.js').SoundJson} SoundJson */
 /** @typedef {import('../logic/soundboard.js').Soundboard} Soundboard */
 
 /**
@@ -25,7 +27,7 @@ export class SoundEditor extends Component {
 	/**
 	 * @param {object} options
 	 * @param {Soundboard} options.soundboard
-	 * @param {AudioFileJson} options.sound
+	 * @param {SoundJson} options.sound
 	 * @param {() => void} options.onMove opens the move dialog for this sound
 	 */
 	constructor({ soundboard, sound, onMove }) {
@@ -166,14 +168,45 @@ export class SoundEditor extends Component {
 		});
 		this.own(removal.destroy);
 
-		this.#footer = playFooter(play.element, status.element);
 		// The cards' title pills stick out above them, so they need the extra space.
-		return h('div', { class: 'space-y-8 pt-3' },
+		const settingsPanel = h('div', { class: 'space-y-8 pt-3' },
 			card(t('customize.soundCard'), 'sfx', title.element),
 			card(t('customize.volume'), 'sfx', gainSlot),
 			range && card(t('customize.startAndEnd'), 'sfx', rangeSlot),
 			card(t('customize.fades'), 'sfx', h('div', { class: 'space-y-3' }, fades.fadeIn.element, fades.fadeOut.element)),
 			removal.element);
+
+		const preview = new SoundTile({ soundboard, overlay: null, sound: this.#sound, playable: true, preview: true });
+		const previewSlot = h('div');
+		preview.mount(previewSlot);
+		this.own(() => preview.destroy());
+		const image = new BackgroundEditor({
+			item: this.#sound,
+			preview: previewSlot,
+			accent: 'sfx',
+			onStyle: (changes) => {
+				status.show('saving');
+				soundboard.customizeSound(id, changes);
+			},
+			onUpload: async (file) => soundboard.uploadSoundBackground(id, await file.arrayBuffer(), file.type),
+			onDownload: (url) => soundboard.downloadSoundBackground(id, url),
+			onRemove: () => soundboard.removeSoundBackground(id),
+		});
+		const imagePanel = h('div');
+		image.mount(imagePanel);
+		this.own(() => image.destroy());
+		this.own(soundboard.on('sound.changed', (event) => {
+			if (event.sound.id === id) {
+				image.update(event.sound);
+			}
+		}));
+
+		const { bar, panels } = tabs([
+			{ id: 'sound', label: t('customize.soundTab'), panel: settingsPanel },
+			{ id: 'image', label: t('customize.imageTab'), panel: imagePanel },
+		]);
+		this.#footer = playFooter(play.element, status.element);
+		return h('div', { class: 'space-y-5' }, bar, ...panels);
 	}
 
 	/** Focuses the title field, for when the dialog opens. */

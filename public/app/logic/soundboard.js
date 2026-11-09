@@ -30,6 +30,7 @@ export const MAX_NAME_LENGTH = 100;
 /** @typedef {import('./waveform-service.js').WaveformEvent} WaveformEvent */
 /** @typedef {import('./waveform-service.js').WaveformStatus} WaveformStatus */
 /** @typedef {import('./ports.js').AudioFileJson} AudioFileJson */
+/** @typedef {import('./ports.js').SoundJson} SoundJson */
 /** @typedef {import('./ports.js').ItemOptions} ItemOptions */
 /** @typedef {import('./ports.js').PlaylistJson} PlaylistJson */
 /** @typedef {import('./commands.js').Command} Command */
@@ -55,7 +56,7 @@ export const MAX_NAME_LENGTH = 100;
  * renamed the soundboard on this page; `displayName` is what the header shows.
  * @typedef {{ type: 'playlist.levelChanged', playlistId: string, level: number }} LevelEvent
  * `playlist.levelChanged`: a playlist's live level (DESIGN.md §6.4) changed; `level` is a slider position, 0..1.
- * @typedef {{ type: 'sound.changed', sound: AudioFileJson }
+ * @typedef {{ type: 'sound.changed', sound: SoundJson }
  * 	| { type: 'sound.saved', soundId: string }
  * 	| { type: 'sound.saveFailed', soundId: string, message: string }
  * 	| { type: 'playlist.changed', playlist: PlaylistJson }
@@ -80,7 +81,7 @@ export const MAX_NAME_LENGTH = 100;
 /**
  * @typedef {{ type: 'download.changed', job: DownloadJob | null, logReset: boolean }
  * 	| { type: 'download.log', lines: string[], replaceLast: boolean }
- * 	| { type: 'sound.added', sound: AudioFileJson }
+ * 	| { type: 'sound.added', sound: SoundJson }
  * 	| { type: 'playlist.added', playlist: PlaylistJson }
  * 	| { type: 'sound.removed', soundId: string }
  * 	| { type: 'playlist.removed', playlistId: string }} DownloadEvent `logReset`: read the whole log again with
@@ -668,7 +669,12 @@ export class Soundboard {
 			}
 			case 'sound.customize': {
 				const { title, gain, startAt, endAt, fadeIn, fadeOut } = command;
-				const sound = loaded.library.updateSound(command.soundId, { title, gain, startAt, endAt, fadeIn, fadeOut });
+				/** @type {Partial<import('./background-style.js').BackgroundStyle>} */
+				const style = {};
+				for (const key of BACKGROUND_STYLE_KEYS) {
+					style[key] = command[key];
+				}
+				const sound = loaded.library.updateSound(command.soundId, { title, gain, startAt, endAt, fadeIn, fadeOut, ...style });
 				if (gain !== undefined) {
 					loaded.sounds.setGain(sound.id, sound.gain);
 				}
@@ -679,6 +685,7 @@ export class Soundboard {
 					endAt: sound.endAt,
 					fadeIn: sound.fadeIn,
 					fadeOut: sound.fadeOut,
+					...backgroundStyleOf(sound),
 				});
 				this.#events.emit({ type: 'sound.changed', sound });
 				return;
@@ -941,8 +948,53 @@ export class Soundboard {
 	 * 	seconds, at least MIN_CLIP_MS apart, and a null end point means the end of the file; the fades are in seconds, from
 	 * 	0 to MAX_CROSSFADE
 	 */
-	customizeSound(soundId, { title, gain, startAt, endAt, fadeIn, fadeOut }) {
-		this.dispatch({ type: 'sound.customize', soundId, title, gain, startAt, endAt, fadeIn, fadeOut });
+	customizeSound(soundId, { title, gain, startAt, endAt, fadeIn, fadeOut, ...rest }) {
+		const style = Object.fromEntries(BACKGROUND_STYLE_KEYS.map((key) => [key, rest[key]]));
+		this.dispatch({ type: 'sound.customize', soundId, title, gain, startAt, endAt, fadeIn, fadeOut, ...style });
+	}
+
+	/**
+	 * Like `uploadPlaylistBackground`, for a sound; announced as `sound.changed`.
+	 * @param {string} soundId
+	 * @param {ArrayBuffer} bytes
+	 * @param {string} type
+	 * @returns {Promise<void>} rejects with a message for the user
+	 */
+	uploadSoundBackground(soundId, bytes, type) {
+		return this.#changeSoundBackground(soundId, () => this.#api.uploadSoundBackground(soundId, bytes, type));
+	}
+
+	/**
+	 * Like `downloadPlaylistBackground`, for a sound.
+	 * @param {string} soundId
+	 * @param {string} url
+	 * @returns {Promise<void>} rejects with a message for the user
+	 */
+	downloadSoundBackground(soundId, url) {
+		return this.#changeSoundBackground(soundId, () => this.#api.downloadSoundBackground(soundId, url));
+	}
+
+	/**
+	 * Deletes the sound's background for good.
+	 * @param {string} soundId
+	 * @returns {Promise<void>} rejects with a message for the user
+	 */
+	removeSoundBackground(soundId) {
+		return this.#changeSoundBackground(soundId, () => this.#api.removeSoundBackground(soundId));
+	}
+
+	/**
+	 * @param {string} soundId
+	 * @param {() => Promise<SoundJson>} request
+	 */
+	async #changeSoundBackground(soundId, request) {
+		const { background } = await request();
+		const loaded = this.#loaded;
+		// The sound may have been deleted or moved meanwhile.
+		if (loaded?.library.hasSound(soundId)) {
+			const sound = loaded.library.setSoundBackground(soundId, background);
+			this.#events.emit({ type: 'sound.changed', sound });
+		}
 	}
 
 	/**

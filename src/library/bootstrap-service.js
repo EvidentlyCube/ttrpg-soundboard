@@ -209,7 +209,7 @@ export class BootstrapService {
 			await writeJsonAtomic(scan.settingsPath, INITIAL_SETTINGS_FILE);
 		}
 
-		const { backgrounds, warnings: backgroundWarnings } = await readBackgrounds(scan.root, playlists);
+		const { backgrounds, warnings: backgroundWarnings } = await readBackgrounds(scan.root, [...playlists, ...scan.sounds]);
 		const library = buildLibrary(scan, optionsByPath, backgrounds);
 		this.#reporter.libraryLoaded(library);
 		const settings = await SettingsStore.load(scan.settingsPath, { updateFile: this.#updateSettingsFile });
@@ -304,18 +304,19 @@ async function loadOptions(scan) {
 }
 
 /**
- * Checks each playlist's image as an upload would be (DESIGN.md §2.1). One that fails, or two for one playlist, is
- * only a warning: the app didn't make these files, so it never deletes them.
+ * Checks each playlist's and sound's image as an upload would be (DESIGN.md §2.1). One that fails, or two for one item,
+ * is only a warning: the app didn't make these files, so it never deletes them.
  * @param {string} root
- * @param {ScannedPlaylist[]} playlists
+ * @param {{ id: string, backgroundPaths?: string[] }[]} items playlists and sounds, whose ids never clash, since a
+ * 	folder and a file in the root can't share a name
  */
-async function readBackgrounds(root, playlists) {
+async function readBackgrounds(root, items) {
 	/** @type {Map<string, import('./backgrounds.js').Background>} */
 	const backgrounds = new Map();
 	/** @type {ScanWarning[]} */
 	const warnings = [];
-	for (const playlist of playlists) {
-		const paths = playlist.backgroundPaths;
+	for (const item of items) {
+		const paths = item.backgroundPaths ?? [];
 		if (paths.length > 1) {
 			warnings.push(...paths.map((path) => ({ kind: /** @type {const} */ ('duplicate-background'), path: relative(root, path) })));
 			continue;
@@ -326,7 +327,7 @@ async function readBackgrounds(root, playlists) {
 		const path = relative(root, paths[0]);
 		try {
 			const background = await readBackground(paths[0]);
-			backgrounds.set(playlist.id, background);
+			backgrounds.set(item.id, background);
 			const warning = largeBackgroundWarning(path, background);
 			if (warning) {
 				warnings.push(warning);

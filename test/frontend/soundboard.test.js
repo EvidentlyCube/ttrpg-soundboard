@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { InvalidCommandError, NotReadyError } from '../../public/app/logic/errors.js';
 import { Soundboard } from '../../public/app/logic/soundboard.js';
 import { FakeAudioEngine } from '../helpers/fake-audio-engine.js';
-import { exampleLibrary, FakeBackendApi } from '../helpers/fake-backend-api.js';
+import { backgroundStyleOf } from '../../public/app/logic/background-style.js';
+import { exampleLibrary, FakeBackendApi, NO_BACKGROUND } from '../helpers/fake-backend-api.js';
 import { FakeClock } from '../helpers/fake-clock.js';
 import { FakeWaveformDecoder } from '../helpers/fake-waveform-decoder.js';
 
@@ -11,6 +12,8 @@ import { FakeWaveformDecoder } from '../helpers/fake-waveform-decoder.js';
 
 /** What every sound and track has without start and end points or fades. */
 const NO_CLIP = { startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0 };
+/** A sound's image settings, saved with its other options. */
+const NO_STYLE = backgroundStyleOf(NO_BACKGROUND);
 
 const EVENT_TYPES = /** @type {const} */ ([
 	'app.ready', 'app.startFailed', 'audio.suspended', 'audio.resumed', 'panic.changed',
@@ -416,7 +419,7 @@ describe('Soundboard', () => {
 			soundboard.customizeSound('Boom.mp3', { title: ' Thunder ' });
 			assert.deepEqual(eventsOf('sound.changed'), [{
 				type: 'sound.changed',
-				sound: { id: 'Boom.mp3', title: 'Thunder', format: 'mp3', size: 1000, gain: 1, duration: 1.5, ...NO_CLIP, url: '/media/Boom.mp3' },
+				sound: { id: 'Boom.mp3', title: 'Thunder', format: 'mp3', size: 1000, gain: 1, duration: 1.5, ...NO_CLIP, url: '/media/Boom.mp3', ...NO_BACKGROUND },
 			}]);
 			assert.deepEqual(soundboard.getLibrary()?.sounds.map((sound) => sound.title), ['Rain', 'Thunder']);
 		});
@@ -430,7 +433,7 @@ describe('Soundboard', () => {
 			clock.advance(1);
 			assert.deepEqual(api.soundSaves, [{
 				soundId: 'Boom.mp3',
-				options: { title: 'Thunder', gain: 0.5, startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0 },
+				options: { title: 'Thunder', gain: 0.5, startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0, ...NO_STYLE },
 				keepalive: false,
 			}]);
 			await settle();
@@ -524,7 +527,7 @@ describe('Soundboard', () => {
 			const { soundboard, api, clock } = await started();
 			soundboard.customizeSound('Rain.ogg', { fadeIn: 0.5 });
 			clock.advance(500);
-			assert.deepEqual(api.soundSaves[0].options, { title: 'Rain', gain: 1, startAt: 0, endAt: null, fadeIn: 0.5, fadeOut: 0 });
+			assert.deepEqual(api.soundSaves[0].options, { title: 'Rain', gain: 1, startAt: 0, endAt: null, fadeIn: 0.5, fadeOut: 0, ...NO_STYLE });
 		});
 
 		it('rejects fades out of range', async () => {
@@ -600,6 +603,69 @@ describe('Soundboard', () => {
 			const { soundboard } = await started();
 			assert.throws(() => soundboard.customizePlaylist('Combat', { imageBlur: 21 }), InvalidCommandError);
 			assert.throws(() => soundboard.customizePlaylist('Combat', { titleShadowOpacity: -0.1 }), InvalidCommandError);
+		});
+	});
+
+	describe('sound images', () => {
+		const IMAGE = { url: '/api/sounds/Boom.mp3/background?v=1-2', version: '1-2', width: 64, height: 48 };
+		const boom = (/** @type {import('../../public/app/logic/soundboard.js').Soundboard} */ soundboard) => soundboard.getLibrary()?.sounds.find((sound) => sound.id === 'Boom.mp3');
+
+		it('uploads, downloads and removes an image, announcing the sound each time', async () => {
+			const { soundboard, api, eventsOf } = await started();
+			api.backgroundResult = IMAGE;
+			await soundboard.uploadSoundBackground('Boom.mp3', new ArrayBuffer(4), 'image/png');
+			await soundboard.downloadSoundBackground('Boom.mp3', 'https://example.com/a.png');
+			assert.deepEqual(boom(soundboard)?.background, IMAGE);
+			api.backgroundResult = null;
+			await soundboard.removeSoundBackground('Boom.mp3');
+			assert.deepEqual(api.soundBackgroundRequests, [
+				{ upload: { soundId: 'Boom.mp3', type: 'image/png' } },
+				{ download: { soundId: 'Boom.mp3', url: 'https://example.com/a.png' } },
+				{ remove: 'Boom.mp3' },
+			]);
+			const changes = eventsOf('sound.changed').map((event) => event.type === 'sound.changed' && event.sound.background);
+			assert.deepEqual(changes, [IMAGE, IMAGE, null]);
+		});
+
+		it('keeps a setting changed while the image was on its way', async () => {
+			const { soundboard, api } = await started();
+			api.backgroundResult = IMAGE;
+			const uploading = soundboard.uploadSoundBackground('Boom.mp3', new ArrayBuffer(4), 'image/png');
+			soundboard.customizeSound('Boom.mp3', { imageBlur: 9 });
+			await uploading;
+			assert.equal(boom(soundboard)?.imageBlur, 9);
+			assert.deepEqual(boom(soundboard)?.background, IMAGE);
+		});
+
+		it('passes a refusal on and changes nothing', async () => {
+			const { soundboard, api, eventsOf } = await started();
+			api.backgroundResult = new Error('This file says it is a PNG but is a JPEG.');
+			await assert.rejects(soundboard.uploadSoundBackground('Boom.mp3', new ArrayBuffer(4), 'image/png'), /but is a JPEG/);
+			assert.deepEqual(eventsOf('sound.changed'), []);
+		});
+
+		it('ignores the answer for a sound deleted meanwhile', async () => {
+			const { soundboard, api, serverEvents, eventsOf, settle } = await started();
+			api.backgroundResult = IMAGE;
+			const uploading = soundboard.uploadSoundBackground('Boom.mp3', new ArrayBuffer(4), 'image/png');
+			serverEvents.send({ type: 'library.removed', soundId: 'Boom.mp3' });
+			await settle();
+			await uploading;
+			assert.deepEqual(eventsOf('sound.changed'), []);
+		});
+
+		it('changes the image settings live and saves them with the sound', async () => {
+			const { soundboard, api, clock, eventsOf } = await started();
+			soundboard.customizeSound('Boom.mp3', { imageColorOpacity: 0.3, titleShadowOffset: 2.5 });
+			const [changed] = eventsOf('sound.changed');
+			assert.equal(changed.type === 'sound.changed' && changed.sound.imageColorOpacity, 0.3);
+			clock.advance(500);
+			assert.equal(api.soundSaves[0].options.titleShadowOffset, 2.5);
+		});
+
+		it('rejects image settings out of range', async () => {
+			const { soundboard } = await started();
+			assert.throws(() => soundboard.customizeSound('Boom.mp3', { imageBlur: 21 }), InvalidCommandError);
 		});
 	});
 
@@ -814,7 +880,7 @@ describe('Soundboard', () => {
 			id, title: 'Zoo', target: { kind: 'sound' }, targetTitle: 'Sound effects', state, items: [], current: null, added: 0, failed: 0,
 		});
 		const file = (/** @type {string} */ id) => ({
-			id, title: id, format: /** @type {const} */ ('mp3'), size: 1, gain: 1, duration: 5, startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0, url: `/media/${id}`,
+			id, title: id, format: /** @type {const} */ ('mp3'), size: 1, gain: 1, duration: 5, startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0, url: `/media/${id}`, ...NO_BACKGROUND,
 		});
 
 		it('knows the tools and a download already running when it starts', async () => {
@@ -907,7 +973,7 @@ describe('Soundboard', () => {
 
 	describe('deleting and moving', () => {
 		const file = (/** @type {string} */ id) => ({
-			id, title: id, format: /** @type {const} */ ('mp3'), size: 1, gain: 1, duration: 5, startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0, url: `/media/${id}`,
+			id, title: id, format: /** @type {const} */ ('mp3'), size: 1, gain: 1, duration: 5, startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0, url: `/media/${id}`, ...NO_BACKGROUND,
 		});
 
 		it('saves pending changes first, then asks the server and applies its answer', async () => {
@@ -1109,7 +1175,7 @@ describe('Soundboard', () => {
 			soundboard.customizeSound('Boom.mp3', { gain: 0.5 });
 			api.rearrangement = [{
 				type: 'library.added',
-				sound: { id: 'Old.mp3', title: 'Old', format: 'mp3', size: 1, gain: 1, duration: 5, startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0, url: '/media/Old.mp3' },
+				sound: { id: 'Old.mp3', title: 'Old', format: 'mp3', size: 1, gain: 1, duration: 5, startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0, url: '/media/Old.mp3', ...NO_BACKGROUND },
 			}];
 			await soundboard.restoreFromTrash({ kind: 'sound', id: 'Old.mp3' });
 			assert.equal(api.soundSaves.length, 1);

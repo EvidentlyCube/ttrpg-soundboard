@@ -1,10 +1,5 @@
 import { h } from './dom.js';
 
-/** Classes every tile shares; each kind adds its accent color and active styling through `data-*` variants. */
-export const TILE_CLASS = 'flex min-h-24 w-full flex-col items-start justify-between gap-2 rounded-lg border border-l-4 border-line bg-raised p-3 text-left text-text transition-colors '
-	+ 'enabled:cursor-pointer enabled:hover:bg-raised-hover disabled:cursor-not-allowed disabled:opacity-40 '
-	+ 'data-[error=true]:ring-2 data-[error=true]:ring-danger';
-
 const ERROR_FLASH_MS = 2000;
 
 /** Colors written out in full so Tailwind generates them (DESIGN.md §9.6). */

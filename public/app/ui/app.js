@@ -390,7 +390,7 @@ class Board extends Component {
 
 		const soundSection = tileGrid(t('board.sounds'), { label: t('board.addSound'), accent: 'sfx', onClick: () => this.#add({ kind: 'sound' }) });
 		const soundGrid = soundSection.grid;
-		/** @param {AudioFileJson} sound */
+		/** @param {import('../logic/ports.js').SoundJson} sound */
 		const addSoundTile = (sound) => {
 			const tile = new SoundTile({
 				soundboard,

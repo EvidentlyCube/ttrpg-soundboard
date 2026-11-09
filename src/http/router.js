@@ -8,14 +8,14 @@ import { checkRequest } from './request-guard.js';
 import { findMediaFile, isMediaPath, serveMedia } from './media.js';
 import { InvalidWaveformError, UnknownWaveformFileError } from '../library/waveform-store.js';
 import { serveEvents, toMessage } from './events.js';
-import { toFileJson, toLibraryJson, toPlaylistJson } from './library-json.js';
+import { toFileJson, toLibraryJson, toPlaylistJson, toSoundJson } from './library-json.js';
 import { readLicenses } from './licenses.js';
 import { allowMethods, HttpError, sendJson } from './responses.js';
 import { serveStaticFile } from './static-files.js';
 import { serveAccess } from './access-routes.js';
 import { checkAccess } from './lan-access.js';
 import { serveRemote } from './remote-routes.js';
-import { REMOTE_BACKGROUNDS_PREFIX, serveBackgroundImage, serveBackgroundRoute } from './background-routes.js';
+import { REMOTE_BACKGROUNDS_PREFIX, REMOTE_SOUND_BACKGROUNDS_PREFIX, serveBackgroundImage, serveBackgroundRoute } from './background-routes.js';
 
 /** @typedef {import('node:http').IncomingMessage} Request */
 /** @typedef {import('node:http').ServerResponse} Response */
@@ -51,7 +51,8 @@ import { REMOTE_BACKGROUNDS_PREFIX, serveBackgroundImage, serveBackgroundRoute }
  * @property {DownloadService} [downloads] without it, downloads are not available
  * @property {AppInfo} info the versions `GET /api/info` reports
  * @property {Set<() => void>} streams ends each open event stream, for when the soundboard closes
- * @property {Set<string>} backgroundDownloads the playlists downloading an image now, one at a time each
+ * @property {Set<string>} backgroundDownloads the playlists and sounds downloading an image now (`<kind>:<id>`), one at a
+ * 	time each
  */
 
 /**
@@ -122,10 +123,12 @@ async function route(request, response, context) {
 		await serveAccess(request, response, pathname, context.access, readJsonBody);
 		return;
 	}
-	if (pathname.startsWith(REMOTE_BACKGROUNDS_PREFIX)) {
-		// Paired phones may reach the remote routes only; this one names playlist images, nothing else on disk.
+	if (pathname.startsWith(REMOTE_BACKGROUNDS_PREFIX) || pathname.startsWith(REMOTE_SOUND_BACKGROUNDS_PREFIX)) {
+		// Paired phones may reach the remote routes only; these name playlist and sound images, nothing else on disk.
 		allowMethods(request, ['GET', 'HEAD']);
-		await serveBackgroundImage(request, response, context, decodeId(pathname.slice(REMOTE_BACKGROUNDS_PREFIX.length)));
+		const isSound = pathname.startsWith(REMOTE_SOUND_BACKGROUNDS_PREFIX);
+		const id = decodeId(pathname.slice((isSound ? REMOTE_SOUND_BACKGROUNDS_PREFIX : REMOTE_BACKGROUNDS_PREFIX).length));
+		await serveBackgroundImage(request, response, context, isSound ? 'sound' : 'playlist', id);
 		return;
 	}
 	if (pathname === '/api/remote' || pathname.startsWith('/api/remote/')) {
@@ -173,6 +176,11 @@ async function route(request, response, context) {
 	} else if (pathname.startsWith(WAVEFORMS_PREFIX)) {
 		allowMethods(request, ['GET', 'PUT']);
 		await serveWaveform(request, response, waveforms, pathname);
+	} else if (pathname.startsWith(SOUNDS_PREFIX) && pathname.indexOf('/', SOUNDS_PREFIX.length) !== -1) {
+		// A sound id is a file name in the root, sent encoded, so the first slash after it starts the sub-route.
+		const rest = pathname.slice(SOUNDS_PREFIX.length);
+		const slash = rest.indexOf('/');
+		await serveBackgroundRoute(request, response, 'sound', decodeId(rest.slice(0, slash)), rest.slice(slash + 1), context, readJsonBody);
 	} else if (pathname.startsWith(SOUNDS_PREFIX)) {
 		allowMethods(request, ['PATCH', 'DELETE']);
 		if (request.method === 'DELETE') {
@@ -180,12 +188,12 @@ async function route(request, response, context) {
 			return;
 		}
 		const body = /** @type {OptionChanges} */ (await readJsonBody(request));
-		sendJson(response, 200, toFileJson(await editItem(pathname, SOUNDS_PREFIX, (id) => editor.updateSound(id, body))));
+		sendJson(response, 200, toSoundJson(await editItem(pathname, SOUNDS_PREFIX, (id) => editor.updateSound(id, body))));
 	} else if (pathname.startsWith(PLAYLISTS_PREFIX) && pathname.indexOf('/', PLAYLISTS_PREFIX.length) !== -1) {
 		// A playlist id is a directory name, sent encoded, so the first slash after it starts the sub-route.
 		const rest = pathname.slice(PLAYLISTS_PREFIX.length);
 		const slash = rest.indexOf('/');
-		await serveBackgroundRoute(request, response, decodeId(rest.slice(0, slash)), rest.slice(slash + 1), context, readJsonBody);
+		await serveBackgroundRoute(request, response, 'playlist', decodeId(rest.slice(0, slash)), rest.slice(slash + 1), context, readJsonBody);
 	} else if (pathname.startsWith(PLAYLISTS_PREFIX)) {
 		allowMethods(request, ['PATCH', 'DELETE']);
 		if (request.method === 'DELETE') {
@@ -440,7 +448,9 @@ async function sendChanges(response, context, { changes }) {
 	for (const change of changes) {
 		if (change.type === 'library.removed') {
 			context.problems?.removeFor('soundId' in change ? change.soundId : 'trackId' in change ? change.trackId : change.playlistId);
-			if (!('soundId' in change) && !('trackId' in change)) {
+			if ('soundId' in change) {
+				context.problems?.removeBackgroundsOf(change.soundId);
+			} else if (!('trackId' in change)) {
 				context.problems?.removeBackgroundsOf(change.playlistId);
 			}
 		}

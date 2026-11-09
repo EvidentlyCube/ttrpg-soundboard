@@ -10,13 +10,13 @@ import { TileBackground, showTitleShadow } from './tile-background.js';
 
 const PLAYER_BUTTON = 'grid size-8 shrink-0 cursor-pointer place-items-center rounded-md border border-line bg-raised-hover text-text enabled:active:bg-line disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-music';
 
-const TILE = 'flex aspect-[4/3] w-full flex-col items-start justify-start overflow-hidden rounded-md border border-l-4 border-line bg-raised p-2 text-left leading-tight text-text transition-colors enabled:cursor-pointer enabled:active:bg-raised-hover disabled:cursor-not-allowed disabled:opacity-40';
-
-/** A playlist's button keeps its colors on a layer of its own, which can sit over its image (DESIGN.md §9.15). */
-const REMOTE_PLAYLIST_TILE = 'group relative isolate flex aspect-[4/3] w-full flex-col items-start justify-start overflow-hidden rounded-md border border-l-4 '
-	+ 'border-line border-l-music p-2 text-left leading-tight text-text enabled:cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 '
-	+ 'data-[active=true]:border-music';
+/** A button keeps its colors on a layer of its own, which can sit over its image (DESIGN.md §9.15). */
+const REMOTE_TILE = 'group relative isolate flex aspect-[4/3] w-full flex-col items-start justify-start overflow-hidden rounded-md border border-l-4 '
+	+ 'border-line p-2 text-left leading-tight text-text enabled:cursor-pointer disabled:cursor-not-allowed disabled:opacity-40';
+const REMOTE_PLAYLIST_TILE = `${REMOTE_TILE} border-l-music data-[active=true]:border-music`;
+const REMOTE_SOUND_TILE = `${REMOTE_TILE} border-l-sfx data-[active=true]:border-sfx`;
 const REMOTE_PLAYLIST_COLOR = 'bg-raised transition-colors group-enabled:group-active:bg-raised-hover group-data-[active=true]:bg-raised-music';
+const REMOTE_SOUND_COLOR = 'bg-raised transition-colors group-enabled:group-active:bg-raised-hover group-data-[active=true]:bg-raised-sfx';
 
 const MIN_COLUMNS = 1;
 const MAX_COLUMNS = 8;
@@ -218,14 +218,20 @@ export class RemoteView extends Component {
 				return button;
 			}));
 			soundGrid.replaceChildren(...state.sounds.map((sound) => {
+				const url = sound.background && `/api/remote/sound-backgrounds/${encodeURIComponent(sound.id)}?v=${encodeURIComponent(sound.background.version)}`;
+				const background = new TileBackground(REMOTE_SOUND_COLOR);
+				const title = h('span', { class: 'block' }, h('span', { class: 'line-clamp-3 font-medium wrap-anywhere group-data-[image=true]:text-white' }, sound.title));
 				const button = h('button', {
 					'type': 'button',
-					'class': `${TILE} border-l-sfx data-[active=true]:border-sfx data-[active=true]:bg-sfx/20`,
+					'class': REMOTE_SOUND_TILE,
 					'data-remote-action': 'sound',
 					'data-sound-id': sound.id,
 					'data-active': 'false',
+					'data-image': String(url !== null),
 					'onClick': () => (this.#activeSounds.has(sound.id) ? remote.stopSound(sound.id) : remote.playSound(sound.id)),
-				}, h('span', { class: 'line-clamp-3 font-medium wrap-anywhere' }, sound.title));
+				}, ...background.layers, title);
+				background.show(url, sound);
+				showTitleShadow(title, url === null ? null : sound);
 				if (!sound.playable) {
 					button.setAttribute('data-unplayable', '');
 				}

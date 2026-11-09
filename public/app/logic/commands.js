@@ -16,7 +16,7 @@ import { isTransition } from './transitions.js';
  * 	| { type: 'volume.set', bus: Bus, value: number }
  * 	| { type: 'playlist.setLevel', playlistId: string, level: number }
  * 	| { type: 'sound.customize', soundId: string, title?: string, gain?: number, startAt?: number, endAt?: number | null,
- * 		fadeIn?: number, fadeOut?: number }
+ * 		fadeIn?: number, fadeOut?: number } & Partial<import('./background-style.js').BackgroundStyle>
  * 	| { type: 'playlist.customize', playlistId: string, title?: string, gain?: number, crossfade?: number, fadeIn?: number,
  * 		fadeOut?: number, order?: import('./order-strategies.js').PlaybackOrder, playlistLooping?: boolean, trackLooping?: boolean,
  * 		stopMode?: import('./playback-rules.js').StopMode } & Partial<import('./background-style.js').BackgroundStyle>
@@ -47,7 +47,11 @@ const SHAPES = {
 	'playlist.setLevel': { strings: ['playlistId'], numbers: ['level'] },
 	'sound.customize': {
 		strings: ['soundId'],
-		optional: { title: 'string', gain: 'number', startAt: 'number', endAt: 'number or null', fadeIn: 'number', fadeOut: 'number' },
+		optional: {
+			title: 'string', gain: 'number', startAt: 'number', endAt: 'number or null', fadeIn: 'number', fadeOut: 'number',
+			imageColorOpacity: 'number', imageBlur: 'number', titleShadowOpacity: 'number', titleShadowBlur: 'number',
+			titleShadowOffset: 'number',
+		},
 	},
 	'playlist.customize': {
 		strings: ['playlistId'],

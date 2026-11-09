@@ -6,7 +6,8 @@
 /** @typedef {{ size: number, modified: string, sha1: string }} MeasuredFrom what a stored duration was measured from */
 /**
  * @typedef {{ title?: string, gain?: number, duration?: number | null, measuredFrom?: MeasuredFrom, startAt?: number,
- * 	endAt?: number | null, fadeIn?: number, fadeOut?: number, source?: Source }} AudioOptions
+ * 	endAt?: number | null, fadeIn?: number, fadeOut?: number, source?: Source } & Partial<BackgroundStyle>} AudioOptions
+ * 	a track keeps the image settings unused, since tracks have no tiles
  */
 /**
  * @typedef {{ origin?: SourceOrigin, url?: string, extractor?: string, videoId?: string, playlistId?: string,
@@ -91,6 +92,7 @@ export function validateAudioOptions(value) {
 		...checkClip(value),
 		...checkSeconds(value, ['fadeIn', 'fadeOut']),
 		...checkSource(value),
+		...checkBackgroundStyle(value),
 	];
 }
 

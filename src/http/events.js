@@ -1,4 +1,4 @@
-import { toFileJson, toPlaylistJson } from './library-json.js';
+import { toPlaylistJson, toSoundJson } from './library-json.js';
 
 /** @typedef {import('node:http').IncomingMessage} Request */
 /** @typedef {import('node:http').ServerResponse} Response */
@@ -111,6 +111,6 @@ export function toMessage(event) {
 		return event;
 	}
 	return 'sound' in event
-		? { type: 'library.added', sound: toFileJson(event.sound) }
+		? { type: 'library.added', sound: toSoundJson(event.sound) }
 		: { type: 'library.added', playlist: toPlaylistJson(event.playlist) };
 }

@@ -180,6 +180,7 @@ export const translation = {
 			playlistCard: 'Playlist',
 			trackCard: 'Track',
 			playlistTab: 'Playlist',
+			soundTab: 'Sound',
 			tracksTab: 'Tracks ({count})',
 			title: 'Title',
 			emptyTitle: 'A title cannot be empty; the last one is kept.',
@@ -550,7 +551,7 @@ export const translation = {
 				'unknown-duration': 'Its duration could not be measured, so start and end points and crossfades are unavailable.',
 				'ytdlp-outdated': 'yt-dlp {latest} is available (installed: {current}), but the update failed: {error}',
 				'invalid-background': 'This image can’t be shown: {reason}',
-				'duplicate-background': 'This playlist has more than one image, so none is shown. Delete all but one.',
+				'duplicate-background': 'This playlist or sound has more than one image, so none is shown. Delete all but one.',
 				'large-background': 'This image is {width} × {height} px. 1920 × 1080 is plenty; larger images use more memory.',
 			},
 			image: {

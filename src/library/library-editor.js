@@ -9,7 +9,7 @@ import { audioFileOf, playlistOf } from './library.js';
 import { readValidatedJson, updateJsonFile, writeJsonAtomic } from './options-store.js';
 import { sortBy } from './sort.js';
 import { findInTrash, purgeAudioFile, purgeIfEmpty, purgePlaylistFolder, readTrash } from './trash.js';
-import { backgroundNameFor, findBackgroundFiles, readBackground, readBackgroundLeniently } from './backgrounds.js';
+import { backgroundNameFor, backgroundOwnerOf, findBackgroundFiles, readBackground, readBackgroundLeniently } from './backgrounds.js';
 import { BACKGROUND_STYLE_KEYS, checkClip, isPlainObject, validateAudioOptions, validatePlaylistOptions } from './validate.js';
 
 /** @typedef {import('./library.js').Library} Library */
@@ -23,7 +23,7 @@ import { BACKGROUND_STYLE_KEYS, checkClip, isPlainObject, validateAudioOptions, 
  */
 /**
  * @typedef {object} BackgroundChange what setting or removing an image did
- * @property {Playlist} playlist
+ * @property {Playlist | AudioFile} item the playlist or sound, as it is now
  * @property {string[]} removed root-relative paths of the images that are gone, for the problems list
  * @property {string | null} added root-relative path of the new image
  */
@@ -42,6 +42,8 @@ import { BACKGROUND_STYLE_KEYS, checkClip, isPlainObject, validateAudioOptions, 
  * @property {LibraryChange[]} changes in the order they happened, for the pages
  * @property {string[]} removed files that left the root, for the change watcher's baseline
  * @property {[string, string][]} renamed files moved within the root
+ * @property {string[]} [written] files the change watcher starts watching, such as the image of a track that became a
+ * 	sound
  */
 /** @typedef {import('./trash.js').TrashItem} TrashItem */
 /** @typedef {import('./trash.js').TrashedFile} TrashedFile */
@@ -53,7 +55,7 @@ const SECONDS_KEYS = ['crossfade', 'fadeIn', 'fadeOut'];
 
 /** The only options the app itself changes, per kind of item; anything else in a request is rejected. */
 const EDITABLE = {
-	sound: { keys: ['title', 'gain', 'startAt', 'endAt', 'fadeIn', 'fadeOut'], validate: validateAudioOptions },
+	sound: { keys: ['title', 'gain', 'startAt', 'endAt', 'fadeIn', 'fadeOut', ...BACKGROUND_STYLE_KEYS], validate: validateAudioOptions },
 	playlist: {
 		keys: ['title', 'gain', ...SECONDS_KEYS, 'order', 'playlistLooping', 'trackLooping', 'stopMode', ...BACKGROUND_STYLE_KEYS],
 		validate: validatePlaylistOptions,
@@ -203,25 +205,27 @@ export class LibraryEditor {
 	 */
 	async setPlaylistBackground(playlistId, from, format) {
 		const playlist = this.#playlist(playlistId);
-		const root = this.#library.root;
-		const target = join(root, backgroundNameFor(playlist.id, format));
-		/** @type {string[]} */
-		let replaced = [];
-		await this.#writeFiles(async () => {
-			// Deleted while the image downloaded: the image would have nothing to belong to.
+		return this.#setBackground(playlist, () => {
 			if (this.playlist(playlistId) !== playlist) {
 				throw new UnknownPlaylistError(playlistId);
 			}
-			replaced = await findBackgroundFiles(root, playlist.id);
-			await rename(from, target);
-			const old = replaced.filter((path) => path !== target);
-			for (const path of old) {
-				await rm(path, { force: true });
+		}, from, format);
+	}
+
+	/**
+	 * Like `setPlaylistBackground`, for a sound: `<file name>.bg.<extension>` next to it in the root.
+	 * @param {string} soundId
+	 * @param {string} from
+	 * @param {import('./image-info.js').ImageFormat} format
+	 * @returns {Promise<BackgroundChange>}
+	 */
+	async setSoundBackground(soundId, from, format) {
+		const sound = this.#sound(soundId);
+		return this.#setBackground(sound, () => {
+			if (this.sound(soundId) !== sound) {
+				throw new UnknownSoundError(soundId);
 			}
-			playlist.background = await readBackground(target);
-			return { written: [target], removed: old };
-		});
-		return { playlist, removed: replaced.map((path) => basename(path)), added: basename(target) };
+		}, from, format);
 	}
 
 	/**
@@ -229,20 +233,73 @@ export class LibraryEditor {
 	 * @param {string} playlistId
 	 * @returns {Promise<BackgroundChange>}
 	 */
-	async removePlaylistBackground(playlistId) {
-		const playlist = this.#playlist(playlistId);
+	removePlaylistBackground(playlistId) {
+		return this.#removeBackground(this.#playlist(playlistId));
+	}
+
+	/**
+	 * Like `removePlaylistBackground`, for a sound.
+	 * @param {string} soundId
+	 * @returns {Promise<BackgroundChange>}
+	 */
+	removeSoundBackground(soundId) {
+		return this.#removeBackground(this.#sound(soundId));
+	}
+
+	/**
+	 * @param {string} soundId
+	 * @returns {AudioFile | undefined}
+	 */
+	sound(soundId) {
+		return this.#library.sounds.find((entry) => entry.id === soundId);
+	}
+
+	/**
+	 * Both kinds of owner keep their image in the root under their own name: a playlist's directory name or a sound's
+	 * file name.
+	 * @param {Playlist | AudioFile} item
+	 * @param {() => void} checkStillThere throws when the item was deleted while the image downloaded, since the image
+	 * 	would have nothing to belong to
+	 * @param {string} from
+	 * @param {import('./image-info.js').ImageFormat} format
+	 * @returns {Promise<BackgroundChange>}
+	 */
+	async #setBackground(item, checkStillThere, from, format) {
+		const root = this.#library.root;
+		/** @type {string[]} */
+		let replaced = [];
+		const target = join(root, backgroundNameFor(item.id, format));
+		await this.#writeFiles(async () => {
+			checkStillThere();
+			replaced = await findBackgroundFiles(root, item.id);
+			await rename(from, target);
+			const old = replaced.filter((path) => path !== target);
+			for (const path of old) {
+				await rm(path, { force: true });
+			}
+			item.background = await readBackground(target);
+			return { written: [target], removed: old };
+		});
+		return { item, removed: replaced.map((path) => basename(path)), added: basename(target) };
+	}
+
+	/**
+	 * @param {Playlist | AudioFile} item
+	 * @returns {Promise<BackgroundChange>}
+	 */
+	async #removeBackground(item) {
 		const root = this.#library.root;
 		/** @type {string[]} */
 		let removed = [];
 		await this.#writeFiles(async () => {
-			removed = await findBackgroundFiles(root, playlist.id);
+			removed = await findBackgroundFiles(root, item.id);
 			for (const path of removed) {
 				await rm(path, { force: true });
 			}
-			playlist.background = null;
+			item.background = null;
 			return { removed };
 		});
-		return { playlist, removed: removed.map((path) => basename(path)), added: null };
+		return { item, removed: removed.map((path) => basename(path)), added: null };
 	}
 
 	/**
@@ -374,10 +431,11 @@ export class LibraryEditor {
 		this.#takeSound(sound);
 		return this.#rearrange({ files: [sound] }, () => this.#putSound(sound), async () => {
 			const { path, renamed } = await moveAudioFile(sound.absolutePath, join(this.#library.root, target.id));
-			this.#putTrack(target, { ...sound, id: `${target.id}/${basename(path)}`, absolutePath: path });
+			this.#putTrack(target, { ...sound, id: `${target.id}/${basename(path)}`, absolutePath: path, background: null });
 			return {
 				changes: [{ type: 'library.removed', soundId }, { type: 'library.added', playlist: target }],
-				removed: [],
+				// A track's image is kept but not watched, like everything else in a playlist's folder that isn't audio.
+				removed: renamed.map(([from]) => from).filter(isBackgroundPath),
 				renamed,
 			};
 		});
@@ -414,12 +472,16 @@ export class LibraryEditor {
 			const moved = { ...track, id: target === null ? name : `${target.id}/${name}`, absolutePath: path };
 			/** @type {LibraryChange} */
 			const added = target === null ? { type: 'library.added', sound: moved } : { type: 'library.added', playlist: target };
+			/** @type {string[]} */
+			let written = [];
 			if (target === null) {
+				({ background: moved.background, written } = await this.#readSoundBackground(name));
 				this.#putSound(moved);
 			} else {
 				this.#putTrack(target, moved);
 			}
 			return {
+				written,
 				changes: [
 					last ? { type: 'library.removed', playlistId: source.id } : { type: 'library.removed', trackId, playlistId: source.id },
 					added,
@@ -496,8 +558,21 @@ export class LibraryEditor {
 	/** @param {TrashedFile} sound */
 	async #restoreSound(sound) {
 		const { file, written } = await this.#restoreFile(sound.absolutePath, '');
+		const image = await this.#readSoundBackground(basename(file.absolutePath));
+		file.background = image.background;
 		this.#putSound(file);
-		return { change: /** @type {LibraryChange} */ ({ type: 'library.added', sound: file }), written };
+		return { change: /** @type {LibraryChange} */ ({ type: 'library.added', sound: file }), written: [...written, ...image.written] };
+	}
+
+	/**
+	 * The image of an audio file that has just become a sound, read as bootstrap reads it: a single usable image, or
+	 * none. `written` lists the image files, which the change watcher watches now that they belong to a sound.
+	 * @param {string} name the sound's file name in the root
+	 */
+	async #readSoundBackground(name) {
+		const written = await findBackgroundFiles(this.#library.root, name);
+		const background = written.length === 1 ? await readBackgroundLeniently(written[0]) : null;
+		return { background, written };
 	}
 
 	/**
@@ -927,4 +1002,9 @@ function normalizeChanges(changes, { keys, validate }) {
 		normalized.endAt = changes.endAt === null ? null : Math.round(changes.endAt * 1000) / 1000;
 	}
 	return normalized;
+}
+
+/** @param {string} path */
+function isBackgroundPath(path) {
+	return backgroundOwnerOf(basename(path)) !== null;
 }

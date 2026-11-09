@@ -185,7 +185,7 @@ describe("LibraryEditor setting and removing a playlist's image", () => {
 		const { root, editor, writes, combat } = await setup();
 		const result = await editor.setPlaylistBackground('Combat', await incoming(root, pngBytes(30, 20)), 'png');
 		assert.equal(combat()?.background?.width, 30);
-		assert.deepEqual(result, { playlist: combat(), removed: [], added: 'Combat.bg.png' });
+		assert.deepEqual(result, { item: combat(), removed: [], added: 'Combat.bg.png' });
 		assert.ok(!(await filesIn(root)).includes('incoming.tmp'));
 		assert.deepEqual(writes.at(-1), { written: [join(root, 'Combat.bg.png')], removed: [] });
 	});

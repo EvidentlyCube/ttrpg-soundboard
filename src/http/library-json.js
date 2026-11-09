@@ -13,14 +13,13 @@ export function toLibraryJson(library) {
 	return {
 		version: LIBRARY_FORMAT_VERSION,
 		playlists: library.playlists.map(toPlaylistJson),
-		sounds: library.sounds.map(toFileJson),
+		sounds: library.sounds.map(toSoundJson),
 	};
 }
 
 /** @param {import('../library/library.js').Playlist} playlist */
 export function toPlaylistJson(playlist) {
-	const { id, title, gain, crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode, tracks, background } = playlist;
-	const { imageColorOpacity, imageBlur, titleShadowOpacity, titleShadowBlur, titleShadowOffset } = playlist;
+	const { id, title, gain, crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode, tracks } = playlist;
 	return {
 		id,
 		title,
@@ -32,8 +31,29 @@ export function toPlaylistJson(playlist) {
 		playlistLooping,
 		trackLooping,
 		stopMode,
+		...imageJson('playlist', playlist),
+		tracks: tracks.map(toFileJson),
+	};
+}
+
+/**
+ * A sound: a file, plus the image its tile shows.
+ * @param {import('../library/library.js').AudioFile} sound
+ */
+export function toSoundJson(sound) {
+	return { ...toFileJson(sound), ...imageJson('sound', sound) };
+}
+
+/**
+ * @param {import('./background-routes.js').OwnerKind} kind
+ * @param {{ id: string, background: import('../library/backgrounds.js').Background | null }
+ * 	& import('../library/validate.js').BackgroundStyle} item
+ */
+function imageJson(kind, item) {
+	const { id, background, imageColorOpacity, imageBlur, titleShadowOpacity, titleShadowBlur, titleShadowOffset } = item;
+	return {
 		background: background && {
-			url: backgroundUrl(id, background),
+			url: backgroundUrl(kind, id, background),
 			version: backgroundVersion(background),
 			width: background.width,
 			height: background.height,
@@ -43,7 +63,6 @@ export function toPlaylistJson(playlist) {
 		titleShadowOpacity,
 		titleShadowBlur,
 		titleShadowOffset,
-		tracks: tracks.map(toFileJson),
 	};
 }
 

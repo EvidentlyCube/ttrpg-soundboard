@@ -47,8 +47,8 @@ export function exampleLibrary() {
 			},
 		],
 		sounds: [
-			{ id: 'Boom.mp3', title: 'Boom', format: 'mp3', size: 1000, gain: 1, duration: 1.5, ...NO_CLIP, url: '/media/Boom.mp3' },
-			{ id: 'Rain.ogg', title: 'Rain', format: 'ogg', size: 2_000_000, gain: 1, duration: 60, ...NO_CLIP, url: '/media/Rain.ogg' },
+			{ id: 'Boom.mp3', title: 'Boom', format: 'mp3', size: 1000, gain: 1, duration: 1.5, ...NO_CLIP, url: '/media/Boom.mp3', ...NO_BACKGROUND },
+			{ id: 'Rain.ogg', title: 'Rain', format: 'ogg', size: 2_000_000, gain: 1, duration: 60, ...NO_CLIP, url: '/media/Rain.ogg', ...NO_BACKGROUND },
 		],
 	};
 }
@@ -299,6 +299,39 @@ export class FakeBackendApi {
 			throw new Error(`Unknown playlist "${playlistId}"`);
 		}
 		return { ...structuredClone(playlist), background: structuredClone(this.backgroundResult) };
+	}
+
+	/** What the sound image requests asked for. @type {({ upload: { soundId: string, type: string } } | { download: { soundId: string, url: string } } | { remove: string })[]} */
+	soundBackgroundRequests = [];
+
+	/** @type {BackendApi['uploadSoundBackground']} */
+	async uploadSoundBackground(soundId, _bytes, type) {
+		this.soundBackgroundRequests.push({ upload: { soundId, type } });
+		return this.#soundBackgroundAnswer(soundId);
+	}
+
+	/** @type {BackendApi['downloadSoundBackground']} */
+	async downloadSoundBackground(soundId, url) {
+		this.soundBackgroundRequests.push({ download: { soundId, url } });
+		return this.#soundBackgroundAnswer(soundId);
+	}
+
+	/** @type {BackendApi['removeSoundBackground']} */
+	async removeSoundBackground(soundId) {
+		this.soundBackgroundRequests.push({ remove: soundId });
+		return this.#soundBackgroundAnswer(soundId);
+	}
+
+	/** @param {string} soundId */
+	#soundBackgroundAnswer(soundId) {
+		if (this.backgroundResult instanceof Error) {
+			throw this.backgroundResult;
+		}
+		const sound = this.library.sounds.find((entry) => entry.id === soundId);
+		if (!sound) {
+			throw new Error(`Unknown sound "${soundId}"`);
+		}
+		return { ...structuredClone(sound), background: structuredClone(this.backgroundResult) };
 	}
 
 	#rearranged() {

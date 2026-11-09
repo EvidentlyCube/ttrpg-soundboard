@@ -59,6 +59,7 @@ describe('scanAudioDirectory', () => {
 			absolutePath: join(tree.root, 'Boom.mp3'),
 			optionsPath: join(tree.root, 'Boom.mp3.json'),
 			hasOptions: true,
+			backgroundPaths: [],
 		});
 		assert.equal(scan.sounds[2].hasOptions, false);
 	});

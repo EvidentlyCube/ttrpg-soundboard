@@ -12,6 +12,8 @@ import { backgroundOwnerOf } from './backgrounds.js';
  * @property {Set<string>} directoriesWithOptions names of directories that have a `<name>.json` next to them (root only)
  * @property {Map<string, string[]>} directoryBackgrounds `<name>.bg.<image extension>` files by the directory they
  * 	belong to (root only); usually one each
+ * @property {Map<string, string[]>} audioBackgrounds `<audio file>.bg.<image extension>` files by the audio file they
+ * 	belong to; only a sound's are shown, a track's are kept for when it becomes a sound again
  * @property {string[]} orphanOptions `.json` files that belong to nothing
  * @property {string[]} unsupportedAudio
  * @property {string[]} symlinks
@@ -68,12 +70,14 @@ export function classifyDirectory(entries, { isRoot }) {
 
 	/** @type {Map<string, string[]>} */
 	const directoryBackgrounds = new Map();
-	if (isRoot) {
-		for (const name of files) {
-			const owner = backgroundOwnerOf(name);
-			if (owner !== null && directoryNames.has(owner)) {
-				directoryBackgrounds.set(owner, [...(directoryBackgrounds.get(owner) ?? []), name]);
-			}
+	/** @type {Map<string, string[]>} */
+	const audioBackgrounds = new Map();
+	for (const name of files) {
+		const owner = backgroundOwnerOf(name);
+		if (owner !== null && isRoot && directoryNames.has(owner)) {
+			directoryBackgrounds.set(owner, [...(directoryBackgrounds.get(owner) ?? []), name]);
+		} else if (owner !== null && audioNames.has(owner)) {
+			audioBackgrounds.set(owner, [...(audioBackgrounds.get(owner) ?? []), name]);
 		}
 	}
 
@@ -83,6 +87,7 @@ export function classifyDirectory(entries, { isRoot }) {
 		audioWithOptions,
 		directoriesWithOptions,
 		directoryBackgrounds,
+		audioBackgrounds,
 		orphanOptions,
 		unsupportedAudio: files.filter((name) => UNSUPPORTED_AUDIO_EXTENSIONS.has(extname(name).toLowerCase())),
 		symlinks: namesOf('symlink'),

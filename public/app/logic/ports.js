@@ -54,7 +54,11 @@
 /** @typedef {import('./background-style.js').BackgroundStyle} BackgroundStyle */
 /** @typedef {import('./order-strategies.js').PlaybackOrder} PlaybackOrder */
 /** @typedef {import('./playback-rules.js').StopMode} StopMode */
-/** @typedef {{ version: number, playlists: PlaylistJson[], sounds: AudioFileJson[] }} LibraryJson */
+/**
+ * A sound effect: a file with a tile, and so with an image (DESIGN.md §2.1).
+ * @typedef {AudioFileJson & { background: BackgroundJson | null } & BackgroundStyle} SoundJson
+ */
+/** @typedef {{ version: number, playlists: PlaylistJson[], sounds: SoundJson[] }} LibraryJson */
 
 /**
  * Timers, in milliseconds. In the browser this is `window`; in tests a fake clock that only moves when told to.
@@ -125,6 +129,10 @@
  * @property {(playlistId: string, url: string) => Promise<PlaylistJson>} downloadPlaylistBackground rejects with the
  * 	server's message
  * @property {(playlistId: string) => Promise<PlaylistJson>} removePlaylistBackground
+ * @property {(soundId: string, bytes: ArrayBuffer, type: string) => Promise<SoundJson>} uploadSoundBackground like
+ * 	`uploadPlaylistBackground`, for a sound
+ * @property {(soundId: string, url: string) => Promise<SoundJson>} downloadSoundBackground
+ * @property {(soundId: string) => Promise<SoundJson>} removeSoundBackground
  * @property {() => Promise<string[]>} fetchMissingWaveforms ids of the sounds and tracks that have no waveform yet
  * @property {(id: string) => Promise<Int8Array | null>} fetchWaveform null when there is none yet
  * @property {(id: string, peaks: Int8Array) => Promise<void>} saveWaveform
@@ -214,7 +222,7 @@
 /** @typedef {{ size: number, count: number }} TrashSummary `count`: the trashed playlists and sounds */
 
 /**
- * @typedef {{ type: 'library.added', sound: AudioFileJson }
+ * @typedef {{ type: 'library.added', sound: SoundJson }
  * 	| { type: 'library.added', playlist: PlaylistJson }
  * 	| { type: 'library.removed', soundId: string }
  * 	| { type: 'library.removed', trackId: string, playlistId: string }

@@ -73,7 +73,32 @@ export class HttpBackendApi {
 
 	/** @type {BackendApi['uploadPlaylistBackground']} */
 	async uploadPlaylistBackground(playlistId, bytes, type) {
-		const response = await fetch(`${this.#baseUrl}${backgroundPath(playlistId)}`, {
+		return /** @type {Promise<import('../logic/ports.js').PlaylistJson>} */ (this.#uploadImage(backgroundPath(playlistId), bytes, type));
+	}
+
+	/** @type {BackendApi['uploadSoundBackground']} */
+	async uploadSoundBackground(soundId, bytes, type) {
+		return /** @type {Promise<import('../logic/ports.js').SoundJson>} */ (this.#uploadImage(backgroundPath(soundId, 'sounds'), bytes, type));
+	}
+
+	/** @type {BackendApi['downloadSoundBackground']} */
+	async downloadSoundBackground(soundId, url) {
+		return this.#request('POST', `${backgroundPath(soundId, 'sounds')}/download`, { body: { url }, plainErrors: true });
+	}
+
+	/** @type {BackendApi['removeSoundBackground']} */
+	async removeSoundBackground(soundId) {
+		return this.#request('DELETE', backgroundPath(soundId, 'sounds'), { plainErrors: true });
+	}
+
+	/**
+	 * @param {string} path
+	 * @param {ArrayBuffer} bytes
+	 * @param {string} type
+	 * @returns {Promise<unknown>}
+	 */
+	async #uploadImage(path, bytes, type) {
+		const response = await fetch(`${this.#baseUrl}${path}`, {
 			method: 'PUT',
 			headers: { 'Content-Type': type },
 			body: bytes,
@@ -81,7 +106,7 @@ export class HttpBackendApi {
 		if (!response.ok) {
 			throw await serverErrorOf(response);
 		}
-		return /** @type {Promise<import('../logic/ports.js').PlaylistJson>} */ (response.json());
+		return response.json();
 	}
 
 	/** @type {BackendApi['downloadPlaylistBackground']} */
@@ -316,9 +341,12 @@ export class HttpBackendApi {
 	}
 }
 
-/** @param {string} playlistId */
-function backgroundPath(playlistId) {
-	return `/api/playlists/${encodeURIComponent(playlistId)}/background`;
+/**
+ * @param {string} id
+ * @param {'playlists' | 'sounds'} [collection]
+ */
+function backgroundPath(id, collection = 'playlists') {
+	return `/api/${collection}/${encodeURIComponent(id)}/background`;
 }
 
 /** @param {import('../logic/ports.js').TrashTarget} target */

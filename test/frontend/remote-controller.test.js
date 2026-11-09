@@ -9,7 +9,7 @@ import { FakeBackendApi, NO_BACKGROUND } from '../helpers/fake-backend-api.js';
 const STATE = {
 	panic: 'fade',
 	playlists: [{ id: 'Combat', title: 'Combat', playable: true, ...NO_BACKGROUND }],
-	sounds: [{ id: 'Boom.mp3', title: 'Boom', playable: true }],
+	sounds: [{ id: 'Boom.mp3', title: 'Boom', playable: true, ...NO_BACKGROUND }],
 	players: [{ id: 'Combat', title: 'Combat', state: 'playing', trackTitle: 'Battle' }],
 	activeSounds: [],
 };

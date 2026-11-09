@@ -119,7 +119,7 @@ async function snapshotOf(scan) {
 		}
 	}
 	others.push(...scan.playlists.filter((playlist) => playlist.hasOptions).map((playlist) => playlist.optionsPath));
-	others.push(...scan.playlists.flatMap((playlist) => playlist.backgroundPaths));
+	others.push(...[...scan.playlists, ...scan.sounds].flatMap((item) => item.backgroundPaths ?? []));
 	const stamps = await Promise.all(others.map((path) => stat(path).catch(() => null)));
 	others.forEach((path, index) => {
 		const stats = stamps[index];

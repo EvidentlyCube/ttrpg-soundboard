@@ -14,27 +14,36 @@ import {
 	MAX_IMAGE_BYTES,
 	tooLargeError,
 } from '../library/image-info.js';
-import { UnknownPlaylistError } from '../library/library-editor.js';
+import { UnknownPlaylistError, UnknownSoundError } from '../library/library-editor.js';
 import { largeBackgroundWarning, problemOfWarning } from '../library/problems.js';
 import { isPlainObject } from '../library/validate.js';
-import { toPlaylistJson } from './library-json.js';
+import { toPlaylistJson, toSoundJson } from './library-json.js';
 import { allowMethods, HttpError, sendJson, streamTo } from './responses.js';
 
 /** @typedef {import('node:http').IncomingMessage} Request */
 /** @typedef {import('node:http').ServerResponse} Response */
 /** @typedef {import('./router.js').RouterContext} RouterContext */
 /** @typedef {import('../library/backgrounds.js').Background} Background */
+/** @typedef {import('../library/library.js').Playlist} Playlist */
+/** @typedef {import('../library/library.js').AudioFile} AudioFile */
+/** @typedef {'playlist' | 'sound'} OwnerKind the kinds of item with a tile, and so with an image */
 
-/** Where the page asks for a playlist's image; the remote's route is the same with another prefix. */
+/** Where paired devices ask for a playlist's image. */
 export const REMOTE_BACKGROUNDS_PREFIX = '/api/remote/backgrounds/';
+/** Where paired devices ask for a sound's image. */
+export const REMOTE_SOUND_BACKGROUNDS_PREFIX = '/api/remote/sound-backgrounds/';
+
+/** @type {Record<OwnerKind, string>} */
+const ROUTE_PREFIXES = { playlist: '/api/playlists/', sound: '/api/sounds/' };
 
 /**
- * The URL a playlist's image is served at. The version changes with the file, so a replaced image is fetched again.
- * @param {string} playlistId
+ * The URL an item's image is served at. The version changes with the file, so a replaced image is fetched again.
+ * @param {OwnerKind} kind
+ * @param {string} id
  * @param {Background} background
  */
-export function backgroundUrl(playlistId, background) {
-	return `/api/playlists/${encodeURIComponent(playlistId)}/background?v=${backgroundVersion(background)}`;
+export function backgroundUrl(kind, id, background) {
+	return `${ROUTE_PREFIXES[kind]}${encodeURIComponent(id)}/background?v=${backgroundVersion(background)}`;
 }
 
 /** @param {Background} background */
@@ -43,15 +52,16 @@ export function backgroundVersion({ size, modified }) {
 }
 
 /**
- * `/api/playlists/<id>/background` and `/api/playlists/<id>/background/download` (DESIGN.md §5.2).
+ * `/api/<playlists or sounds>/<id>/background` and `…/background/download` (DESIGN.md §5.2).
  * @param {Request} request
  * @param {Response} response
- * @param {string} playlistId already decoded
+ * @param {OwnerKind} kind
+ * @param {string} id already decoded
  * @param {string} action `background` or `background/download`
  * @param {RouterContext} context
  * @param {(request: Request) => Promise<unknown>} readJsonBody
  */
-export async function serveBackgroundRoute(request, response, playlistId, action, context, readJsonBody) {
+export async function serveBackgroundRoute(request, response, kind, id, action, context, readJsonBody) {
 	if (action === 'background/download') {
 		allowMethods(request, ['POST']);
 		const body = await readJsonBody(request);
@@ -59,7 +69,7 @@ export async function serveBackgroundRoute(request, response, playlistId, action
 			throw new HttpError(400, 'A download needs a "url"');
 		}
 		const url = body.url;
-		await answerChange(response, context, () => downloadBackground(context, playlistId, url));
+		await answerChange(response, context, kind, () => downloadBackground(context, kind, id, url));
 		return;
 	}
 	if (action !== 'background') {
@@ -67,24 +77,29 @@ export async function serveBackgroundRoute(request, response, playlistId, action
 	}
 	allowMethods(request, ['GET', 'HEAD', 'PUT', 'DELETE']);
 	if (request.method === 'PUT') {
-		await answerChange(response, context, () => uploadBackground(request, context, playlistId));
+		await answerChange(response, context, kind, () => uploadBackground(request, context, kind, id));
 	} else if (request.method === 'DELETE') {
-		await answerChange(response, context, () => context.editor.removePlaylistBackground(playlistId));
+		await answerChange(response, context, kind, () => (kind === 'playlist'
+			? context.editor.removePlaylistBackground(id)
+			: context.editor.removeSoundBackground(id)));
 	} else {
-		await serveBackgroundImage(request, response, context, playlistId);
+		await serveBackgroundImage(request, response, context, kind, id);
 	}
 }
 
 /**
- * Sends a playlist's image with headers that keep a browser from treating it as anything but that format: a polyglot
+ * Sends an item's image with headers that keep a browser from treating it as anything but that format: a polyglot
  * file can't be sniffed into a page, and if it were opened as one, it could run nothing.
  * @param {Request} request
  * @param {Response} response
  * @param {RouterContext} context
- * @param {string} playlistId
+ * @param {OwnerKind} kind
+ * @param {string} id
  */
-export async function serveBackgroundImage(request, response, context, playlistId) {
-	const background = context.library.playlists.find((playlist) => playlist.id === playlistId)?.background;
+export async function serveBackgroundImage(request, response, context, kind, id) {
+	/** @type {(Playlist | AudioFile)[]} */
+	const items = kind === 'playlist' ? context.library.playlists : context.library.sounds;
+	const background = items.find((item) => item.id === id)?.background;
 	if (!background) {
 		throw new HttpError(404, 'Not found');
 	}
@@ -110,13 +125,14 @@ export async function serveBackgroundImage(request, response, context, playlistI
 }
 
 /**
- * Stores the request body as the playlist's image. Its `Content-Type` is what the browser took from the file's
+ * Stores the request body as the item's image. Its `Content-Type` is what the browser took from the file's
  * extension, so it stands for the extension the bytes must match.
  * @param {Request} request
  * @param {RouterContext} context
- * @param {string} playlistId
+ * @param {OwnerKind} kind
+ * @param {string} id
  */
-async function uploadBackground(request, context, playlistId) {
+async function uploadBackground(request, context, kind, id) {
 	const claimed = formatOfType(request.headers['content-type'] ?? '');
 	if (claimed === null) {
 		throw new HttpError(415, 'Send a JPEG, PNG, GIF, WebP or AVIF image');
@@ -124,30 +140,32 @@ async function uploadBackground(request, context, playlistId) {
 	if (Number(request.headers['content-length']) > MAX_IMAGE_BYTES) {
 		throw HttpError.from(413, tooLargeError());
 	}
-	requirePlaylist(context, playlistId);
+	requireOwner(context, kind, id);
 	return withWorkFile(context, async (path) => {
 		await saveBody(request, path);
 		const info = await inspectImageFile(path);
 		checkClaimedFormat(info, claimed);
-		return context.editor.setPlaylistBackground(playlistId, path, info.format);
+		return setBackground(context, kind, id, path, info.format);
 	});
 }
 
 /**
- * Downloads a link as the playlist's image. The bytes decide the format; a link whose path names one must match it
+ * Downloads a link as the item's image. The bytes decide the format; a link whose path names one must match it
  * only when the server's type names that same format, since many servers send WebP or AVIF for a `.jpg` link.
  * @param {RouterContext} context
- * @param {string} playlistId
+ * @param {OwnerKind} kind
+ * @param {string} id
  * @param {string} text
  */
-async function downloadBackground(context, playlistId, text) {
+async function downloadBackground(context, kind, id, text) {
 	const url = imageLinkOf(text);
-	requirePlaylist(context, playlistId);
+	requireOwner(context, kind, id);
 	const busy = context.backgroundDownloads;
-	if (busy.has(playlistId)) {
-		throw new HttpError(409, 'This playlist is already downloading an image');
+	const key = `${kind}:${id}`;
+	if (busy.has(key)) {
+		throw new HttpError(409, kind === 'playlist' ? 'This playlist is already downloading an image' : 'This sound is already downloading an image');
 	}
-	busy.add(playlistId);
+	busy.add(key);
 	try {
 		return await withWorkFile(context, async (path) => {
 			const { contentType } = await fetchImage(url.href, path, { signal: new AbortController().signal });
@@ -156,25 +174,39 @@ async function downloadBackground(context, playlistId, text) {
 			if (linked !== null && formatOfType(contentType) === linked) {
 				checkClaimedFormat(info, linked);
 			}
-			return context.editor.setPlaylistBackground(playlistId, path, info.format);
+			return setBackground(context, kind, id, path, info.format);
 		});
 	} finally {
-		busy.delete(playlistId);
+		busy.delete(key);
 	}
 }
 
 /**
- * Runs a change, keeps the problems list in step with it, and answers with the playlist.
+ * @param {RouterContext} context
+ * @param {OwnerKind} kind
+ * @param {string} id
+ * @param {string} path
+ * @param {import('../library/image-info.js').ImageFormat} format
+ */
+function setBackground(context, kind, id, path, format) {
+	return kind === 'playlist'
+		? context.editor.setPlaylistBackground(id, path, format)
+		: context.editor.setSoundBackground(id, path, format);
+}
+
+/**
+ * Runs a change, keeps the problems list in step with it, and answers with the item.
  * @param {Response} response
  * @param {RouterContext} context
+ * @param {OwnerKind} kind
  * @param {() => Promise<import('../library/library-editor.js').BackgroundChange>} change
  */
-async function answerChange(response, context, change) {
+async function answerChange(response, context, kind, change) {
 	let result;
 	try {
 		result = await change();
 	} catch (error) {
-		if (error instanceof UnknownPlaylistError) {
+		if (error instanceof UnknownPlaylistError || error instanceof UnknownSoundError) {
 			throw HttpError.from(404, error);
 		}
 		if (error instanceof InvalidImageError || error instanceof ImageLinkError) {
@@ -182,15 +214,17 @@ async function answerChange(response, context, change) {
 		}
 		throw error;
 	}
-	const { playlist, removed, added } = result;
+	const { item, removed, added } = result;
 	for (const path of removed) {
 		context.problems?.removeFor(path);
 	}
-	const warning = added && playlist.background && largeBackgroundWarning(added, playlist.background);
+	const warning = added && item.background && largeBackgroundWarning(added, item.background);
 	if (warning) {
 		context.problems?.add(problemOfWarning(warning));
 	}
-	sendJson(response, 200, toPlaylistJson(playlist));
+	sendJson(response, 200, kind === 'playlist'
+		? toPlaylistJson(/** @type {Playlist} */ (item))
+		: toSoundJson(/** @type {AudioFile} */ (item)));
 }
 
 /**
@@ -235,10 +269,14 @@ async function saveBody(request, path) {
 
 /**
  * @param {RouterContext} context
- * @param {string} playlistId
+ * @param {OwnerKind} kind
+ * @param {string} id
  */
-function requirePlaylist(context, playlistId) {
-	if (!context.editor.playlist(playlistId)) {
-		throw HttpError.from(404, new UnknownPlaylistError(playlistId));
+function requireOwner(context, kind, id) {
+	if (kind === 'playlist' && !context.editor.playlist(id)) {
+		throw HttpError.from(404, new UnknownPlaylistError(id));
+	}
+	if (kind === 'sound' && !context.editor.sound(id)) {
+		throw HttpError.from(404, new UnknownSoundError(id));
 	}
 }

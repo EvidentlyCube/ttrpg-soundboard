@@ -136,12 +136,15 @@ export function findInTrash(listing, item) {
 }
 
 /**
- * Deletes an audio file in the trash for good, with its options file and waveform.
+ * Deletes an audio file in the trash for good, with its options file, waveform and image.
  * @param {string} path
  */
 export async function purgeAudioFile(path) {
 	for (const suffix of ['', '.json', '.wf']) {
 		await rm(`${path}${suffix}`, { force: true });
+	}
+	for (const image of await findBackgroundFiles(dirname(path), basename(path))) {
+		await rm(image, { force: true });
 	}
 }
 
@@ -249,6 +252,9 @@ async function trashedFile(path, name, id) {
 	const options = await readOptions(`${path}.json`);
 	let size = (await lstat(path)).size + (options?.size ?? 0);
 	size += await lstat(`${path}.wf`).then((stats) => stats.size, () => 0);
+	for (const image of await findBackgroundFiles(dirname(path), name)) {
+		size += (await lstat(image)).size;
+	}
 	return { id, name, title: titleOf(options, name), size, absolutePath: path };
 }
 

@@ -7,6 +7,7 @@ import { sortBy } from './sort.js';
 import { MAX_GAIN } from './volume.js';
 
 /** @typedef {import('./ports.js').AudioFileJson} AudioFileJson */
+/** @typedef {import('./ports.js').SoundJson} SoundJson */
 /** @typedef {import('./ports.js').AudioFormat} AudioFormat */
 /** @typedef {import('./ports.js').LibraryJson} LibraryJson */
 /** @typedef {import('./ports.js').PlaylistJson} PlaylistJson */
@@ -18,7 +19,7 @@ export class LibraryModel {
 	#json;
 	/** @type {Map<string, PlaylistJson>} */
 	#playlists;
-	/** @type {Map<string, AudioFileJson>} */
+	/** @type {Map<string, SoundJson>} */
 	#sounds;
 	/** @type {Set<string>} */
 	#unplayable;
@@ -49,7 +50,7 @@ export class LibraryModel {
 
 	/**
 	 * Adds a sound the server just added (a download), in title order.
-	 * @param {AudioFileJson} sound
+	 * @param {SoundJson} sound
 	 */
 	addSound(sound) {
 		this.#checkPlayable(sound);
@@ -168,12 +169,13 @@ export class LibraryModel {
 	 * they were, since the UI may still hold them.
 	 * @param {string} id
 	 * @param {ItemOptions} changes
-	 * @returns {AudioFileJson} the changed sound
+	 * @returns {SoundJson} the changed sound
 	 */
 	updateSound(id, changes) {
 		const sound = applyChanges(this.sound(id), changes);
 		applyTimings(sound, changes, { fadeIn: 'Fade-in', fadeOut: 'Fade-out' });
 		applyPoints(sound, changes);
+		applyStyle(sound, changes);
 		this.#sounds.set(id, sound);
 		this.#json = {
 			...this.#json,
@@ -218,6 +220,19 @@ export class LibraryModel {
 	}
 
 	/**
+	 * Like `setBackground`, for a sound.
+	 * @param {string} id
+	 * @param {import('./ports.js').BackgroundJson | null} background
+	 * @returns {SoundJson}
+	 */
+	setSoundBackground(id, background) {
+		const sound = { ...this.sound(id), background };
+		this.#sounds.set(id, sound);
+		this.#json = { ...this.#json, sounds: this.#json.sounds.map((entry) => (entry.id === id ? sound : entry)) };
+		return sound;
+	}
+
+	/**
 	 * Like `updateSound`, for a playlist; its tracks are unchanged.
 	 * @param {string} id
 	 * @param {ItemOptions} changes
@@ -244,15 +259,7 @@ export class LibraryModel {
 			}
 			playlist.stopMode = changes.stopMode;
 		}
-		for (const key of BACKGROUND_STYLE_KEYS) {
-			const value = changes[key];
-			if (value !== undefined) {
-				if (!(value >= 0 && value <= BACKGROUND_STYLE_LIMITS[key])) {
-					throw new InvalidCommandError(`${key} must be a number from 0 to ${BACKGROUND_STYLE_LIMITS[key]}, got ${value}`);
-				}
-				playlist[key] = value;
-			}
-		}
+		applyStyle(playlist, changes);
 		this.#playlists.set(id, playlist);
 		this.#json = {
 			...this.#json,
@@ -311,6 +318,23 @@ function applyTimings(item, changes, names) {
 				throw new InvalidCommandError(`${name} must be a number of seconds from 0 to ${MAX_CROSSFADE}, got ${seconds}`);
 			}
 			item[key] = seconds;
+		}
+	}
+}
+
+/**
+ * Sets the image settings given in `changes`, each checked against its limit.
+ * @param {import('./background-style.js').BackgroundStyle} item changed in place
+ * @param {ItemOptions} changes
+ */
+function applyStyle(item, changes) {
+	for (const key of BACKGROUND_STYLE_KEYS) {
+		const value = changes[key];
+		if (value !== undefined) {
+			if (!(value >= 0 && value <= BACKGROUND_STYLE_LIMITS[key])) {
+				throw new InvalidCommandError(`${key} must be a number from 0 to ${BACKGROUND_STYLE_LIMITS[key]}, got ${value}`);
+			}
+			item[key] = value;
 		}
 	}
 }

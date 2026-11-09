@@ -10,7 +10,7 @@ import { backgroundStyleOf } from './background-style.js';
  * @typedef {object} RemoteState
  * @property {'fade' | 'now'} panic
  * @property {RemotePlaylist[]} playlists in the board's order
- * @property {{ id: string, title: string, playable: boolean }[]} sounds in the board's order
+ * @property {RemoteSound[]} sounds in the board's order
  * @property {{ id: string, title: string, state: PlaylistState, trackTitle: string | null }[]} players the playlists that are
  * 	loading, playing or paused, in the order they started
  * @property {string[]} activeSounds the sounds with a live instance
@@ -21,6 +21,11 @@ import { backgroundStyleOf } from './background-style.js';
  * this version (DESIGN.md §9.15).
  * @typedef {{ id: string, title: string, playable: boolean, background: { version: string } | null }
  * 	& import('./background-style.js').BackgroundStyle} RemotePlaylist
+ */
+/**
+ * A sound's button on the remote, with its image as a playlist's has.
+ * @typedef {{ id: string, title: string, playable: boolean, background: { version: string } | null }
+ * 	& import('./background-style.js').BackgroundStyle} RemoteSound
  */
 
 /**
@@ -42,7 +47,13 @@ export function buildRemoteState({ panic, library, isPlayable, active, activeSou
 			background: playlist.background && { version: playlist.background.version },
 			...backgroundStyleOf(playlist),
 		})),
-		sounds: library.sounds.map((sound) => ({ id: sound.id, title: sound.title, playable: isPlayable(sound) })),
+		sounds: library.sounds.map((sound) => ({
+			id: sound.id,
+			title: sound.title,
+			playable: isPlayable(sound),
+			background: sound.background && { version: sound.background.version },
+			...backgroundStyleOf(sound),
+		})),
 		players: active.flatMap(({ playlistId, state, track }) => {
 			const playlist = library.playlists.find((entry) => entry.id === playlistId);
 			return playlist ? [{ id: playlistId, title: playlist.title, state, trackTitle: track?.title ?? null }] : [];

@@ -17,6 +17,8 @@ import { compareNatural, sortBy } from './sort.js';
  * @property {string} absolutePath
  * @property {string} optionsPath
  * @property {boolean} hasOptions
+ * @property {string[]} [backgroundPaths] a sound's `<name>.bg.<extension>` files, sorted; more than one is a mistake.
+ * 	Tracks have none, since they have no tiles.
  */
 
 /**
@@ -140,6 +142,9 @@ function scanAudioFiles(root, relativeDirectory, classification) {
 			absolutePath,
 			optionsPath: `${absolutePath}.json`,
 			hasOptions: classification.audioWithOptions.has(name),
+			...(relativeDirectory === '' && {
+				backgroundPaths: (classification.audioBackgrounds.get(name) ?? []).toSorted(compareNatural).map((image) => join(root, image)),
+			}),
 		};
 	}));
 }

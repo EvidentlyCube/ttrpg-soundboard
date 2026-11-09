@@ -41,6 +41,12 @@ export class SoundsPage {
 		await expect(this.#tile(title)).toBeHidden();
 	}
 
+	/** Whether the tile shows an image (DESIGN.md §9.1). @param {string} title @param {boolean} shown */
+	async expectImage(title, shown) {
+		await expect(this.#tile(title)).toHaveAttribute('data-image', String(shown));
+		await expect(this.#tile(title).locator('[data-tile-image]')).toBeVisible({ visible: shown });
+	}
+
 	/** @param {string} title */
 	async click(title) {
 		await this.#tile(title).click();
@@ -68,7 +74,7 @@ export class SoundsPage {
 
 	/** @param {string[]} titles every sound's title, in the order the tiles are laid out */
 	async expectOrder(titles) {
-		await expect(this.#page.locator('[data-sound-id] > span')).toHaveText(titles);
+		await expect(this.#page.locator('[data-sound-id] [data-tile-title]')).toHaveText(titles);
 	}
 
 	/** Presses the small stop button in the tile's corner. @param {string} title */

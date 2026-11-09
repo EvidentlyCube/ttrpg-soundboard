@@ -394,3 +394,93 @@ describe('serving and removing a playlist image', () => {
 		assert.equal(JSON.parse(await readFile(join(root, 'Combat.json'), 'utf8')).imageBlur, 12);
 	});
 });
+
+describe('sound images', () => {
+	const SOUND = { 'Boom.mp3': 'boom' };
+	const route = (/** @type {string} */ baseUrl) => `${baseUrl}/api/sounds/Boom.mp3/background`;
+
+	it('uploads an image and answers with the sound and its image, recording its own write', async () => {
+		const { root, server, watcher } = await setup(SOUND);
+		const response = await fetch(route(server.url), { method: 'PUT', headers: { 'Content-Type': 'image/png' }, body: pngBytes(64, 48) });
+		const body = /** @type {any} */ (await response.json());
+		assert.equal(response.status, 200);
+		assert.equal(body.id, 'Boom.mp3');
+		assert.equal(body.background.width, 64);
+		assert.match(body.background.url, /^\/api\/sounds\/Boom\.mp3\/background\?v=[0-9a-f]+-[0-9a-f]+$/);
+		assert.equal(body.imageColorOpacity, 0.6);
+		assert.deepEqual(await backgroundFiles(root), ['Boom.mp3.bg.png']);
+		assert.equal(await watcher.check(), false);
+	});
+
+	it('downloads an image from a link', async () => {
+		const images = await imageServer({ '/a.png': serve(pngBytes(20, 10), 'image/png') });
+		const { root, server } = await setup(SOUND);
+		const response = await fetch(`${route(server.url)}/download`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ url: `${images.url}/a.png` }),
+		});
+		assert.equal(response.status, 200);
+		assert.deepEqual(await backgroundFiles(root), ['Boom.mp3.bg.png']);
+	});
+
+	it('refuses an unknown sound with 404', async () => {
+		const { server } = await setup(SOUND);
+		const response = await fetch(`${server.url}/api/sounds/Nope.mp3/background`, { method: 'PUT', headers: { 'Content-Type': 'image/png' }, body: pngBytes(5, 5) });
+		assert.equal(response.status, 404);
+	});
+
+	it("serves the image on its own route and the remote's, and lists it in the library", async () => {
+		const { server } = await setup({ ...SOUND, 'Boom.mp3.bg.png': pngBytes(10, 10) });
+		assert.equal((await fetch(route(server.url))).headers.get('content-type'), 'image/png');
+		assert.equal((await fetch(`${server.url}/api/remote/sound-backgrounds/Boom.mp3?v=1`)).status, 200);
+		const library = /** @type {any} */ (await (await fetch(`${server.url}/api/library`)).json());
+		assert.equal(library.sounds[0].background.width, 10);
+	});
+
+	it("answers 404 on the remote's route for a sound without an image, and a playlist's never answers there", async () => {
+		const { server } = await setup({ ...SOUND, 'Combat.bg.png': pngBytes(10, 10) });
+		assert.equal((await fetch(`${server.url}/api/remote/sound-backgrounds/Boom.mp3`)).status, 404);
+		assert.equal((await fetch(`${server.url}/api/remote/sound-backgrounds/Combat`)).status, 404);
+	});
+
+	it('saves the settings with the sound', async () => {
+		const { root, server } = await setup(SOUND);
+		const patched = await fetch(`${server.url}/api/sounds/Boom.mp3`, {
+			method: 'PATCH',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ titleShadowBlur: 3 }),
+		});
+		assert.equal(/** @type {any} */ (await patched.json()).titleShadowBlur, 3);
+		assert.equal(JSON.parse(await readFile(join(root, 'Boom.mp3.json'), 'utf8')).titleShadowBlur, 3);
+	});
+
+	it('deletes the image for good and drops its problems', async () => {
+		const { root, server } = await setup({ ...SOUND, 'Boom.mp3.bg.png': pngBytes(4000, 3000) });
+		assert.equal((await currentProblems(server.url)).length, 1);
+		const response = await fetch(route(server.url), { method: 'DELETE' });
+		assert.equal(/** @type {any} */ (await response.json()).background, null);
+		assert.deepEqual(await backgroundFiles(root), []);
+		assert.deepEqual(await currentProblems(server.url), []);
+	});
+
+	it("drops an image's problems when its sound goes to the trash", async () => {
+		const { server } = await setup({ ...SOUND, 'Boom.mp3.bg.png': pngBytes(4000, 3000) });
+		await fetch(`${server.url}/api/sounds/Boom.mp3`, { method: 'DELETE' });
+		assert.deepEqual(await currentProblems(server.url), []);
+	});
+
+	it('moves the image into a playlist and back without counting as an external change', async () => {
+		const { server, watcher } = await setup({ ...SOUND, 'Boom.mp3.bg.png': pngBytes(10, 10) });
+		const move = (/** @type {string} */ id, /** @type {string | null} */ to) => fetch(`${server.url}/api/move`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ id, to }),
+		});
+		assert.equal((await move('Boom.mp3', 'Combat')).status, 200);
+		assert.equal(await watcher.check(), false);
+		const back = /** @type {any} */ (await (await move('Combat/Boom.mp3', null)).json());
+		assert.equal(back.changes.at(-1).sound.background.width, 10);
+		assert.equal(await watcher.check(), false);
+	});
+});

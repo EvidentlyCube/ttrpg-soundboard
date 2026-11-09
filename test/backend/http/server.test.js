@@ -17,6 +17,8 @@ const LARGE_AUDIO = Buffer.alloc(4 * 1024 * 1024, 7);
 /** What every sound and track has without start and end points or fades. */
 /** A file without points or fades, whose name and tags said nothing about where it came from. */
 const FILE_DEFAULTS = { startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0, source: { origin: 'unknown' } };
+/** What a sound without an image adds to a file. */
+const NO_IMAGE = { background: null, ...DEFAULT_BACKGROUND_STYLE };
 
 const JSON_TYPE = { 'Content-Type': 'application/json' };
 
@@ -187,8 +189,8 @@ describe('server', () => {
 					}],
 				}],
 				sounds: [
-					{ id: 'Boom.mp3', title: 'Big Boom', format: 'mp3', size: 1000, gain: 0.5, duration: null, ...FILE_DEFAULTS, url: '/media/Boom.mp3' },
-					{ id: 'Long.ogg', title: 'Long.ogg', format: 'ogg', size: LARGE_AUDIO.length, gain: 1, duration: null, ...FILE_DEFAULTS, url: '/media/Long.ogg' },
+					{ id: 'Boom.mp3', title: 'Big Boom', format: 'mp3', size: 1000, gain: 0.5, duration: null, ...FILE_DEFAULTS, url: '/media/Boom.mp3', ...NO_IMAGE },
+					{ id: 'Long.ogg', title: 'Long.ogg', format: 'ogg', size: LARGE_AUDIO.length, gain: 1, duration: null, ...FILE_DEFAULTS, url: '/media/Long.ogg', ...NO_IMAGE },
 				],
 			});
 		});
@@ -273,7 +275,7 @@ describe('server', () => {
 			const response = await patchSound('Long.ogg', { title: ' Aaa Long ', gain: 2 });
 			assert.equal(response.status, 200);
 			assert.deepEqual(await response.json(), {
-				id: 'Long.ogg', title: 'Aaa Long', format: 'ogg', size: LARGE_AUDIO.length, gain: 2, duration: null, ...FILE_DEFAULTS, url: '/media/Long.ogg',
+				id: 'Long.ogg', title: 'Aaa Long', format: 'ogg', size: LARGE_AUDIO.length, gain: 2, duration: null, ...FILE_DEFAULTS, url: '/media/Long.ogg', ...NO_IMAGE,
 			});
 			const { title, gain } = JSON.parse(await readFile(join(musicRoot, 'Long.ogg.json'), 'utf8'));
 			assert.deepEqual({ title, gain }, { title: 'Aaa Long', gain: 2 });
