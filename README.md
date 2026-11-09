@@ -111,7 +111,9 @@ It takes the same options as the start files. There is nothing to `npm install` 
 
 ## License
 
-The code in this repository is released into the public domain under [the Unlicense](LICENSE). The vendored Tailwind CSS in `public/vendor/` keeps its own license (see the `LICENSE` file next to it). The release zips also carry Node.js, under its own license (`runtime/LICENSE`).
+The code in this repository is released into the public domain under [the Unlicense](LICENSE). Two third-party parts in `public/vendor/` keep their own licenses: Tailwind CSS under the MIT license (`public/vendor/tailwindcss-browser.LICENSE`), and the [Font Awesome Free](https://fontawesome.com/) icons by Fonticons, Inc. under [CC BY 4.0](https://fontawesome.com/license/free) (`public/vendor/fontawesome/LICENSE.txt`). The release zips also carry Node.js, under its own license (`runtime/LICENSE`). The app's **Licenses** dialog, in the ☰ menu, shows all of them.
+
+The audio in `test_fixtures/` is generated sine tones, made for the tests.
 
 ## Development
 
