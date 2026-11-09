@@ -34,7 +34,7 @@ export function holdButton({ label, busyLabel, onHold, holdMs = HOLD_MS, tone = 
 	fill.style.transitionDuration = `${holdMs}ms`;
 	const element = h('button', {
 		'type': 'button',
-		'class': `group/hold relative cursor-pointer touch-none overflow-hidden rounded-md border px-3 py-1.5 text-sm font-medium whitespace-nowrap select-none disabled:cursor-default disabled:opacity-60 ${colors.button}`,
+		'class': `group/hold relative cursor-pointer touch-none overflow-hidden rounded-md border px-3 py-1.5 text-sm font-medium whitespace-nowrap select-none disabled:cursor-not-allowed disabled:opacity-60 ${colors.button}`,
 		'title': t('common.holdToConfirm', { count: seconds }),
 		'data-holding': 'false',
 		'data-hold-button': true,

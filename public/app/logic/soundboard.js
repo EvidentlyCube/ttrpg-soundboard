@@ -675,19 +675,24 @@ export class Soundboard {
 					style[key] = command[key];
 				}
 				const sound = loaded.library.updateSound(command.soundId, { title, gain, startAt, endAt, fadeIn, fadeOut, ...style });
-				if (gain !== undefined) {
-					loaded.sounds.setGain(sound.id, sound.gain);
+				this.#soundCustomized(loaded, sound, gain !== undefined);
+				return;
+			}
+			case 'sound.customizeAll': {
+				const { gain, fadeIn, fadeOut } = command;
+				for (const sound of loaded.library.updateAllSounds({ gain, fadeIn, fadeOut })) {
+					this.#soundCustomized(loaded, sound, gain !== undefined);
+					this.flushSoundOptions(sound.id);
 				}
-				this.#optionsSync.schedule({ kind: 'sound', id: sound.id }, {
-					title: sound.title,
-					gain: sound.gain,
-					startAt: sound.startAt,
-					endAt: sound.endAt,
-					fadeIn: sound.fadeIn,
-					fadeOut: sound.fadeOut,
-					...backgroundStyleOf(sound),
-				});
-				this.#events.emit({ type: 'sound.changed', sound });
+				return;
+			}
+			case 'playlist.customizeAll': {
+				const { gain, crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping } = command;
+				const changes = { gain, crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping };
+				for (const playlist of loaded.library.updateAllPlaylists(changes)) {
+					this.#playlistCustomized(this.#player(playlist.id), playlist, changes);
+					this.flushPlaylistOptions(playlist.id);
+				}
 				return;
 			}
 		}
@@ -743,31 +748,62 @@ export class Soundboard {
 				for (const key of BACKGROUND_STYLE_KEYS) {
 					style[key] = command[key];
 				}
-				const playlist = loaded.library.updatePlaylist(player.id, {
-					title, gain, crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode, ...style,
-				});
-				if (gain !== undefined) {
-					player.setGain(playlist.gain);
-				}
-				if ([crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode].some((value) => value !== undefined)) {
-					player.setRules(resolvePlaybackRules(playlist));
-				}
-				this.#optionsSync.schedule({ kind: 'playlist', id: playlist.id }, {
-					title: playlist.title,
-					gain: playlist.gain,
-					crossfade: playlist.crossfade,
-					fadeIn: playlist.fadeIn,
-					fadeOut: playlist.fadeOut,
-					order: playlist.order,
-					playlistLooping: playlist.playlistLooping,
-					trackLooping: playlist.trackLooping,
-					stopMode: playlist.stopMode,
-					...backgroundStyleOf(playlist),
-				});
-				this.#events.emit({ type: 'playlist.changed', playlist });
+				const changes = { title, gain, crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode, ...style };
+				const playlist = loaded.library.updatePlaylist(player.id, changes);
+				this.#playlistCustomized(player, playlist, changes);
 				return;
 			}
 		}
+	}
+
+	/**
+	 * Applies a changed sound to what plays, schedules its save and announces it.
+	 * @param {Loaded} loaded
+	 * @param {SoundJson} sound
+	 * @param {boolean} gainChanged
+	 */
+	#soundCustomized(loaded, sound, gainChanged) {
+		if (gainChanged) {
+			loaded.sounds.setGain(sound.id, sound.gain);
+		}
+		this.#optionsSync.schedule({ kind: 'sound', id: sound.id }, {
+			title: sound.title,
+			gain: sound.gain,
+			startAt: sound.startAt,
+			endAt: sound.endAt,
+			fadeIn: sound.fadeIn,
+			fadeOut: sound.fadeOut,
+			...backgroundStyleOf(sound),
+		});
+		this.#events.emit({ type: 'sound.changed', sound });
+	}
+
+	/**
+	 * Like `#soundCustomized`, for a playlist and its player.
+	 * @param {PlaylistPlayer} player
+	 * @param {PlaylistJson} playlist
+	 * @param {ItemOptions} changes what was asked for, which decides what the player must pick up
+	 */
+	#playlistCustomized(player, playlist, { gain, crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode }) {
+		if (gain !== undefined) {
+			player.setGain(playlist.gain);
+		}
+		if ([crossfade, fadeIn, fadeOut, order, playlistLooping, trackLooping, stopMode].some((value) => value !== undefined)) {
+			player.setRules(resolvePlaybackRules(playlist));
+		}
+		this.#optionsSync.schedule({ kind: 'playlist', id: playlist.id }, {
+			title: playlist.title,
+			gain: playlist.gain,
+			crossfade: playlist.crossfade,
+			fadeIn: playlist.fadeIn,
+			fadeOut: playlist.fadeOut,
+			order: playlist.order,
+			playlistLooping: playlist.playlistLooping,
+			trackLooping: playlist.trackLooping,
+			stopMode: playlist.stopMode,
+			...backgroundStyleOf(playlist),
+		});
+		this.#events.emit({ type: 'playlist.changed', playlist });
 	}
 
 	/**
@@ -951,6 +987,26 @@ export class Soundboard {
 	customizeSound(soundId, { title, gain, startAt, endAt, fadeIn, fadeOut, ...rest }) {
 		const style = Object.fromEntries(BACKGROUND_STYLE_KEYS.map((key) => [key, rest[key]]));
 		this.dispatch({ type: 'sound.customize', soundId, title, gain, startAt, endAt, fadeIn, fadeOut, ...style });
+	}
+
+	/**
+	 * Gives every sound the same gain or fades (the Options dialog's Batch tab), each as `customizeSound` would, and
+	 * saves them all at once instead of after the debounce. Every value is checked first, so an invalid one changes
+	 * nothing.
+	 * @param {{ gain?: number, fadeIn?: number, fadeOut?: number }} changes
+	 */
+	customizeAllSounds(changes) {
+		this.dispatch({ type: 'sound.customizeAll', ...changes });
+	}
+
+	/**
+	 * Like `customizeAllSounds`, for every playlist. The crossfade is stored as given even above a playlist's own limit,
+	 * which the player applies anyway (DESIGN.md §8.4).
+	 * @param {{ gain?: number, crossfade?: number, fadeIn?: number, fadeOut?: number,
+	 * 	order?: import('./order-strategies.js').PlaybackOrder, playlistLooping?: boolean, trackLooping?: boolean }} changes
+	 */
+	customizeAllPlaylists(changes) {
+		this.dispatch({ type: 'playlist.customizeAll', ...changes });
 	}
 
 	/**

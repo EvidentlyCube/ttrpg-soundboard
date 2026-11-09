@@ -172,16 +172,36 @@ export class LibraryModel {
 	 * @returns {SoundJson} the changed sound
 	 */
 	updateSound(id, changes) {
-		const sound = applyChanges(this.sound(id), changes);
-		applyTimings(sound, changes, { fadeIn: 'Fade-in', fadeOut: 'Fade-out' });
-		applyPoints(sound, changes);
-		applyStyle(sound, changes);
-		this.#sounds.set(id, sound);
+		const sound = changedSound(this.sound(id), changes);
+		this.#storeSounds([sound]);
+		return sound;
+	}
+
+	/**
+	 * Applies the same change to every sound. Every copy is checked before any is stored, so an invalid change changes
+	 * nothing. Sounds that already have those values are left alone.
+	 * @param {ItemOptions} changes
+	 * @returns {SoundJson[]} the sounds that changed
+	 */
+	updateAllSounds(changes) {
+		const sounds = this.#json.sounds.flatMap((sound) => {
+			const changed = changedSound(sound, changes);
+			return differs(sound, changed, changes) ? [changed] : [];
+		});
+		this.#storeSounds(sounds);
+		return sounds;
+	}
+
+	/** @param {SoundJson[]} changed */
+	#storeSounds(changed) {
+		const byId = new Map(changed.map((sound) => [sound.id, sound]));
+		for (const sound of changed) {
+			this.#sounds.set(sound.id, sound);
+		}
 		this.#json = {
 			...this.#json,
-			sounds: sortBy(this.#json.sounds.map((entry) => (entry.id === id ? sound : entry)), (entry) => entry.title),
+			sounds: sortBy(this.#json.sounds.map((entry) => byId.get(entry.id) ?? entry), (entry) => entry.title),
 		};
-		return sound;
 	}
 
 	/**
@@ -239,34 +259,90 @@ export class LibraryModel {
 	 * @returns {PlaylistJson} the changed playlist
 	 */
 	updatePlaylist(id, changes) {
-		const playlist = applyChanges(this.playlist(id), changes);
-		applyTimings(playlist, changes, { crossfade: 'Crossfade', fadeIn: 'Fade-in', fadeOut: 'Fade-out' });
-		if (changes.order !== undefined) {
-			if (!PLAYBACK_ORDERS.includes(changes.order)) {
-				throw new InvalidCommandError(`The order must be one of ${PLAYBACK_ORDERS.join(', ')}, got ${changes.order}`);
-			}
-			playlist.order = changes.order;
-		}
-		if (changes.playlistLooping !== undefined) {
-			playlist.playlistLooping = changes.playlistLooping;
-		}
-		if (changes.trackLooping !== undefined) {
-			playlist.trackLooping = changes.trackLooping;
-		}
-		if (changes.stopMode !== undefined) {
-			if (!STOP_MODES.includes(changes.stopMode)) {
-				throw new InvalidCommandError(`The stop mode must be one of ${STOP_MODES.join(', ')}, got ${changes.stopMode}`);
-			}
-			playlist.stopMode = changes.stopMode;
-		}
-		applyStyle(playlist, changes);
-		this.#playlists.set(id, playlist);
-		this.#json = {
-			...this.#json,
-			playlists: sortBy(this.#json.playlists.map((entry) => (entry.id === id ? playlist : entry)), (entry) => entry.title),
-		};
+		const playlist = changedPlaylist(this.playlist(id), changes);
+		this.#storePlaylists([playlist]);
 		return playlist;
 	}
+
+	/**
+	 * Like `updateAllSounds`, for every playlist.
+	 * @param {ItemOptions} changes
+	 * @returns {PlaylistJson[]} the playlists that changed
+	 */
+	updateAllPlaylists(changes) {
+		const playlists = this.#json.playlists.flatMap((playlist) => {
+			const changed = changedPlaylist(playlist, changes);
+			return differs(playlist, changed, changes) ? [changed] : [];
+		});
+		this.#storePlaylists(playlists);
+		return playlists;
+	}
+
+	/** @param {PlaylistJson[]} changed */
+	#storePlaylists(changed) {
+		const byId = new Map(changed.map((playlist) => [playlist.id, playlist]));
+		for (const playlist of changed) {
+			this.#playlists.set(playlist.id, playlist);
+		}
+		this.#json = {
+			...this.#json,
+			playlists: sortBy(this.#json.playlists.map((entry) => byId.get(entry.id) ?? entry), (entry) => entry.title),
+		};
+	}
+}
+
+/**
+ * @param {object} before
+ * @param {object} after
+ * @param {ItemOptions} changes
+ * @returns {boolean} whether any setting given in `changes` has a new value
+ */
+function differs(before, after, changes) {
+	const keys = Object.entries(changes).filter(([, value]) => value !== undefined).map(([key]) => key);
+	return keys.some((key) => /** @type {Record<string, unknown>} */ (before)[key] !== /** @type {Record<string, unknown>} */ (after)[key]);
+}
+
+/**
+ * @param {SoundJson} current
+ * @param {ItemOptions} changes
+ * @returns {SoundJson} a checked, changed copy
+ */
+function changedSound(current, changes) {
+	const sound = applyChanges(current, changes);
+	applyTimings(sound, changes, { fadeIn: 'Fade-in', fadeOut: 'Fade-out' });
+	applyPoints(sound, changes);
+	applyStyle(sound, changes);
+	return sound;
+}
+
+/**
+ * @param {PlaylistJson} current
+ * @param {ItemOptions} changes
+ * @returns {PlaylistJson} a checked, changed copy
+ */
+function changedPlaylist(current, changes) {
+	const playlist = applyChanges(current, changes);
+	applyTimings(playlist, changes, { crossfade: 'Crossfade', fadeIn: 'Fade-in', fadeOut: 'Fade-out' });
+	if (changes.order !== undefined) {
+		if (!PLAYBACK_ORDERS.includes(changes.order)) {
+			throw new InvalidCommandError(`The order must be one of ${PLAYBACK_ORDERS.join(', ')}, got ${changes.order}`);
+		}
+		playlist.order = changes.order;
+	}
+	if (changes.playlistLooping !== undefined) {
+		playlist.playlistLooping = changes.playlistLooping;
+	}
+	if (changes.trackLooping !== undefined) {
+		playlist.trackLooping = changes.trackLooping;
+	}
+	if (changes.stopMode !== undefined) {
+		if (!STOP_MODES.includes(changes.stopMode)) {
+			throw new InvalidCommandError(`The stop mode must be one of ${STOP_MODES.join(', ')}, got ${changes.stopMode}`);
+		}
+		playlist.stopMode = changes.stopMode;
+	}
+	applyStyle(playlist, changes);
+	return playlist;
 }
 
 /**

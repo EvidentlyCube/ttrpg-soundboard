@@ -20,14 +20,20 @@ import { isTransition } from './transitions.js';
  * 	| { type: 'playlist.customize', playlistId: string, title?: string, gain?: number, crossfade?: number, fadeIn?: number,
  * 		fadeOut?: number, order?: import('./order-strategies.js').PlaybackOrder, playlistLooping?: boolean, trackLooping?: boolean,
  * 		stopMode?: import('./playback-rules.js').StopMode } & Partial<import('./background-style.js').BackgroundStyle>
- * 	| { type: 'track.customize', trackId: string, title?: string, gain?: number, startAt?: number, endAt?: number | null }} Command
+ * 	| { type: 'track.customize', trackId: string, title?: string, gain?: number, startAt?: number, endAt?: number | null }
+ * 	| { type: 'sound.customizeAll', gain?: number, fadeIn?: number, fadeOut?: number }
+ * 	| { type: 'playlist.customizeAll', gain?: number, crossfade?: number, fadeIn?: number, fadeOut?: number,
+ * 		order?: import('./order-strategies.js').PlaybackOrder, playlistLooping?: boolean, trackLooping?: boolean }} Command
  */
 
 /** @typedef {'string' | 'number' | 'boolean' | 'number or null'} FieldType */
 
 /**
- * `optional` fields may be left out, but at least one of them must be given.
- * @type {Record<Command['type'], { strings?: string[], numbers?: string[], transition?: boolean, optional?: Record<string, FieldType> }>}
+ * `optional` fields may be left out, but at least one of them must be given. A `closed` command takes no other fields,
+ * so a batch change never silently drops a setting it can't apply to every item.
+ * @type {Record<Command['type'], {
+ * 	strings?: string[], numbers?: string[], transition?: boolean, optional?: Record<string, FieldType>, closed?: boolean,
+ * }>}
  */
 const SHAPES = {
 	'panic.stop': {},
@@ -62,6 +68,14 @@ const SHAPES = {
 		},
 	},
 	'track.customize': { strings: ['trackId'], optional: { title: 'string', gain: 'number', startAt: 'number', endAt: 'number or null' } },
+	'sound.customizeAll': { optional: { gain: 'number', fadeIn: 'number', fadeOut: 'number' }, closed: true },
+	'playlist.customizeAll': {
+		optional: {
+			gain: 'number', crossfade: 'number', fadeIn: 'number', fadeOut: 'number', order: 'string',
+			playlistLooping: 'boolean', trackLooping: 'boolean',
+		},
+		closed: true,
+	},
 };
 
 /**
@@ -100,6 +114,12 @@ export function validateCommand(value) {
 			if (!hasType(command[key], type)) {
 				throw new InvalidCommandError(`"${key}" must be a ${type} in ${command.type}`);
 			}
+		}
+	}
+	if (shape.closed) {
+		const unknown = Object.keys(command).find((key) => key !== 'type' && command[key] !== undefined && !Object.hasOwn(shape.optional ?? {}, key));
+		if (unknown) {
+			throw new InvalidCommandError(`"${unknown}" can't be changed with ${command.type}`);
 		}
 	}
 	return /** @type {Command} */ (value);

@@ -11,6 +11,7 @@ export const translation = {
 		common: {
 			loading: 'Wczytywanie…',
 			close: 'Zamknij',
+			on: 'Wł.',
 			off: 'Wył.',
 			cancel: 'Anuluj',
 			holdToConfirm: {
@@ -68,7 +69,7 @@ export const translation = {
 		},
 		board: {
 			playlists: 'Playlisty',
-			sounds: 'Efekty dźwiękowe',
+			sounds: 'Dźwięki',
 			addPlaylist: 'Dodaj playlistę',
 			addSound: 'Dodaj dźwięk',
 			empty: 'W tym folderze nie znaleziono playlist ani dźwięków.',
@@ -116,7 +117,7 @@ export const translation = {
 		volume: {
 			master: 'Główna',
 			music: 'Muzyka',
-			sfx: 'Efekty',
+			sfx: 'Dźwięki',
 			label: 'Głośność: {name}',
 			live: 'Bieżąca głośność',
 		},
@@ -310,7 +311,7 @@ export const translation = {
 				failed: 'Pobieranie zakończone z błędami',
 				cancelled: 'Pobieranie anulowane',
 			},
-			addingSounds: 'Dodawanie efektów dźwiękowych',
+			addingSounds: 'Dodawanie dźwięków',
 			addingTo: 'Dodawanie do: {playlist}',
 			step: {
 				waiting: 'Oczekuje',
@@ -331,7 +332,7 @@ export const translation = {
 		},
 		move: {
 			title: 'Przenieś „{title}”',
-			sounds: 'Efekty dźwiękowe',
+			sounds: 'Dźwięki',
 			soundCount: { one: '{count} dźwięk', few: '{count} dźwięki', many: '{count} dźwięków', other: '{count} dźwięku' },
 			hereNow: '{detail} · Obecna lokalizacja',
 			failed: 'Nie udało się przenieść: {reason}',
@@ -376,6 +377,36 @@ export const translation = {
 			soundboard: 'Soundboard',
 			name: 'Nazwa',
 			nameHint: 'Widoczna w nagłówku i w Wyborze Soundboardu. Domyślnie użyta jest nazwa folderu „{folder}”.',
+			generalTab: 'Ogólne',
+			batchTab: 'Zmiany',
+			batch: {
+				intro: 'Te karty zmieniają naraz wszystkie playlisty albo wszystkie dźwięki. Zaznacz ustawienia do zmiany i przytrzymaj przycisk Zastosuj na karcie.',
+				playlistVolume: 'Playlisty: Głośność',
+				playlistFades: 'Playlisty: Wyciszenia',
+				playlistOrder: 'Playlisty: Kolejność odtwarzania',
+				playlistRepeat: 'Playlisty: Powtarzanie',
+				soundVolume: 'Dźwięki: Głośność',
+				soundFades: 'Dźwięki: Wyciszenia',
+				varies: 'Różne',
+				holdToApply: 'Przytrzymaj, aby zastosować',
+				applying: 'Zapisywanie…',
+				playlistApplied: {
+					one: 'Zmieniono {count} playlistę.',
+					few: 'Zmieniono {count} playlisty.',
+					many: 'Zmieniono {count} playlist.',
+					other: 'Zmieniono {count} playlisty.',
+				},
+				soundApplied: {
+					one: 'Zmieniono {count} dźwięk.',
+					few: 'Zmieniono {count} dźwięki.',
+					many: 'Zmieniono {count} dźwięków.',
+					other: 'Zmieniono {count} dźwięku.',
+				},
+				playlistUnchanged: 'Brak zmian - wszystkie playlisty miały już te ustawienia.',
+				soundUnchanged: 'Brak zmian - wszystkie dźwięki miały już te ustawienia',
+				playlistSaveFailed: 'Nie udało się zapisać {failed} z {total} playlist.',
+				soundSaveFailed: 'Nie udało się zapisać {failed} z {total} dźwięków.',
+			},
 		},
 		licenses: {
 			title: 'Licencje',

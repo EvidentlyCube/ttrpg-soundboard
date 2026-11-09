@@ -810,6 +810,56 @@ describe('Soundboard', () => {
 		});
 	});
 
+	describe('batch changes', () => {
+		it('changes every playlist, announces each, and saves them at once', async () => {
+			const { soundboard, api, settle, eventsOf } = await started();
+			soundboard.customizeAllPlaylists({ fadeIn: 2, order: 'shuffle', playlistLooping: false });
+			assert.deepEqual(eventsOf('playlist.changed').map((event) => event.type === 'playlist.changed' && event.playlist.id), ['Combat', 'Tavern']);
+			assert.deepEqual(api.playlistSaves.map(({ playlistId, options, keepalive }) => [playlistId, options.fadeIn, options.order, options.playlistLooping, keepalive]), [
+				['Combat', 2, 'shuffle', false, false],
+				['Tavern', 2, 'shuffle', false, false],
+			]);
+			await settle();
+			assert.deepEqual(eventsOf('playlist.saved').map((event) => event.type === 'playlist.saved' && event.playlistId), ['Combat', 'Tavern']);
+		});
+
+		it('applies a playlist gain at once to the playing track', async () => {
+			const { soundboard, engine } = await started();
+			soundboard.togglePlaylist('Combat');
+			soundboard.customizeAllPlaylists({ gain: 0.5 });
+			assert.deepEqual(engine.voices.map((voice) => voice.gain), [0.5]);
+		});
+
+		it('changes every sound, its gain reaching playing instances, and saves them at once', async () => {
+			const { soundboard, engine, api, eventsOf } = await started();
+			soundboard.playSound('Rain.ogg');
+			soundboard.customizeAllSounds({ gain: 2, fadeOut: 1 });
+			assert.deepEqual(engine.voices.map((voice) => voice.gain), [2]);
+			assert.deepEqual(eventsOf('sound.changed').map((event) => event.type === 'sound.changed' && event.sound.id), ['Boom.mp3', 'Rain.ogg']);
+			assert.deepEqual(api.soundSaves.map(({ soundId, options }) => [soundId, options.gain, options.fadeOut]), [['Boom.mp3', 2, 1], ['Rain.ogg', 2, 1]]);
+		});
+
+		it('leaves items that already have the values alone', async () => {
+			const { soundboard, api, events, eventsOf } = await started();
+			soundboard.customizePlaylist('Combat', { crossfade: 3 });
+			soundboard.flushPlaylistOptions('Combat');
+			events.length = 0;
+			api.playlistSaves.length = 0;
+			soundboard.customizeAllPlaylists({ crossfade: 3 });
+			assert.deepEqual(eventsOf('playlist.changed').map((event) => event.type === 'playlist.changed' && event.playlist.id), ['Tavern']);
+			assert.deepEqual(api.playlistSaves.map(({ playlistId }) => playlistId), ['Tavern']);
+		});
+
+		it('rejects an invalid or unsupported change without changing or saving anything', async () => {
+			const { soundboard, api, clock, events } = await started();
+			assert.throws(() => soundboard.customizeAllPlaylists({ fadeIn: 31 }), InvalidCommandError);
+			assert.throws(() => soundboard.customizeAllSounds({ gain: 5 }), InvalidCommandError);
+			assert.throws(() => soundboard.customizeAllSounds(/** @type {any} */ ({ title: 'All' })), InvalidCommandError);
+			clock.advance(1000);
+			assert.deepEqual([api.playlistSaves, api.soundSaves, events], [[], [], []]);
+		});
+	});
+
 	describe('customizing tracks', () => {
 		it('announces the playlist with the renamed track, and the footer gets the new title', async () => {
 			const { soundboard, eventsOf } = await started();

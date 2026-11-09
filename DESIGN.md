@@ -738,6 +738,9 @@ customizeSound(soundId, { title?, gain?, startAt?, endAt?, fadeIn?, fadeOut?,
                                           // applies at once, saves 500 ms later (§6.4)
                                           // points and fades only reach later presses (§7)
 flushSoundOptions(soundId)                // save that sound's pending change now (its dialog closed)
+customizeAllSounds({ gain?, fadeIn?, fadeOut? })  // Options → Batch (§9.20): as customizeSound for every sound that
+                                          // gets a new value, saved at once; any other key, or an invalid value,
+                                          // is an InvalidCommandError that changes nothing
 
 // playlists; transition is 'default' (follow the playlist's rules) or 'instant'. Omitted means 'default'.
 togglePlaylist(playlistId)                // tile click: play if idle, otherwise stop ('default')
@@ -754,6 +757,9 @@ customizePlaylist(playlistId, { title?, gain?, crossfade?, fadeIn?, fadeOut?, or
                                           // saves 500 ms later; a new order refills the history around the current
                                           // track, track looping reaches the current track at once, and a new stop
                                           // mode trims what a stopped playlist remembers (§8.1)
+customizeAllPlaylists({ gain?, crossfade?, fadeIn?, fadeOut?, order?, playlistLooping?, trackLooping? })
+                                          // the same for every playlist; the crossfade is stored as given, even
+                                          // above a playlist's own limit, which the player applies (§8.4)
 uploadPlaylistBackground(playlistId, bytes, type)  // Promise; the image file's ArrayBuffer and its type (§5.2)
 downloadPlaylistBackground(playlistId, url)        // Promise; the server downloads the link
 removePlaylistBackground(playlistId)               // Promise; deletes the image for good
@@ -940,6 +946,7 @@ Volumes are saved in `.soundboard` (§2.3), so they survive reloads and restarts
 - **Sounds.** Every instance plays at the sound's gain.
 - **Playlists.** Every playlist voice plays at `playlist gain × track gain × live volume`, through the voice's own gain stage (§6.3), so no extra node per playlist is needed.
 - **Applying.** `customizeSound`, `customizePlaylist` and `customizeTrack` change the browser's library at once (`LibraryModel.updateSound` / `updatePlaylist` / `updateTrack`, which keep the items sorted with the same order as the server, §2.2). `SoundPlayer.setGain` applies a sound's gain to every playing instance and to later ones; `PlaylistPlayer.setGain` applies a playlist's gain to its current voice, to voices still fading out, and to later ones. A track's new gain reaches the playlist through `PlaylistPlayer.setPlaylist` (§8.1), which applies it to the same voices at once. An empty title, a gain out of range, an image setting out of its range (§2.3) or an unknown order is an `InvalidCommandError`.
+- **Batch changes.** `customizeAllSounds` and `customizeAllPlaylists` (commands `sound.customizeAll` and `playlist.customizeAll`, which take no other keys) go through `LibraryModel.updateAllSounds` / `updateAllPlaylists`. These check every item's copy before storing any, so an invalid change changes nothing, and return only the items that got a new value. Each of those is applied, announced and scheduled exactly as a single `customize…` would be, then flushed, so the batch saves at once: one `PATCH` per changed item, with no new route. Items that already had the values are neither announced nor saved.
 - **Saving.** `OptionsSync` saves per item like the volume save: 500 ms after the last change, one request per item in flight, always the item's full editable options, so a failed save is repaired by the next one. Its queues are keyed by kind (`sound`, `playlist`, `track`) and id, so items of different kinds with the same id never share one. `flushSoundOptions`, `flushPlaylistOptions` and `flushTrackOptions` send one item's pending change now (after any save of it in flight); `flushSettings` sends everything pending with `keepalive`. `SettingsSync.settle()` and `OptionsSync.settleAll()` send everything pending without `keepalive` and resolve once nothing is waiting or in flight, follow-up saves included; a failed save is reported as usual and doesn't reject. A refresh waits for them (§6.7).
 
 **Live volume.** Each playlist also has a temporary volume for the session, set from its player bar (§9.2). Sound effects have none.
@@ -1380,7 +1387,7 @@ UI components extend `Component` (`ui/component.js`): `render()` builds the elem
 - **Status.** Without text: a spinner after a change, a checkmark once saved. A failure is shown as a red message.
 - **Footer** (`playFooter`). Both dialogs hand Play / Stop and the status to the `Dialog` as its footer, so they stay in view below the scrolling body, on every tab: Play in the middle, the status at the right.
 - **Move or delete** (`moveOrDeleteCard`), the last card of the sound dialog, of an open track row ("Move or delete") and of the playlist's first tab ("Delete", without Move, with the note "The folder and everything in it go to the trash."). **Move…** on the left opens the move dialog (§9.11); **Hold to delete** on the right deletes (§2.5). A failure shows as a red message in the card. On success the item leaves the library, and the board closes the dialog or the accordion drops the row.
-- **Hold-to-delete button** (`ui/hold-button.js`). A red-outlined button that acts only after being held down for 0.5 s (`HOLD_MS`, or its `holdMs` option), by the pointer or by holding Enter or Space, so a slip never deletes anything. While held, a red fill sweeps across it from the left: a CSS width transition started by `data-holding`, so nothing updates during the hold (§9.6); its duration is an inline style, since Tailwind can't build a class from a variable. The `neutral` tone draws it grey instead, for actions that aren't deletions, such as Restore (§9.12). Releasing early, leaving the button, losing the focus or `pointercancel` cancels it, and the fill snaps back; key repeats are ignored. While the request runs it is disabled and reads "Deleting…".
+- **Hold-to-delete button** (`ui/hold-button.js`). A red-outlined button that acts only after being held down for 0.5 s (`HOLD_MS`, or its `holdMs` option), by the pointer or by holding Enter or Space, so a slip never deletes anything. While held, a red fill sweeps across it from the left: a CSS width transition started by `data-holding`, so nothing updates during the hold (§9.6); its duration is an inline style, since Tailwind can't build a class from a variable. The `neutral` tone draws it grey instead, for actions that aren't deletions, such as Restore (§9.12). Releasing early, leaving the button, losing the focus or `pointercancel` cancels it, and the fill snaps back; key repeats are ignored. While the request runs it is disabled and reads its busy text, "Deleting…" for a delete. A disabled button shows the not-allowed cursor.
 - **Tabs.** A tab bar over panels (`role="tablist"`, `tab`, `tabpanel`), the first selected unless another is asked for. The left and right arrow keys move between tabs, and only the selected panel is shown. The bar stays at the top while the dialog scrolls.
 
 **Filled field** (`ui/filled-field.js`, `filledField({ label?, unit?, accent, align, width, attributes })`), the one style for text fields in the dialogs:
@@ -1629,7 +1636,24 @@ Under yt-dlp's version, a small line (`data-update-state`) says what `yt-dlp -U`
 
 ### 9.20 Options dialog
 
-`ui/options-dialog.js`, opened from the ☰ menu (§9.3), titled "Options" (`data-options`), with its field focused. A card (§9.7) titled "Soundboard", the dialog's full width, holds one filled field, **Name** (`data-options-name`, at most 100 characters), holding the soundboard's own name, empty without one, and a line under it: "Shown in the header and the Selector. Left empty, the folder's name "…" is used." Every keystroke calls `setName` (§6.1), so the header and the tab title follow as it is typed, and the name is saved 500 ms after the last one. Other open pages show it after a reload. The remote page shows no name.
+`ui/options-dialog.js`, opened from the ☰ menu (§9.3), titled "Options" (`data-options`), with two tabs (§9.7): **General** and **Batch**, the first selected and its field focused.
+
+**General.** A card (§9.7) titled "Soundboard", the dialog's full width, holds one filled field, **Name** (`data-options-name`, at most 100 characters), holding the soundboard's own name, empty without one, and a line under it: "Shown in the header and the Selector. Left empty, the folder's name "…" is used." Every keystroke calls `setName` (§6.1), so the header and the tab title follow as it is typed, and the name is saved 500 ms after the last one. Other open pages show it after a reload. The remote page shows no name.
+
+**Batch** (`ui/batch-options.js`, `BatchOptions`, `data-batch-options`) gives every playlist or every sound effect the same setting at once. A short line on top says so and how it works. Then come six cards (`data-batch-card`), the playlist ones in blue, the sound ones in amber:
+
+| Card | Settings | Control |
+|---|---|---|
+| Playlists: Volume | gain | gain widget |
+| Playlists: Fades | Fade in, Crossfade, Fade out | seconds controls with the plain fade limits (`SECONDS_LIMITS`), the crossfade too |
+| Playlists: Playback order | order | the playlist dialog's radio group |
+| Playlists: Repeat | Repeat the playlist, Repeat the current track | On / Off radio buttons, so a value can't be mistaken for the box that applies it |
+| Sound effects: Volume | gain | gain widget |
+| Sound effects: Fades | Fade in, Fade out | seconds controls |
+
+- **A row** (`data-batch-row`): a checkbox (`data-batch-apply`), the setting's name, and below them, indented past the box, its control. The control starts at the value every item shares. When the items differ, it starts at the default (0 dB, Off, Ordered, Off) and a muted "Varies" sits after the name, following `playlist.changed` / `sound.changed`. Unchecked, which is how every row starts, the control is `inert` and dimmed, and a wrapper around it shows the not-allowed cursor.
+- **Hold to apply.** Each card ends with a neutral hold button (§9.7) held for 1 s. It is disabled while no box in the card is checked or there are no playlists (sound effects). Holding it calls `customizeAllPlaylists` or `customizeAllSounds` (§6.1) with the checked settings. The card waits for the `*.saved` / `*.saveFailed` of every item that got a new value (the button reads "Applying…" meanwhile), then clears every box and shows the corner toast (§9.8) for 3 seconds: "Changes applied to N playlists." with the number that really changed, "Every playlist already had these settings; nothing changed." when none did, or, in red, "Could not save F of N playlists.", and the same for sound effects. The controls keep the values just applied.
+- Nothing on the tab is remembered once the dialog closes.
 
 ### 9.21 Translations
 
@@ -1707,7 +1731,7 @@ public/
 		            seconds-control.js  seconds-scale.js  range-control.js  range-scale.js  add-dialog.js  download-dialog.js
 		            hold-button.js  replace-host-dialog.js  remote-view.js  move-dialog.js  trash-button.js  trash-dialog.js  metadata-dialog.js  source-fields.js  problems-button.js  problems-dialog.js
 		            access-requests-banner.js  connect-phone-dialog.js  info-dialog.js  licenses-dialog.js  app-menu-button.js
-		            options-dialog.js  startup-parts.js  text.js  tile-background.js  background-editor.js
+		            options-dialog.js  batch-options.js  startup-parts.js  text.js  tile-background.js  background-editor.js
 test/
 	backend/    cli/  downloads/  http/  library/  metadata/  remote/  startup/
 	frontend/   logic tests, backend-api.test.js, ui/ (pure UI helpers)

@@ -35,6 +35,8 @@ describe('validateCommand', () => {
 			{ type: 'playlist.customize', playlistId: 'p', stopMode: 'pause' },
 			{ type: 'track.customize', trackId: 'p/1.mp3', title: 'Battle' },
 			{ type: 'track.customize', trackId: 'p/1.mp3', gain: 0.5 },
+			{ type: 'sound.customizeAll', gain: 0.5, fadeIn: 1, fadeOut: 2 },
+			{ type: 'playlist.customizeAll', crossfade: 2, order: 'shuffle', playlistLooping: true, trackLooping: false },
 		];
 		for (const command of commands) {
 			assert.equal(validateCommand(command), command, JSON.stringify(command));
@@ -58,6 +60,11 @@ describe('validateCommand', () => {
 			[{ type: 'sound.customize', soundId: 'a', title: 5 }, /"title" must be a string/],
 			[{ type: 'sound.customize', soundId: 'a', gain: '2' }, /"gain" must be a number/],
 			[{ type: 'sound.customize', soundId: 'a' }, /needs "title" or "gain"/],
+			[{ type: 'sound.customizeAll' }, /sound.customizeAll needs "gain" or "fadeIn" or "fadeOut"/],
+			[{ type: 'sound.customizeAll', fadeIn: '1' }, /"fadeIn" must be a number/],
+			[{ type: 'sound.customizeAll', gain: 1, title: 'Boom' }, /"title" can't be changed with sound.customizeAll/],
+			[{ type: 'playlist.customizeAll', playlistLooping: 'yes' }, /"playlistLooping" must be a boolean/],
+			[{ type: 'playlist.customizeAll', gain: 1, stopMode: 'pause' }, /"stopMode" can't be changed with playlist.customizeAll/],
 			[{ type: 'sound.customize', soundId: 'a', startAt: null }, /"startAt" must be a number/],
 			[{ type: 'sound.customize', soundId: 'a', endAt: '1' }, /"endAt" must be a number or null/],
 			[{ type: 'sound.customize', soundId: 'a', fadeOut: '1' }, /"fadeOut" must be a number/],

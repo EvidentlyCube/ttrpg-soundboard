@@ -159,6 +159,45 @@ describe('LibraryModel', () => {
 		});
 	});
 
+	describe('updateAllPlaylists and updateAllSounds', () => {
+		const fresh = () => new LibraryModel(exampleLibrary(), () => true);
+
+		it('gives every playlist the change and returns them, findable by id afterwards', () => {
+			const model = fresh();
+			const changed = model.updateAllPlaylists({ gain: 0.5, crossfade: 3, order: 'shuffle', trackLooping: true });
+			assert.deepEqual(changed.map((playlist) => playlist.id), ['Combat', 'Tavern']);
+			for (const playlist of changed) {
+				assert.deepEqual([playlist.gain, playlist.crossfade, playlist.order, playlist.trackLooping], [0.5, 3, 'shuffle', true]);
+				assert.equal(model.playlist(playlist.id), playlist);
+			}
+			assert.deepEqual(model.json.playlists, changed);
+		});
+
+		it('returns only the items that get a new value', () => {
+			const model = fresh();
+			model.updatePlaylist('Combat', { fadeIn: 2 });
+			assert.deepEqual(model.updateAllPlaylists({ fadeIn: 2 }).map((playlist) => playlist.id), ['Tavern']);
+			model.updateSound('Rain.ogg', { gain: 0.5 });
+			assert.deepEqual(model.updateAllSounds({ gain: 0.5 }).map((sound) => sound.id), ['Boom.mp3']);
+			assert.deepEqual(model.updateAllSounds({ gain: 0.5 }), []);
+		});
+
+		it('gives every sound the gain and fades', () => {
+			const model = fresh();
+			const changed = model.updateAllSounds({ gain: 2, fadeIn: 0.5, fadeOut: 1 });
+			assert.deepEqual(changed.map((sound) => [sound.id, sound.gain, sound.fadeIn, sound.fadeOut]), [['Boom.mp3', 2, 0.5, 1], ['Rain.ogg', 2, 0.5, 1]]);
+			assert.equal(model.sound('Rain.ogg'), changed[1]);
+		});
+
+		it('rejects an invalid change, changing nothing', () => {
+			const model = fresh();
+			assert.throws(() => model.updateAllPlaylists({ fadeIn: 31 }), new InvalidCommandError('Fade-in must be a number of seconds from 0 to 30, got 31'));
+			assert.throws(() => model.updateAllPlaylists({ gain: 1, order: /** @type {any} */ ('backwards') }), /The order must be one of/);
+			assert.throws(() => model.updateAllSounds({ gain: 5 }), new InvalidCommandError('Gain must be a number from 0 to 4, got 5'));
+			assert.deepEqual(model.json, exampleLibrary());
+		});
+	});
+
 	describe('additions from downloads', () => {
 		const track = (/** @type {string} */ id, format = /** @type {'mp3' | 'ogg' | 'opus'} */ ('mp3')) => ({
 			id, title: id, format, size: 1, gain: 1, duration: 1, startAt: 0, endAt: null, fadeIn: 0, fadeOut: 0, url: `/media/${id}`, ...NO_BACKGROUND,

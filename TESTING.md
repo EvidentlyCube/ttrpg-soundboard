@@ -146,6 +146,7 @@ Run in Chrome, Firefox and Safari, with Safari on the MacBook as the one that ma
 - [ ] The splash appears on load; nothing plays or loads until the click.
 - [ ] Reloading never flashes "Soundboard" before the name: the page stays dark until the name is there.
 - [ ] ☰ → Options: typing a name changes the header and the tab title as it is typed; Recent and Browse show it after Change soundboard, and a reload keeps it. Clearing it brings back the folder's name, and `.soundboard` has no `name` any more. A very long name is cut short with "…" in the header.
+- [ ] ☰ → Options → Batch: the dialog doesn't scroll sideways. An unchecked setting is dimmed and shows the not-allowed cursor, and so does a disabled Hold to apply. The fill sweeps across Apply over a full second. While a playlist plays, applying a new volume changes it at once, and the toast shows above the dialog.
 - [ ] The splash sits between a header (☰ and the soundboard's name only) and the footer with a dimmed Stop All. The ☰ menu greys out everything but Info, Licenses and Change soundboard, which all work. Choosing Standalone swaps in the board without the header or footer moving; choosing Remote control shows the remote page without them.
 - [ ] Close the lid for a minute and reopen: the "resume" splash appears and audio continues after a click.
 - [ ] Switching the audio output (speakers, headphones, Bluetooth) while playing.
